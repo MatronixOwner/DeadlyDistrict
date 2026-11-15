@@ -26,12 +26,12 @@ def contact_look(name):
     if name == 'vano':
         return make_look(skin=SKINS[2], hair=(0.1, 0.08, 0.06), shirt=(0.9, 0.9, 0.86), pants=(0.2, 0.24, 0.36),
                          torso='tank', beard=True, hat='cap', hat_color=(0.6, 0.1, 0.1), fat=1.3, scale=1.02,
-                         model='m_beach')
+                         model='m_red')
     if name == 'rosa':
         return make_look(skin=SKINS[0], hair=(0.62, 0.1, 0.08), shirt=(0.8, 0.12, 0.3), pants=(0.8, 0.12, 0.3),
-                         torso='tee', female=True, scale=0.97, fat=0.95, model='f_formal')
+                         torso='tee', female=True, scale=0.97, fat=0.95, model='f_goth')
     return make_look(skin=SKINS[5], hair=(0.7, 0.7, 0.72), shirt=(0.3, 0.3, 0.36), pants=(0.3, 0.3, 0.36),
-                     torso='jacket', glasses=True, scale=1.0, fat=0.95)
+                     torso='jacket', glasses=True, scale=1.0, fat=0.95, model='m_old')
 
 
 class MissionFailed(Exception):
@@ -267,9 +267,11 @@ class Run(object):
         lmk = w.city.landmarks[contact]
         dx, dy = lmk['door']
         npc = self.npc(dx, dy + 1.0, -math.pi / 2, contact_look(contact))
+        npc.idle_clip = 'talk'
         ms.clear_area(dx, dy, 3.0, peds=True, keep=npc)
         pl.freeze = True
         p = pl.ped
+        p.idle_clip = 'listen'
         p.x, p.y = dx, dy - 0.9
         p.yaw = math.pi / 2
         p.speed = 0.0
@@ -297,6 +299,7 @@ class Run(object):
         w.cam.pitch = -0.2
         w.cam.face(p.x, p.y, -math.pi / 2)
         p.yaw = -math.pi / 2
+        p.idle_clip = None
         pl.freeze = False
         w.hud.show(True)
         ms.letterbox(False)

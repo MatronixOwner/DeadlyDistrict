@@ -294,7 +294,18 @@ class Ped(object):
         self._shot_prev = 0.0
         self._was_lying = False
         self._lod_n = random.randrange(4)
+        self.idle_clip = None       # особая поза покоя: 'talk', 'listen', 'arms', 'phone'
+        self.walk_clip = None       # особая походка: 'texting'
         self.vis = None             # модель со скелетной анимацией (pedvisual.PedVisual)
+        if kind == 'civ':
+            # немного жизни: кто-то идёт, уткнувшись в телефон, кто-то стоит, скрестив руки
+            r = random.random()
+            if r < 0.07:
+                self.walk_clip = 'texting'
+            elif r < 0.2:
+                self.idle_clip = 'phone' if r < 0.13 else 'arms'
+        elif kind == 'cop':
+            self.idle_clip = 'arms'
         self._build()
 
     # ------------------------------------------------------------------
@@ -349,7 +360,8 @@ class Ped(object):
         if self.removed:
             return
         if self.vis is not None:
-            self.vis.set_weapon(wid)
+            w = self.weapon
+            self.vis.set_weapon(wid, 'rifle' if (w.long and w.kind != 'melee') else 'pistol')
             return
         if self.gun_np is not None:
             self.gun_np.removeNode()
@@ -906,15 +918,15 @@ class Ped(object):
             if not self._was_lying:
                 self._was_lying = True
                 self.lie = 1.0
-                vis.play('Death', False, 1.35, 0.08)
+                vis.play(vis.death, False, 1.5, 0.1)
             if not vis.done or vis.fade > 0.0:
                 vis.update(dt)
             return
         if self._was_lying:
-            # поднимается: из лежачей позы плавно в стойку
+            # поднимается с земли
             self._was_lying = False
             self.lie = 0.0
-            vis.play('Idle', True, 1.0, 0.45, True)
+            vis.play('getup', False, 1.7, 0.3, True)
         if self.punch_t > 0.0:
             self.punch_t -= dt
         if self.shot_t > 0.0:
@@ -929,22 +941,41 @@ class Ped(object):
             dt *= 4.0
         sp = self.speed
         w = self.weapon
-        gun = w.kind == 'gun' or w.kind == 'rocket'
-        if self.punch_t > 0.0:
-            vis.strike(w.id, self.punch_t > self._punch_prev)
-        elif sp > 0.12:
-            vis.move_anim(sp, gun and self.aiming)
-        elif gun and self.aiming:
-            if self.shot_t > 0.0 and not w.auto:
-                vis.play('Idle_Gun_Shoot', False, 1.6, 0.05, self.shot_t > self._shot_prev)
+        kind = w.kind
+        armed = None
+        if kind == 'gun' or kind == 'rocket':
+            armed = 'rifle' if w.long else 'pistol'
+        if vis.cur == 'getup' and vis.busy() and sp < 0.6:
+            pass                                        # дать подняться
+        elif self.punch_t > 0.0:
+            if kind == 'thrown':
+                vis.play('throw', False, 3.0, 0.08, self.punch_t > self._punch_prev)
             else:
-                vis.play('Idle_Gun_Pointing', True, 1.0, 0.12)
+                vis.strike(w.long, self.punch_t > self._punch_prev)
+        elif self.air and not self.is_player:
+            vis.play('air', True, 1.0, 0.12)
+        elif sp > 0.12:
+            vis.move_anim(sp, armed, self.aiming, self.walk_clip)
+        elif armed == 'rifle':
+            if self.shot_t > 0.0:
+                vis.play('rifle_fire', False, 2.2 if w.auto else 1.5, 0.05, self.shot_t > self._shot_prev)
+            elif self.aiming:
+                vis.play('rifle_fire', False, 1.0, 0.12, False, 0.0)
+            else:
+                vis.play('rifle_idle', True, 1.0)
+        elif armed == 'pistol':
+            if self.shot_t > 0.0 and not w.auto:
+                vis.play('pistol_shoot', False, 1.8, 0.05, self.shot_t > self._shot_prev)
+            elif self.aiming or self.shot_t > 0.0:
+                vis.play('pistol_aim', True, 1.0, 0.12)
+            else:
+                vis.play('pistol_idle', True, 1.0)
         elif self.hit_t > 0.0:
-            vis.play('HitRecieve', False, 1.3, 0.06)
-        elif gun:
-            vis.play('Idle_Gun', True, 1.0)
+            vis.play('hit_b' if vis.punch_n % 2 else 'hit_a', False, 1.2, 0.06)
+        elif st == 'cower':
+            vis.play('cower', False, 1.0, 0.2)
         else:
-            vis.play('Idle', True, 1.0)
+            vis.play(self.idle_clip or 'idle', True, 1.0)
         self._punch_prev = self.punch_t
         self._shot_prev = self.shot_t
         vis.update(dt)

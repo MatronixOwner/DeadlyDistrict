@@ -1,1232 +1,440 @@
 {
  "anims": {
-  "f": {
-   "Death": {
-    "fps": 30.0,
-    "frames": 41
-   },
-   "Gun_Shoot": {
-    "fps": 30.0,
-    "frames": 23
-   },
-   "HitRecieve": {
-    "fps": 30.0,
-    "frames": 22
-   },
-   "HitRecieve_2": {
-    "fps": 30.0,
-    "frames": 22
-   },
-   "Idle": {
-    "fps": 30.0,
-    "frames": 63
-   },
-   "Idle_Gun": {
-    "fps": 30.0,
-    "frames": 63
-   },
-   "Idle_Gun_Pointing": {
-    "fps": 30.0,
-    "frames": 63
-   },
-   "Idle_Gun_Shoot": {
-    "fps": 30.0,
-    "frames": 25
-   },
-   "Idle_Neutral": {
-    "fps": 30.0,
-    "frames": 63
-   },
-   "Interact": {
-    "fps": 30.0,
-    "frames": 48
-   },
-   "Kick_Right": {
-    "fps": 30.0,
-    "frames": 35
-   },
-   "Punch_Left": {
-    "fps": 30.0,
-    "frames": 32
-   },
-   "Punch_Right": {
-    "fps": 30.0,
-    "frames": 32
-   },
-   "Roll": {
-    "fps": 30.0,
-    "frames": 50
-   },
-   "Run": {
-    "fps": 30.0,
-    "frames": 30
-   },
-   "Run_Back": {
-    "fps": 30.0,
-    "frames": 32
-   },
-   "Run_Shoot": {
-    "fps": 30.0,
-    "frames": 32
-   },
-   "Sword_Slash": {
-    "fps": 30.0,
-    "frames": 39
-   },
-   "Walk": {
-    "fps": 30.0,
-    "frames": 50
-   },
-   "Wave": {
-    "fps": 30.0,
-    "frames": 63
-   }
+  "air": {
+   "fps": 30.0,
+   "frames": 93
   },
-  "m": {
-   "Death": {
-    "fps": 30.0,
-    "frames": 33
-   },
-   "Gun_Shoot": {
-    "fps": 30.0,
-    "frames": 19
-   },
-   "HitRecieve": {
-    "fps": 30.0,
-    "frames": 17
-   },
-   "HitRecieve_2": {
-    "fps": 30.0,
-    "frames": 17
-   },
-   "Idle": {
-    "fps": 30.0,
-    "frames": 50
-   },
-   "Idle_Gun": {
-    "fps": 30.0,
-    "frames": 50
-   },
-   "Idle_Gun_Pointing": {
-    "fps": 30.0,
-    "frames": 50
-   },
-   "Idle_Gun_Shoot": {
-    "fps": 30.0,
-    "frames": 21
-   },
-   "Idle_Neutral": {
-    "fps": 30.0,
-    "frames": 50
-   },
-   "Interact": {
-    "fps": 30.0,
-    "frames": 38
-   },
-   "Kick_Right": {
-    "fps": 30.0,
-    "frames": 29
-   },
-   "Punch_Left": {
-    "fps": 30.0,
-    "frames": 25
-   },
-   "Punch_Right": {
-    "fps": 30.0,
-    "frames": 25
-   },
-   "Roll": {
-    "fps": 30.0,
-    "frames": 41
-   },
-   "Run": {
-    "fps": 30.0,
-    "frames": 25
-   },
-   "Run_Back": {
-    "fps": 30.0,
-    "frames": 25
-   },
-   "Run_Shoot": {
-    "fps": 30.0,
-    "frames": 25
-   },
-   "Sword_Slash": {
-    "fps": 30.0,
-    "frames": 31
-   },
-   "Walk": {
-    "fps": 30.0,
-    "frames": 41
-   },
-   "Wave": {
-    "fps": 30.0,
-    "frames": 50
-   }
+  "arms": {
+   "fps": 30.0,
+   "frames": 74
+  },
+  "cower": {
+   "fps": 30.0,
+   "frames": 28
+  },
+  "death_a": {
+   "fps": 30.0,
+   "frames": 60
+  },
+  "death_b": {
+   "fps": 30.0,
+   "frames": 75
+  },
+  "death_c": {
+   "fps": 30.0,
+   "frames": 66
+  },
+  "drive": {
+   "fps": 30.0,
+   "frames": 60
+  },
+  "getup": {
+   "fps": 30.0,
+   "frames": 47
+  },
+  "hit_a": {
+   "fps": 30.0,
+   "frames": 12
+  },
+  "hit_b": {
+   "fps": 30.0,
+   "frames": 15
+  },
+  "idle": {
+   "fps": 30.0,
+   "frames": 93
+  },
+  "jog": {
+   "fps": 30.0,
+   "frames": 35
+  },
+  "kick": {
+   "fps": 30.0,
+   "frames": 41
+  },
+  "knockback": {
+   "fps": 30.0,
+   "frames": 24
+  },
+  "listen": {
+   "fps": 30.0,
+   "frames": 49
+  },
+  "phone": {
+   "fps": 30.0,
+   "frames": 87
+  },
+  "pistol_aim": {
+   "fps": 30.0,
+   "frames": 58
+  },
+  "pistol_idle": {
+   "fps": 30.0,
+   "frames": 62
+  },
+  "pistol_shoot": {
+   "fps": 30.0,
+   "frames": 23
+  },
+  "pistol_walk": {
+   "fps": 30.0,
+   "frames": 39
+  },
+  "punch_a": {
+   "fps": 30.0,
+   "frames": 32
+  },
+  "punch_b": {
+   "fps": 30.0,
+   "frames": 37
+  },
+  "rifle_fire": {
+   "fps": 30.0,
+   "frames": 37
+  },
+  "rifle_idle": {
+   "fps": 30.0,
+   "frames": 58
+  },
+  "rifle_run": {
+   "fps": 30.0,
+   "frames": 24
+  },
+  "rifle_walk": {
+   "fps": 30.0,
+   "frames": 39
+  },
+  "run_f": {
+   "fps": 30.0,
+   "frames": 25
+  },
+  "sit": {
+   "fps": 30.0,
+   "frames": 62
+  },
+  "sprint": {
+   "fps": 30.0,
+   "frames": 24
+  },
+  "swing": {
+   "fps": 30.0,
+   "frames": 49
+  },
+  "talk": {
+   "fps": 30.0,
+   "frames": 109
+  },
+  "texting": {
+   "fps": 30.0,
+   "frames": 34
+  },
+  "throw": {
+   "fps": 30.0,
+   "frames": 58
+  },
+  "victory": {
+   "fps": 30.0,
+   "frames": 56
+  },
+  "walk": {
+   "fps": 30.0,
+   "frames": 49
+  },
+  "walk_back": {
+   "fps": 30.0,
+   "frames": 29
+  },
+  "walk_f": {
+   "fps": 30.0,
+   "frames": 41
   }
  },
  "chars": {
-  "f_casual": {
-   "parts": {
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Feet|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ],
-    "Feet|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Hair_Blond": [
-     0.547,
-     0.46,
-     0.278
-    ],
-    "Head|Hair_Brown": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Orange": [
-     0.62,
-     0.383,
-     0.22
-    ]
-   },
-   "verts": 3396
+  "army": {
+   "height": 1.872,
+   "model": "army",
+   "source": "psx-28-hm",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 1002
   },
-  "f_formal": {
-   "parts": {
-    "Body|Gold": [
-     0.686,
-     0.529,
-     0.286
-    ],
-    "Body|LimeGreen": [
-     0.276,
-     0.407,
-     0.264
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Red": [
-     0.407,
-     0.133,
-     0.049
-    ],
-    "Feet|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Red": [
-     0.407,
-     0.133,
-     0.049
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|LimeGreen": [
-     0.276,
-     0.407,
-     0.264
-    ],
-    "Legs|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ]
-   },
-   "verts": 3311
+  "cop_f": {
+   "height": 1.785,
+   "model": "cop_f",
+   "source": "psx-17-female-police",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 970
   },
-  "f_jacket": {
-   "parts": {
-    "Body|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ],
-    "Body|Gold": [
-     0.686,
-     0.529,
-     0.286
-    ],
-    "Body|Green": [
-     0.273,
-     0.249,
-     0.147
-    ],
-    "Body|LightGreen": [
-     0.347,
-     0.322,
-     0.212
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Feet|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ],
-    "Feet|Brown_02": [
-     0.46,
-     0.391,
-     0.251
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Hair_Brown": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ],
-    "Legs|Brown_02": [
-     0.46,
-     0.391,
-     0.251
-    ],
-    "Legs|Gold": [
-     0.686,
-     0.529,
-     0.286
-    ],
-    "Legs|LightGreen": [
-     0.347,
-     0.322,
-     0.212
-    ],
-    "Legs|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|White": [
-     0.707,
-     0.707,
-     0.707
-    ]
-   },
-   "verts": 3868
+  "cop_m": {
+   "height": 1.802,
+   "model": "cop_m",
+   "source": "psx-18-police",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 739
   },
-  "f_punk": {
-   "parts": {
-    "Body|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Body|Pink": [
-     0.407,
-     0.112,
-     0.396
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Feet|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ],
-    "Head|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Hair_Brown": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Pink": [
-     0.407,
-     0.112,
-     0.396
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Legs|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ]
-   },
-   "verts": 3348
+  "f_black": {
+   "height": 1.775,
+   "model": "f_black",
+   "source": "psx-female-09",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 1155
   },
-  "f_soldier": {
-   "parts": {
-    "Body|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|Swat": [
-     0.31,
-     0.325,
-     0.353
-    ],
-    "Feet|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Feet|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Hair_Brown": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Legs|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ],
-    "Legs|Swat": [
-     0.31,
-     0.325,
-     0.353
-    ]
-   },
-   "verts": 4392
+  "f_goth": {
+   "height": 1.759,
+   "model": "f_goth",
+   "source": "psx-female-08",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 1044
   },
-  "f_suit": {
-   "parts": {
-    "Body|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Feet|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Feet|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Hair_Blond": [
-     0.547,
-     0.46,
-     0.278
-    ],
-    "Head|Hair_Brown": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Black": [
-     0.192,
-     0.18,
-     0.169
-    ]
-   },
-   "verts": 3468
+  "f_old": {
+   "height": 1.789,
+   "model": "f_old",
+   "source": "psx-31-female",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 994
   },
-  "f_worker": {
-   "parts": {
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Body|Worker_Vest": [
-     0.725,
-     0.392,
-     0.165
-    ],
-    "Body|Worker_Yellow": [
-     0.706,
-     0.58,
-     0.075
-    ],
-    "Feet|Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Feet|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Brown": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|DarkBrown": [
-     0.287,
-     0.181,
-     0.093
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Worker_Yellow": [
-     0.706,
-     0.58,
-     0.075
-    ],
-    "Legs|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ],
-    "Legs|Brown_02": [
-     0.46,
-     0.391,
-     0.251
-    ]
-   },
-   "verts": 3453
+  "f_old_b": {
+   "height": 1.789,
+   "model": "f_old",
+   "source": "psx-31-female",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 994
   },
-  "m_beach": {
-   "parts": {
-    "Body|LightBrown": [
-     0.588,
-     0.565,
-     0.514
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Red_Dark": [
-     0.49,
-     0.153,
-     0.204
-    ],
-    "Feet|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Earrings": [
-     0.686,
-     0.529,
-     0.286
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Hair": [
-     0.287,
-     0.181,
-     0.093
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Red_Dark": [
-     0.49,
-     0.153,
-     0.204
-    ],
-    "Legs|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|White": [
-     0.707,
-     0.707,
-     0.707
-    ]
-   },
-   "verts": 3635
+  "f_old_c": {
+   "height": 1.789,
+   "model": "f_old",
+   "source": "psx-31-female",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 994
   },
-  "m_casual": {
-   "parts": {
-    "Body|LightBrown": [
-     0.588,
-     0.565,
-     0.514
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Red_Dark": [
-     0.49,
-     0.153,
-     0.204
-    ],
-    "Feet|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Hair": [
-     0.287,
-     0.181,
-     0.093
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Skin_Darker": [
-     0.727,
-     0.61,
-     0.473
-    ],
-    "Legs|LightBlue": [
-     0.2,
-     0.247,
-     0.278
-    ]
-   },
-   "verts": 3082
+  "m_grey": {
+   "height": 1.821,
+   "model": "m_grey",
+   "source": "psx-10",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 823
   },
-  "m_farmer": {
-   "parts": {
-    "Body|Beige": [
-     0.612,
-     0.592,
-     0.486
-    ],
-    "Body|Brown": [
-     0.46,
-     0.391,
-     0.251
-    ],
-    "Body|LightBlue": [
-     0.2,
-     0.247,
-     0.278
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Brown": [
-     0.46,
-     0.391,
-     0.251
-    ],
-    "Feet|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ],
-    "Head|Beige": [
-     0.612,
-     0.592,
-     0.486
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Red": [
-     0.487,
-     0.06,
-     0.122
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|LightBlue": [
-     0.2,
-     0.247,
-     0.278
-    ]
-   },
-   "verts": 3052
+  "m_grey_b": {
+   "height": 1.821,
+   "model": "m_grey",
+   "source": "psx-10",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 823
   },
-  "m_hoodie": {
-   "parts": {
-    "Body|Purple": [
-     0.278,
-     0.216,
-     0.357
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Purple": [
-     0.278,
-     0.216,
-     0.357
-    ],
-    "Feet|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Hair": [
-     0.287,
-     0.181,
-     0.093
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|LightBlue": [
-     0.2,
-     0.247,
-     0.278
-    ],
-    "Legs|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ]
-   },
-   "verts": 3273
+  "m_leather": {
+   "height": 1.79,
+   "model": "m_leather",
+   "source": "psx-15",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 751
   },
-  "m_jacket": {
-   "parts": {
-    "Body|Green": [
-     0.273,
-     0.249,
-     0.147
-    ],
-    "Body|LightGreen": [
-     0.347,
-     0.322,
-     0.212
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Feet|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Feet|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Hair": [
-     0.287,
-     0.181,
-     0.093
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Brown": [
-     0.46,
-     0.391,
-     0.251
-    ],
-    "Legs|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ]
-   },
-   "verts": 4624
+  "m_old": {
+   "height": 1.774,
+   "model": "m_old",
+   "source": "psx-32",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 755
   },
-  "m_punk": {
-   "parts": {
-    "Body|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Feet|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Feet|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Earrings": [
-     0.686,
-     0.529,
-     0.286
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Red": [
-     0.487,
-     0.06,
-     0.122
-    ],
-    "Head|Red_Dark": [
-     0.49,
-     0.153,
-     0.204
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|LightBlue": [
-     0.2,
-     0.247,
-     0.278
-    ],
-    "Legs|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ]
-   },
-   "verts": 2928
+  "m_red": {
+   "height": 1.813,
+   "model": "m_red",
+   "source": "psx-06",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 754
   },
-  "m_suit": {
-   "parts": {
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|Suit": [
-     0.129,
-     0.157,
-     0.18
-    ],
-    "Body|Tie": [
-     0.286,
-     0.31,
-     0.353
-    ],
-    "Body|White": [
-     0.707,
-     0.707,
-     0.707
-    ],
-    "Feet|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Hair": [
-     0.287,
-     0.181,
-     0.093
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Legs|Suit": [
-     0.129,
-     0.157,
-     0.18
-    ],
-    "Pistol|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Pistol|DarkBrown": [
-     0.294,
-     0.243,
-     0.212
-    ],
-    "Pistol|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ]
-   },
-   "verts": 4060
+  "m_red_b": {
+   "height": 1.813,
+   "model": "m_red",
+   "source": "psx-06",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 754
   },
-  "m_swat": {
-   "parts": {
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|Swat": [
-     0.31,
-     0.325,
-     0.353
-    ],
-    "Body|Swat_Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Feet|Swat_Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Head|Swat": [
-     0.31,
-     0.325,
-     0.353
-    ],
-    "Head|Swat_Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Head|Visor": [
-     0.086,
-     0.086,
-     0.086
-    ],
-    "Legs|Swat": [
-     0.31,
-     0.325,
-     0.353
-    ],
-    "Legs|Swat_Black": [
-     0.192,
-     0.18,
-     0.169
-    ],
-    "Pistol|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Pistol|DarkBrown": [
-     0.294,
-     0.243,
-     0.212
-    ],
-    "Pistol|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ]
-   },
-   "verts": 4879
+  "m_red_c": {
+   "height": 1.813,
+   "model": "m_red",
+   "source": "psx-06",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 754
   },
-  "m_worker": {
-   "parts": {
-    "Body|LightBrown": [
-     0.588,
-     0.565,
-     0.514
-    ],
-    "Body|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Body|Worker_Vest": [
-     0.725,
-     0.392,
-     0.165
-    ],
-    "Body|Worker_Yellow": [
-     0.706,
-     0.58,
-     0.075
-    ],
-    "Feet|Black": [
-     0.141,
-     0.141,
-     0.141
-    ],
-    "Feet|Grey": [
-     0.247,
-     0.247,
-     0.247
-    ],
-    "Head|Eye": [
-     0.193,
-     0.144,
-     0.108
-    ],
-    "Head|Eyebrows": [
-     0.243,
-     0.204,
-     0.161
-    ],
-    "Head|Moustache": [
-     0.44,
-     0.254,
-     0.017
-    ],
-    "Head|Skin": [
-     0.808,
-     0.678,
-     0.525
-    ],
-    "Head|Worker_Yellow": [
-     0.706,
-     0.58,
-     0.075
-    ],
-    "Legs|Brown": [
-     0.46,
-     0.391,
-     0.251
-    ],
-    "Legs|Brown2": [
-     0.36,
-     0.306,
-     0.197
-    ]
-   },
-   "verts": 3028
+  "m_red_d": {
+   "height": 1.813,
+   "model": "m_red",
+   "source": "psx-06",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 754
+  },
+  "m_shirt": {
+   "height": 1.798,
+   "model": "m_shirt",
+   "source": "psx-05",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 744
+  },
+  "m_shirt_b": {
+   "height": 1.798,
+   "model": "m_shirt",
+   "source": "psx-05",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 744
+  },
+  "m_shirt_c": {
+   "height": 1.798,
+   "model": "m_shirt",
+   "source": "psx-05",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 744
+  },
+  "medic": {
+   "height": 1.796,
+   "model": "medic",
+   "source": "psx-26-doctor",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 779
+  },
+  "swat": {
+   "height": 1.777,
+   "model": "swat",
+   "source": "psx-21-police",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 737
+  },
+  "thug_a": {
+   "height": 1.81,
+   "model": "thug_a",
+   "source": "psx-killer-04",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 722
+  },
+  "thug_clown": {
+   "height": 1.795,
+   "model": "thug_clown",
+   "source": "psx-killer-07",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 746
+  },
+  "thug_pig": {
+   "height": 1.871,
+   "model": "thug_pig",
+   "source": "psx-killer-05",
+   "tex": [
+    512,
+    512
+   ],
+   "verts": 773
   }
  },
  "hand": {
-  "f": {
+  "joint": "hand_r",
+  "pistol": {
    "barrel": [
-    -0.042,
-    0.014,
-    0.999
+    0.0,
+    -0.1435,
+    0.9897
    ],
-   "joint": "Wrist.R",
    "origin": [
-    0.0269,
-    0.0237,
-    0.1587
+    -0.0009,
+    -0.0078,
+    0.0538
    ],
    "right": [
-    0.1762,
-    -0.9841,
-    0.0212
+    1.0,
+    0.0013,
+    0.0002
    ],
    "up": [
-    -0.9835,
-    -0.1769,
-    -0.0389
+    0.0013,
+    -0.9897,
+    -0.1435
    ]
   },
-  "m": {
+  "rifle": {
    "barrel": [
-    -0.042,
-    0.014,
-    0.999
+    0.0131,
+    -0.0486,
+    0.9987
    ],
-   "joint": "Wrist.R",
    "origin": [
-    0.0269,
-    0.0237,
-    0.1587
+    -0.0009,
+    -0.0078,
+    0.0538
    ],
    "right": [
-    0.1762,
-    -0.9841,
-    0.0212
+    0.996,
+    -0.0878,
+    -0.0174
    ],
    "up": [
-    -0.9835,
-    -0.1769,
-    -0.0389
+    -0.0885,
+    -0.9949,
+    -0.0473
    ]
   }
  },

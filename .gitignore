@@ -12,3 +12,4 @@ crash.log
 *.log
 .DS_Store
 Thumbs.db
+.cache/

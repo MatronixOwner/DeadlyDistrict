@@ -5,7 +5,7 @@
 читает уже готовые .bam и ни от чего из перечисленного ниже не зависит.
 
     pip install panda3d-gltf usd-core numpy pillow
-    python tools/import_models.py fetch            # скачать исходники в build/model_src (git)
+    python tools/import_models.py fetch            # скачать исходники в .cache/model_src (git)
     python tools/import_models.py all              # персонажи, анимации, машины, оружие
 
 Исходники (оба набора — работы Quaternius, лицензия CC0 1.0):
@@ -29,7 +29,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, 'build', 'model_src')
+SRC = os.path.join(ROOT, '.cache', 'model_src')
 OUT = os.path.join(ROOT, 'assets', 'models')
 
 CHAR_REPO = ('https://github.com/HamaDler/sami-park-mayhem', 'assets/characters/crowd')

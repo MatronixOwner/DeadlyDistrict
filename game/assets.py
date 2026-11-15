@@ -21,6 +21,7 @@ class Assets(object):
         self._tex = {}
         self._fonts = {}
         self.missing = []
+        self.smooth_textures = False        # настройка «Текстуры: чёткие / сглаженные»
 
     # ------------------------------------------------------------------
     def path(self, *parts):
@@ -42,9 +43,7 @@ class Assets(object):
             t.setup2dTexture(2, 2, Texture.TUnsignedByte, Texture.FRgba)
             t.setRamImage(bytes([255, 0, 255, 255] * 4))
         t = t.makeCopy() if any(k[0] == name for k in self._tex) else t
-        t.setMagfilter(SamplerState.FTLinear if smooth else SamplerState.FTNearest)
-        t.setMinfilter(SamplerState.FTLinearMipmapLinear)
-        t.setAnisotropicDegree(4)
+        self.setup_filter(t, smooth)
         if clamp:
             t.setWrapU(SamplerState.WMClamp)
             t.setWrapV(SamplerState.WMClamp)
@@ -53,6 +52,14 @@ class Assets(object):
             t.setWrapV(SamplerState.WMRepeat)
         self._tex[key] = t
         return t
+
+    def setup_filter(self, t, smooth=False):
+        """Фильтрация текстуры.  Вблизи — чёткие пиксели («ретро») либо сглаживание, вдали — мип-уровни
+        с анизотропной фильтрацией, чтобы картинка не рябила и не превращалась в «мыло»."""
+        soft = smooth or self.smooth_textures
+        t.setMagfilter(SamplerState.FTLinear if soft else SamplerState.FTNearest)
+        t.setMinfilter(SamplerState.FTLinearMipmapLinear)
+        t.setAnisotropicDegree(16)
 
     def font(self, name, pixels=48, outline=0.0):
         key = (name, pixels, outline)

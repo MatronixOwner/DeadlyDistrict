@@ -62,7 +62,7 @@ SHOES = [(0.08, 0.08, 0.08), (0.90, 0.90, 0.90), (0.34, 0.22, 0.12)]
 
 class Look(object):
     __slots__ = ('skin', 'hair', 'shirt', 'pants', 'shoes', 'torso', 'hat', 'hat_color', 'female', 'glasses',
-                 'beard', 'bald', 'scale', 'fat', 'model')
+                 'beard', 'bald', 'scale', 'fat', 'model', 'tint')
 
     def __init__(self):
         self.skin = SKINS[0]
@@ -80,6 +80,7 @@ class Look(object):
         self.scale = 1.0
         self.fat = 1.0
         self.model = None           # конкретная модель из assets/models/chars (иначе подбирается по одежде)
+        self.tint = None            # оттенок всей модели (например, тёмный — для агентов)
 
 
 def random_look(rnd=None, zone='D'):
@@ -146,7 +147,7 @@ def swat_look(r=None):
 def fbi_look(r=None):
     r = r or random
     return make_look(skin=r.choice(SKINS), hair=r.choice(HAIRS), shirt=(0.06, 0.06, 0.08), pants=(0.06, 0.06, 0.08),
-                     torso='jacket', glasses=True)
+                     torso='jacket', glasses=True, model='m_shirt_c', tint=(0.42, 0.42, 0.48))
 
 
 def army_look(r=None):
@@ -158,24 +159,35 @@ def army_look(r=None):
 def medic_look(r=None):
     r = r or random
     return make_look(skin=r.choice(SKINS), hair=r.choice(HAIRS), shirt=(0.94, 0.94, 0.94), pants=(0.85, 0.2, 0.2),
-                     torso='vest', female=r.random() < 0.5)
+                     torso='vest', model='medic')
 
 
 GANG_COLORS = {'reds': (0.75, 0.10, 0.10), 'greens': (0.10, 0.50, 0.18), 'purple': (0.42, 0.10, 0.48),
                'mafia': (0.10, 0.10, 0.12)}
 
 
+# кто состоит в какой банде (модели из assets/models/chars)
+GANG_MODELS = {
+    'reds': ('m_red', 'm_red', 'thug_a'),
+    'greens': ('m_red_c', 'm_red_c', 'thug_pig'),
+    'purple': ('thug_clown', 'thug_a', 'm_grey_b'),
+    'mafia': ('thug_a', 'm_old', 'thug_a'),
+    None: ('thug_a', 'thug_pig', 'thug_clown'),
+}
+
+
 def gang_look(gang='reds', r=None):
     r = r or random
     c = GANG_COLORS.get(gang, (0.5, 0.1, 0.1))
+    model = r.choice(GANG_MODELS.get(gang, GANG_MODELS[None]))
     if gang == 'mafia':
         return make_look(skin=r.choice(SKINS[:3]), hair=r.choice(HAIRS[:2] + HAIRS[6:]), shirt=c, pants=c,
-                         torso='jacket', glasses=r.random() < 0.5, fat=1.0 + r.random() * 0.25)
+                         torso='jacket', glasses=r.random() < 0.5, fat=1.0 + r.random() * 0.25, model=model)
     return make_look(skin=r.choice(SKINS), hair=r.choice(HAIRS), shirt=c, pants=r.choice(PANTS[:3]),
                      torso=r.choice(['hoodie', 'tank', 'tee']), hat=('cap' if r.random() < 0.6 else None),
-                     hat_color=c, beard=r.random() < 0.3)
+                     hat_color=c, beard=r.random() < 0.3, model=model)
 
 
 def player_look():
     return make_look(skin=SKINS[1], hair=(0.20, 0.13, 0.08), shirt=(0.62, 0.33, 0.16), pants=(0.26, 0.37, 0.62),
-                     shoes=SHOES[1], torso='leather')
+                     shoes=SHOES[1], torso='leather', model='m_leather')

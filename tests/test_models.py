@@ -12,8 +12,8 @@ import pytest
 import harness
 from game import missions as M
 from game.defs import (W_PISTOL, W_BAT, W_AK, W_FIST, WEAPONS, random_look, cop_look, swat_look, army_look,
-                       fbi_look, gang_look, medic_look, player_look)
-from game.models import VEHICLE_MODELS, WEAPON_MODELS, CHAR_ROLES
+                       fbi_look, gang_look, medic_look, player_look, make_look)
+from game.models import VEHICLE_MODELS, WEAPON_MODELS
 from game.vehicle import SPECS
 
 DT = 1.0 / 30.0
@@ -35,12 +35,14 @@ def world(game):
 def test_models_are_available(world):
     m = world.models
     assert m.ok and m.chars_ok
-    assert set(CHAR_ROLES) == set(m.meta['chars'])              # для каждой модели описано, что перекрашивать
-    for sex in 'mf':
-        for clip in ('Idle', 'Walk', 'Run', 'Punch_Right', 'Sword_Slash', 'Idle_Gun', 'Idle_Gun_Pointing',
-                     'Idle_Gun_Shoot', 'Run_Shoot', 'HitRecieve', 'Death'):
-            assert clip in m.meta['anims'][sex], (sex, clip)
-            assert os.path.isfile(os.path.join(m.dir, 'anims', '%s_%s.bam' % (sex, clip)))
+    for key, info in m.meta['chars'].items():
+        assert os.path.isfile(os.path.join(m.dir, 'chars', key + '.png')), key
+        assert os.path.isfile(os.path.join(m.dir, 'chars', info['model'] + '.bam')), key
+    for clip in ('idle', 'walk', 'walk_f', 'jog', 'sprint', 'run_f', 'punch_a', 'punch_b', 'swing', 'pistol_idle',
+                 'pistol_aim', 'pistol_shoot', 'rifle_idle', 'rifle_fire', 'rifle_walk', 'rifle_run', 'throw',
+                 'hit_a', 'death_a', 'death_b', 'death_c', 'getup', 'talk', 'listen', 'cower', 'air'):
+        assert clip in m.meta['anims'], clip
+        assert os.path.isfile(os.path.join(m.dir, 'anims', clip + '.bam'))
 
 
 @pytest.mark.parametrize('kind', sorted(SPECS))
@@ -70,21 +72,22 @@ def test_vehicle_model_fits_its_spec(world, kind):
 
 
 @pytest.mark.parametrize('name,look,kind,expect', [
-    ('player', player_look(), 'civ', 'm_jacket'),
-    ('cop', cop_look(), 'cop', 'm_suit'),
-    ('swat', swat_look(), 'swat', 'm_swat'),
-    ('army', army_look(), 'army', 'm_swat'),
-    ('fbi', fbi_look(), 'fbi', 'm_suit'),
-    ('mafia', gang_look('mafia'), 'gang', 'm_suit'),
-    ('vano', M.contact_look('vano'), 'mission', 'm_beach'),
-    ('rosa', M.contact_look('rosa'), 'mission', 'f_formal'),
-    ('prof', M.contact_look('prof'), 'mission', 'm_suit'),
+    ('player', player_look(), 'civ', ('m_leather',)),
+    ('cop', cop_look(), 'cop', ('cop_m', 'cop_f')),
+    ('swat', swat_look(), 'swat', ('swat',)),
+    ('army', army_look(), 'army', ('army',)),
+    ('fbi', fbi_look(), 'fbi', ('m_shirt_c',)),
+    ('medic', medic_look(), 'civ', ('medic',)),
+    ('mafia', gang_look('mafia'), 'gang', ('thug_a', 'm_old')),
+    ('vano', M.contact_look('vano'), 'mission', ('m_red',)),
+    ('rosa', M.contact_look('rosa'), 'mission', ('f_goth',)),
+    ('prof', M.contact_look('prof'), 'mission', ('m_old',)),
 ])
 def test_character_model_choice(world, name, look, kind, expect):
     w = world
     x, y = w.city.landmarks['safehouse']['door']
     p = w.spawn_ped(x + 3.0, y, 0.0, look, kind)
-    assert p.vis is not None and p.vis.key == expect
+    assert p.vis is not None and p.vis.key in expect
     w.remove_ped(p)
     assert p.vis is None
 
@@ -102,57 +105,95 @@ def test_every_zone_look_gets_a_model(world):
             w.remove_ped(p)
     assert len(keys) >= 10                                        # на улицах — разные люди
     assert {k[0] for k in keys} == {'m', 'f'}
+    assert 'm_leather' not in keys                                # куртка героя — только у героя
 
 
 def test_animation_follows_state(game, world):
     w = world
     x, y = w.city.landmarks['safehouse']['road']
-    p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, random_look(random.Random(3), 'D'), 'civ')
+    p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, make_look(model='m_grey'), 'mission')
     p.keep = True
     p.set_state('stand')
     harness.run(game, 0.3)
-    assert p.vis.cur == 'Idle'
+    assert p.vis.cur == 'idle'
     # идёт
     p.set_state('goto')
     p.tx, p.ty, p.timer = p.x + 60.0, p.y, 0.0
     harness.run(game, 0.5)
-    assert p.vis.cur == 'Walk'
+    assert p.vis.cur == 'walk'
     # бежит
     p.timer = 5.0
     harness.run(game, 0.6)
-    assert p.vis.cur == 'Run'
+    assert p.vis.cur in ('jog', 'sprint')
     # сбит с ног, потом встаёт
     p.knock_down(1.0)
     harness.run(game, 0.3)
-    assert p.vis.cur == 'Death'
+    assert p.vis.cur in ('death_a', 'death_b', 'death_c')
     p.target = None
-    harness.run(game, 1.5)
-    assert p.state != 'down' and p.vis.cur != 'Death'
-    # вооружён и целится
+    harness.run(game, 1.2)
+    assert p.state != 'down' and not p.vis.cur.startswith('death')
+    # пистолет: в руке, прицеливание, выстрел
     p.set_state('stand')
+    harness.run(game, 1.0)
     p.set_weapon(W_PISTOL)
-    assert p.vis.gun is not None
+    assert p.vis.gun is not None and p.vis.gun_kind == 'pistol'
+    harness.run(game, 0.3)
+    assert p.vis.cur == 'pistol_idle'
     p.aiming = True
-    harness.run(game, 0.4)
-    assert p.vis.cur == 'Idle_Gun_Pointing'
+    harness.run(game, 0.3)
+    assert p.vis.cur == 'pistol_aim'
+    p.shot_t = 0.3
+    harness.run(game, 0.1)
+    assert p.vis.cur == 'pistol_shoot'
+    # автомат держат двумя руками
     p.aiming = False
+    p.set_weapon(W_AK)
+    assert p.vis.gun_kind == 'rifle'
+    harness.run(game, 0.5)
+    assert p.vis.cur == 'rifle_idle'
+    p.aiming = True
+    harness.run(game, 0.3)
+    assert p.vis.cur == 'rifle_fire' and p.vis.hold is not None      # замер в позе прицеливания
+    p.set_state('goto')
+    p.tx, p.ty, p.timer = p.x + 60.0, p.y, 0.0
     harness.run(game, 0.4)
-    assert p.vis.cur == 'Idle_Gun'
-    # удар
+    assert p.vis.cur == 'rifle_walk'
+    p.set_state('stand')
+    p.aiming = False
+    # удары
     p.set_weapon(W_FIST)
     assert p.vis.gun is None
+    harness.run(game, 0.4)
     p.punch_t = 0.3
     harness.run(game, 0.1)
-    assert p.vis.cur == 'Punch_Right'
+    assert p.vis.cur in ('punch_a', 'punch_b')
     p.set_weapon(W_BAT)
     harness.run(game, 0.5)
     p.punch_t = 0.3
     harness.run(game, 0.1)
-    assert p.vis.cur == 'Sword_Slash'
+    assert p.vis.cur == 'swing'
     # убит
     p.hurt(500.0, None, 'bullet')
     harness.run(game, 0.3)
-    assert p.dead and p.vis.cur == 'Death'
+    assert p.dead and p.vis.cur.startswith('death')
+
+
+def test_women_and_special_poses(game, world):
+    w = world
+    x, y = w.city.landmarks['safehouse']['road']
+    p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, make_look(model='f_old', female=True), 'mission')
+    p.keep = True
+    p.set_state('goto')
+    p.tx, p.ty, p.timer = p.x + 60.0, p.y, 0.0
+    harness.run(game, 0.5)
+    assert p.vis.female and p.vis.cur == 'walk_f'
+    p.timer = 5.0
+    harness.run(game, 0.6)
+    assert p.vis.cur == 'run_f'
+    p.set_state('stand')
+    p.idle_clip = 'talk'
+    harness.run(game, 0.5)
+    assert p.vis.cur == 'talk'
 
 
 def test_weapons_have_models(world):
@@ -167,12 +208,12 @@ def test_weapons_have_models(world):
 def test_player_keeps_model_through_respawn(game, world):
     w = world
     pl = w.player
-    assert pl.ped.vis is not None and pl.ped.vis.key == 'm_jacket'
+    assert pl.ped.vis is not None and pl.ped.vis.key == 'm_leather'
     pl.give_weapon(W_AK, 30)
     assert pl.ped.vis.gun is not None
     pl.ped.hurt(500.0, None, 'bullet')
     harness.run(game, 7.0)
-    assert pl.state == 'foot' and pl.ped.vis.cur != 'Death'
+    assert pl.state == 'foot' and not pl.ped.vis.cur.startswith('death')
 
 
 def test_animation_runs_on_game_time(game, world):

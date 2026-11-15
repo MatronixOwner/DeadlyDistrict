@@ -41,50 +41,19 @@ VEHICLE_MODELS = {
 WRECK = (0.13, 0.12, 0.11)
 
 # ---------------------------------------------------------------------------
-# персонажи.  Узлы модели называются «Часть|Материал»; здесь сказано, какой материал
-# чем считать: кожей, волосами, верхом, низом, обувью, головным убором.  Остальное
-# остаётся того цвета, каким его сделал автор модели.
+# персонажи.  Все модели — на одном скелете, клипы анимации общие; внешность задаёт текстура.
+# Ключ — имя текстуры в assets/models/chars; какая к ней модель, записано в models.json.
 # ---------------------------------------------------------------------------
-COMMON_ROLES = {
-    'Skin': 'skin', 'Skin_Darker': 'skin2', 'Hair': 'hair', 'Hair_Brown': 'hair', 'Hair_Blond': 'hair',
-    'Hair_Black': 'hair', 'Eyebrows': 'hair2', 'Moustache': 'hair2',
+CIV_M = {
+    # одежда из внешности (defs.Look.torso) -> кто подходит
+    'jacket': ('m_shirt', 'm_shirt_b', 'm_shirt_c', 'm_old'),
+    'leather': ('m_grey_b', 'm_old'),
+    'police': ('m_shirt_c',),
+    None: ('m_red', 'm_red_b', 'm_red_c', 'm_red_d', 'm_grey', 'm_grey_b', 'm_shirt', 'm_shirt_b', 'm_old'),
 }
-CHAR_ROLES = {
-    'm_casual': {'LightBrown': 'shirt', 'LightBlue': 'pants', 'Red_Dark': 'shoes'},
-    'm_hoodie': {'Purple': 'shirt', 'LightBlue': 'pants', 'Feet|Purple': 'shoes'},
-    'm_beach': {'LightBrown': 'shirt', 'Red_Dark': 'pants', 'Feet|Red_Dark': 'shoes'},
-    'm_punk': {'Body|Black': 'shirt', 'LightBlue': 'pants', 'Feet|Black': 'shoes', 'Red': 'hair',
-               'Red_Dark': 'hair2'},
-    'm_suit': {'Suit': 'shirt', 'Legs|Suit': 'pants', 'Tie': 'shirt2', 'Feet|Black': 'shoes', 'White': 'collar'},
-    'm_worker': {'Worker_Vest': 'shirt', 'Brown': 'pants', 'Brown2': 'pants2', 'Feet|Black': 'shoes',
-                 'Head|Worker_Yellow': 'hat'},
-    'm_farmer': {'Body|LightBlue': 'pants', 'Legs|LightBlue': 'pants', 'Body|Beige': 'shirt',
-                 'Feet|Brown': 'shoes', 'Head|Beige': 'hat'},
-    'm_jacket': {'Green': 'shirt', 'LightGreen': 'shirt3', 'Brown': 'pants', 'Brown2': 'pants2',
-                 'Feet|Black': 'shoes'},
-    'm_swat': {'Swat': 'shirt', 'Legs|Swat': 'pants', 'Head|Swat': 'hat'},
-    'f_casual': {'White': 'shirt', 'Orange': 'pants', 'Grey': 'shoes', 'Head|Brown': 'hair2'},
-    'f_formal': {'LimeGreen': 'shirt', 'Feet|Red': 'shoes', 'Head|Red': 'hair', 'Head|Brown': 'hair2'},
-    'f_punk': {'Body|Black': 'shirt', 'Legs|Black': 'pants', 'Feet|Black': 'shoes', 'Head|Pink': 'hair',
-               'Head|Brown': 'hair2', 'Head|Black': 'hair2'},
-    'f_suit': {'Body|Black': 'shirt', 'Legs|Black': 'pants', 'Feet|Black': 'shoes', 'Head|Brown': 'hair2',
-               'White': 'collar'},
-    'f_worker': {'Worker_Vest': 'shirt', 'Brown2': 'pants', 'Brown_02': 'pants2', 'Feet|Black': 'shoes',
-                 'Head|Worker_Yellow': 'hat', 'Head|Brown': 'hair2', 'Head|DarkBrown': 'hair'},
-    'f_soldier': {'Swat': 'shirt', 'Legs|Swat': 'pants', 'Feet|Black': 'shoes', 'Head|Brown': 'hair2'},
-    'f_jacket': {'Green': 'shirt', 'LightGreen': 'shirt3', 'Legs|Brown2': 'pants', 'Legs|Brown_02': 'pants2',
-                 'Feet|Brown2': 'shoes', 'Head|Brown': 'hair2'},
-}
-
-# какие модели подходят под «тип одежды» из внешности (defs.Look.torso)
-CHAR_BY_TORSO = {
-    False: {'tee': ('m_casual', 'm_casual', 'm_punk'), 'stripes': ('m_casual', 'm_beach'),
-            'tank': ('m_beach', 'm_punk'), 'jacket': ('m_suit',), 'leather': ('m_jacket',),
-            'hoodie': ('m_hoodie',), 'vest': ('m_worker',), 'police': ('m_suit',), 'armor': ('m_swat',)},
-    True: {'tee': ('f_casual', 'f_formal'), 'stripes': ('f_casual', 'f_punk'), 'tank': ('f_formal', 'f_punk'),
-           'jacket': ('f_suit',), 'leather': ('f_jacket',), 'hoodie': ('f_casual', 'f_jacket'),
-           'vest': ('f_worker',), 'police': ('f_suit',), 'armor': ('f_soldier',)},
-}
+CIV_F = ('f_goth', 'f_black', 'f_old', 'f_old_b', 'f_old_c', 'f_black', 'f_goth')
+GANG = ('thug_a', 'thug_pig', 'thug_clown', 'thug_a')
+FEMALE = ('f_goth', 'f_black', 'f_old', 'f_old_b', 'f_old_c', 'cop_f')
 
 # оружие: идентификатор -> (файл, доворот в руке: курс, тангаж, крен)
 WEAPON_MODELS = {
@@ -98,7 +67,7 @@ WEAPON_MODELS = {
     W_MOLOTOV: ('molotov', (0.0, 0.0, 0.0)),
 }
 
-CHAR_HEIGHT = 1.87          # рост моделей набора, м
+CHAR_HEIGHT = 1.80          # рост моделей набора, м
 PED_HEIGHT = 1.80           # рост персонажа в игре при look.scale == 1
 
 
@@ -117,7 +86,7 @@ class Models(object):
         try:
             with open(os.path.join(self.dir, 'models.json'), encoding='utf-8') as f:
                 self.meta = json.load(f)
-            self.ok = bool(self.meta.get('chars')) and bool(self.meta.get('vehicles'))
+            self.ok = bool(self.meta.get('chars')) and bool(self.meta.get('vehicles')) and 'hand' in self.meta
         except Exception:
             self.ok = False
         self._files = {}
@@ -126,6 +95,7 @@ class Models(object):
         self._actors = {}
         self._weapons = {}
         self._hand = {}
+        self._ctex = {}
         self.failed = set()
         self.chars_ok = self.ok
 
@@ -148,10 +118,13 @@ class Models(object):
             return
         try:
             for key in sorted(self.meta['chars']):
-                self._load('chars', key + '.bam')
-            for sex in sorted(self.meta['anims']):
-                for name in self.meta['anims'][sex]:
-                    self.loader.loadModel(self.path('anims', '%s_%s.bam' % (sex, name)))
+                self.char_texture(key)
+                # создаём по экземпляру каждой модели: при этом загружаются и привязываются все клипы
+                a = self.actor(key)
+                for name in self.meta['anims']:
+                    a.getAnimControl(name)
+                a.cleanup()
+                a.removeNode()
             for name in sorted(self.meta['vehicles']):
                 self._load('veh', name + '.bam')
             for wid in sorted(WEAPON_MODELS):
@@ -270,68 +243,68 @@ class Models(object):
             self._weapons[wid] = np_
         return np_
 
-    def hand_matrix(self, sex):
-        """(имя кости, матрица «оружие -> кость») — как оружие лежит в правой руке."""
-        res = self._hand.get(sex)
+    def hand_matrix(self, kind):
+        """(имя кости, матрица «оружие -> кость»): kind — 'pistol' (в одной руке) или 'rifle' (в двух)."""
+        res = self._hand.get(kind)
         if res is None:
-            h = self.meta['hand'][sex]
+            h = self.meta['hand'][kind]
             r, b, u, o = h['right'], h['barrel'], h['up'], h['origin']
-            res = (h['joint'], LMatrix4(r[0], r[1], r[2], 0, b[0], b[1], b[2], 0, u[0], u[1], u[2], 0,
-                                        o[0], o[1], o[2], 1))
-            self._hand[sex] = res
+            res = (self.meta['hand']['joint'],
+                   LMatrix4(r[0], r[1], r[2], 0, b[0], b[1], b[2], 0, u[0], u[1], u[2], 0, o[0], o[1], o[2], 1))
+            self._hand[kind] = res
         return res
 
     # ------------------------------------------------------------------
     # персонажи
     # ------------------------------------------------------------------
     def pick_char(self, look, kind):
-        if kind in ('swat', 'army'):
-            key = 'f_soldier' if look.female else 'm_swat'
+        """Какой персонаж (текстура и модель) соответствует внешности look и роли kind."""
+        chars = self.meta['chars']
+        n = int(look.fat * 977.0 + look.scale * 1313.0 + look.skin[0] * 71.0 + look.shirt[0] * 37.0 +
+                look.pants[2] * 53.0)
+        if kind == 'swat':
+            key = 'swat'
+        elif kind == 'army':
+            key = 'army'
+        elif kind == 'cop':
+            key = 'cop_f' if (look.female or n % 4 == 0) else 'cop_m'
+        elif kind == 'fbi':
+            key = 'm_shirt_c'
+        elif kind in ('gang', 'enemy') and not look.female:
+            key = GANG[n % len(GANG)]
+        elif look.female:
+            key = CIV_F[n % len(CIV_F)]
         else:
-            table = CHAR_BY_TORSO[bool(look.female)]
-            opts = table.get(look.torso) or table['tee']
-            key = opts[int(look.fat * 977.0 + look.scale * 131.0) % len(opts)]
-        if key not in self.meta['chars']:
-            key = 'f_casual' if look.female else 'm_casual'
+            opts = CIV_M.get(look.torso) or CIV_M[None]
+            key = opts[n % len(opts)]
+        if key not in chars:
+            key = 'f_black' if look.female else 'm_grey'
         return key
 
+    def is_female(self, key):
+        return key in FEMALE
+
     def actor(self, key):
-        """Новый экземпляр персонажа (Actor) с подключёнными клипами анимации."""
+        """Новый экземпляр персонажа (Actor) с текстурой и подключёнными клипами анимации."""
         from direct.actor.Actor import Actor
-        t = self._actors.get(key)
+        model = self.meta['chars'][key]['model']
+        t = self._actors.get(model)
         if t is None:
-            sex = key[0]
-            anims = dict((name, self.path('anims', '%s_%s.bam' % (sex, name))) for name in self.meta['anims'][sex])
-            t = Actor(self._load('chars', key + '.bam'), anims)
-            for np_ in t.findAllMatches('**/Pistol|*'):
-                np_.removeNode()                # пистолет, «приросший» к руке модели: оружие выдаём своё
-            self._actors[key] = t
+            anims = dict((name, self.path('anims', name + '.bam')) for name in self.meta['anims'])
+            t = Actor(self._load('chars', model + '.bam'), anims)
+            self._actors[model] = t
         a = Actor(other=t)
+        a.setTexture(self.char_texture(key), 1)
         # рамки для отсечения считаем один раз: поза меняется, а рост — нет
         node = a.node()
         node.setBounds(BoundingSphere(LPoint3(0.0, 0.0, 0.95), 1.7))
         node.setFinal(True)
         return a
 
-    def colors(self, key, look):
-        """Цвета ролей для данного персонажа и внешности (None — оставить цвет модели)."""
-        return {
-            'skin': look.skin, 'skin2': _mul(look.skin, 0.86), 'hair': look.hair, 'hair2': _mul(look.hair, 0.72),
-            'shirt': look.shirt, 'shirt2': _mul(look.shirt, 0.55), 'shirt3': _mul(look.shirt, 1.25),
-            'pants': look.pants, 'pants2': _mul(look.pants, 0.78), 'shoes': look.shoes,
-            'hat': look.hat_color if look.hat else None,
-            'collar': (0.60, 0.72, 0.90) if look.torso == 'police' else (0.88, 0.88, 0.90),
-        }
-
-    def paint_char(self, actor, key, look):
-        roles = CHAR_ROLES.get(key, {})
-        cols = self.colors(key, look)
-        for np_ in actor.findAllMatches('**/+GeomNode'):
-            name = np_.getName()
-            mat = name.split('|')[-1]
-            role = roles.get(name) or roles.get(mat) or COMMON_ROLES.get(mat)
-            if role is None:
-                continue
-            c = cols[role]
-            if c is not None:
-                np_.setColor(c[0], c[1], c[2], 1.0)
+    def char_texture(self, key):
+        t = self._ctex.get(key)
+        if t is None:
+            t = self.loader.loadTexture(self.path('chars', key + '.png'))
+            self.assets.setup_filter(t, True)
+            self._ctex[key] = t
+        return t
