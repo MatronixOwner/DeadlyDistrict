@@ -147,9 +147,19 @@ class Arrow(object):
 
 
 ICONS = {'health': 'hud_heart', 'armor': 'hud_armor', 'bribe': 'hud_star', 'package': 'package', 'money': 'money',
-         'item': 'package'}
+         'item': 'package', 'crate': 'package'}
 TINT = {'health': (1, 1, 1), 'armor': (1, 1, 1), 'bribe': (0.6, 0.8, 1.0), 'package': (1, 1, 1),
         'money': (1, 1, 1), 'item': (1.0, 0.8, 0.5)}
+_crate_proto = [None]
+
+
+def _crate_model(assets):
+    """Деревянный ящик (груз для заданий): стоит на земле, не вращается."""
+    if _crate_proto[0] is None:
+        mb = MeshBuilder()
+        mb.box('crate', -0.45, -0.34, 0.0, 0.45, 0.34, 0.56, (1, 1, 1, 1))
+        _crate_proto[0] = mb.build('crate', assets.apply_state)
+    return _crate_proto[0]
 
 
 class Pickup(object):
@@ -187,6 +197,14 @@ class Pickup(object):
                 mn, mx = g.getTightBounds(model)
                 g.setPos(-(mn.x + mx.x) * 0.5, -(mn.y + mx.y) * 0.5, -(mn.z + mx.z) * 0.5)
                 model.setP(18.0)
+        self.spin = True
+        if kind == 'crate':
+            model = root.attachNewNode('crate')
+            _crate_model(world.assets).copyTo(model)
+            model.setPos(0, 0, -0.85)
+            model.setH(random.uniform(0.0, 90.0))
+            model.setR(random.uniform(-4.0, 4.0))
+            self.spin = False
         if model is not None:
             self.card = model
         else:
@@ -203,7 +221,7 @@ class Pickup(object):
         self.glow.setBillboardPointEye()
         gc = {'weapon': (0.4, 0.6, 1.0), 'health': (1.0, 0.3, 0.3), 'armor': (0.3, 0.6, 1.0),
               'bribe': (0.5, 0.7, 1.0), 'package': (1.0, 0.8, 0.3), 'money': (0.4, 1.0, 0.4),
-              'item': (1.0, 0.7, 0.3)}[kind]
+              'item': (1.0, 0.7, 0.3), 'crate': (1.0, 0.7, 0.3)}[kind]
         self.glow.setColorScale(gc[0], gc[1], gc[2], 0.55)
         self.glow.setScale(1.7)
         self.far = False
@@ -231,8 +249,11 @@ class Pickup(object):
             self.far = False
             self.np.show()
         self.t += dt
-        self.card.setH(self.t * 110.0)
-        self.np.setZ(self.z + 0.85 + 0.12 * math.sin(self.t * 3.0))
+        if self.spin:
+            self.card.setH(self.t * 110.0)
+            self.np.setZ(self.z + 0.85 + 0.12 * math.sin(self.t * 3.0))
+        else:
+            self.glow.setScale(1.7 + 0.35 * math.sin(self.t * 3.0))
         if on_foot and d2 < 1.25 * 1.25:
             return True
         return False

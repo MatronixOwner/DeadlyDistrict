@@ -329,7 +329,7 @@ class Traffic(object):
                 lim = math.sqrt(vt * vt + 2.0 * 2.6 * max(0.0, remain - 1.0))
                 if lim < des:
                     des = lim
-            if link.signal:
+            if link.signal and not v.rush:
                 st = self.rn.light(link.node, link.axis)
                 stop_d = remain - 3.2 - hl
                 must = False

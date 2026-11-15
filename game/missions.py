@@ -216,6 +216,37 @@ class Run(object):
         self.unblip(b)
         self.unarrow(a)
 
+    def drive(self, v, x, y, r=5.0, text=None, back='Вернись в машину.', extra=None, tex='blip_dest',
+              stopped=True):
+        """Довести машину v до точки.  Пока игрок не за рулём, метка показывает на саму машину."""
+        pl = self.w.player
+        while True:
+            if pl.vehicle is not v:
+                yield from self.enter(v, back)
+            if text:
+                self.obj(text)
+            b = self.blip(x, y, tex=tex)
+            mk = self.marker(x, y, r)
+            res = [None]
+
+            def cond():
+                if pl.vehicle is not v:
+                    res[0] = 'out'
+                    return True
+                if extra is not None and not extra():
+                    return False
+                if not mk.player_inside(None):
+                    return False
+                if stopped and pl.speed() > 2.5:
+                    return False
+                res[0] = 'done'
+                return True
+            yield cond
+            self.unblip(b)
+            self.unmark(mk)
+            if res[0] == 'done':
+                return
+
     def board(self, ped, v, timeout=14.0):
         """Персонаж подбегает к машине игрока и садится."""
         w = self.w
@@ -650,6 +681,325 @@ def m_r4(m):
     yield 2.5
 
 
+def m_z1(m):
+    w = m.w
+    c = w.city
+    pl = w.player
+    pol = w.police
+    yield from m.briefing('zakhar', [
+        'Ты и есть водитель от Розы? Захар. Рыбу не ловлю, а сети ставлю.',
+        'Ночью мой катер уходил от погранцов и сбросил три ящика у берега.',
+        'Макс: Кто первый нашёл — тот и молодец?',
+        'Соображаешь. «Трудяга» у ворот. Привези все три. И без хвоста.'])
+    rx, ry = c.landmarks['zakhar']['road']
+    car = m.car('pickup', rx - 7.0, ry, 0.0, paint=2)
+    m.watch(car, '«Трудяга» Захара уничтожена.')
+    yield from m.enter(car, 'Садись в «Трудягу» Захара.')
+    m.help('Ящики лежат в стороне от дорог. Подъезжай поближе и выходи из машины: грузить придётся руками.', 8.0)
+    places = ((1000.0, -243.0, 'Первый ящик выбросило на пляж за дюной, южнее дач Маячного.'),
+              (1161.0, 258.0, 'Второй ящик — в траве у дороги за аэродромом.'),
+              (686.0, 40.0, 'Третий ящик — на берегу пролива у Нефтегавани.'))
+    for i, (x, y, text) in enumerate(places):
+        x, y = m.ms.free_spot(x, y)
+        pk = m.ms.add_pickup('crate', x, y)
+        m.pickups.append(pk)
+        b = m.blip(x, y, tex='blip_pickup')
+        m.counter('Ящиков: %d из 3' % i)
+        if i == 2:
+            thugs = [m.enemy(x + 2.4 * math.cos(a), y + 2.4 * math.sin(a), a + math.pi, gang_look('greens'),
+                             wpn, 100.0, 0.34, 22.0, gang='greens')
+                     for a, wpn in ((0.2, W_PISTOL), (1.4, W_BAT), (-1.2, W_PISTOL))]
+            yield from m.kill_all(thugs, 'Третий ящик нашли чужие. Разберись с ними.', 'Чужих')
+            m.counter('Ящиков: 2 из 3')
+        m.obj(text)
+        yield lambda: pk.removed
+        m.unblip(b)
+        if i == 1:
+            pol.set_level(max(pol.level, 2))
+            w.audio.play('siren', 0.5)
+            m.help('Тебя заметил пограничный наряд! К Захару с таким хвостом нельзя.', 7.0)
+    m.counter('Ящиков: 3 из 3')
+    yield 0.5
+    yield from m.lose_cops('За тобой хвост. Оторвись, прежде чем ехать к Захару.')
+    m.counter(None)
+    yield from m.drive(car, rx, ry, 5.0, 'Отвези ящики к сараю Захара.', 'Ящики в «Трудяге». Вернись в машину.')
+    pl.leave_vehicle(force=True)
+    car.locked = True
+    car.keep = False
+    m.say('Захар: Все три, и сухие. Роза не соврала — руки у тебя на месте.')
+    yield 2.5
+
+
+def m_z2(m):
+    w = m.w
+    c = w.city
+    pl = w.player
+    yield from m.briefing('zakhar', [
+        'На причале у Портового моста стоит мой фургон. В кузове сорок ящиков «минералки».',
+        'Бутылки бьются, а покупатель нервный. Каждый удар — минус из твоей доли.',
+        'Макс: Куда везти?',
+        'На аэродром, к самолёту. И оглядывайся: на мой товар есть охотники.'])
+    vx, vy = 478.0, 30.0
+    for x, y in ((470.0, 30.0), (471.0, 16.0), (490.0, 40.0)):       # свободное место между контейнерами
+        if not w.static.overlap_circle(x, y, 3.8, F_CAR):
+            vx, vy = x, y
+            break
+    van = m.car('van', vx, vy, math.pi / 2, paint=5)
+    van.health = van.max_health = 1800.0
+    m.watch(van, 'Фургон с грузом уничтожен.')
+    yield from m.enter(van, 'Забери фургон Захара на причале у Портового моста (на острове).', tex='blip_dest')
+    lm = c.landmarks['airfield']
+    ax, ay = lm['apron'][0] - 11.0, lm['apron'][1] + 14.0
+    pilot = m.npc(ax + 8.6, ay - 2.0, math.pi,
+                  make_look(skin=SKINS[1], hair=(0.3, 0.24, 0.16), shirt=(0.42, 0.34, 0.2), pants=(0.2, 0.2, 0.22),
+                            torso='jacket', hat='cap', hat_color=(0.3, 0.26, 0.18), model='m_shirt_h3'))
+    chase = m.ms.start_chasers(m, ['beater', 'pickup', 'muscle'], 'greens', 2, 14.0)
+
+    def tick(dt):
+        m.counter('Груз цел на %d%%' % int(100.0 * clamp(van.health / van.max_health, 0.0, 1.0)))
+    m.ticks.append(tick)
+    m.help('Охотники будут таранить. Не останавливайся — иначе выйдут и откроют огонь.', 8.0)
+    yield from m.drive(van, ax, ay, 6.5, 'Вези груз на аэродром, к самолёту. Береги бутылки!',
+                       'Груз в фургоне. Вернись за руль.')
+    chase['active'] = False
+    m.ticks.remove(tick)
+    m.counter(None)
+    k = clamp(van.health / van.max_health, 0.25, 1.0)
+    m.reward = int(m.spec['reward'] * k / 50.0) * 50
+    pl.leave_vehicle(force=True)
+    van.locked = True
+    van.keep = False
+    m.say('Лётчик: %s' % ('Ни одной битой? Захару передай — летаю только с ним.' if k > 0.8 else
+                          'Звенит, как мешок стекла. Захар за это вычтет.'))
+    yield 2.5
+
+
+def m_z3(m):
+    w = m.w
+    c = w.city
+    pl = w.player
+    rn = w.roadnet
+    yield from m.briefing('zakhar', [
+        'Про рейс на аэродром знали трое: я, ты и Сиплый с Маячного.',
+        'Макс: Я не болтал.',
+        'Знаю. Потому и говорю с тобой, а не о тебе. Он сидит на даче, с дружками.',
+        'Навести его. Только учти: почует — рванёт к трассе. Уйдёт — сдаст нас всех.'])
+    pl.give_weapon(W_UZI, 150)
+    pl.select(W_UZI)
+    road, (hx, hy), yaw = m.ms.roadside(947.0, -8.0, 4.6)
+    car = m.car('muscle', road[0] + math.sin(yaw) * 2.1, road[1] - math.cos(yaw) * 2.1, yaw, paint=0)
+    guards = []
+    for i, (a, wpn) in enumerate(((0.4, W_PISTOL), (1.9, W_BAT), (3.3, W_UZI), (4.9, W_PISTOL))):
+        guards.append(m.enemy(hx + math.cos(a) * 3.0, hy - 2.5 + math.sin(a) * 2.5, a, gang_look('greens'), wpn,
+                              100.0, 0.34, 26.0, gang='greens'))
+    b = m.blip(road[0], road[1], tex='blip_dest')
+    mk = m.marker(road[0] - math.cos(yaw) * 9.0, road[1] - math.sin(yaw) * 9.0, 4.0, RED)
+    m.obj('Езжай на Маячный, к даче Сиплого.')
+
+    def spooked():
+        px, py = pl.pos()
+        if (px - hx) ** 2 + (py - hy) ** 2 < 50.0 ** 2:
+            return True
+        if car.dead or car.health < car.max_health:
+            return True
+        return any(g.dead or g.health < g.max_health for g in guards)
+    yield spooked
+    m.unblip(b)
+    m.unmark(mk)
+    for g in guards:
+        if not g.dead:
+            g.attack(pl.ped)
+    if car.dead or car.removed or not m.ms.launch(car, 1.15):
+        # машины у него больше нет: отбивается сам
+        boss = m.enemy(hx, hy - 4.0, 0.0, make_look(skin=SKINS[1], hair=(0.5, 0.5, 0.5), shirt=(0.2, 0.3, 0.22),
+                                                    pants=(0.2, 0.2, 0.22), torso='jacket', model='m_grey_h3'),
+                       W_SHOTGUN, 170.0, 0.4, 30.0, gang='greens')
+        boss.attack(pl.ped)
+        yield from m.kill_all([boss], 'Сиплый остался без колёс. Добей его.', 'Сиплый')
+        m.counter(None)
+    else:
+        car.health = car.max_health = 1100.0
+        bl = m.blip(obj=car, tex='blip_enemy')
+        a = m.arrow(car, RED)
+        m.obj('Сиплый прыгнул в машину! Уничтожь её, пока он не ушёл по трассе.')
+        m.help('Тарань, стреляй, перегораживай дорогу — лишь бы «Бизон» не доехал до Заречья.', 8.0)
+        w.audio.play_at('door', car.x, car.y, 0.9)
+        goal = c.nodes.get((10, 11)) or c.nearest_node(452.0, 823.0)
+        gx, gy = goal.x, goal.y
+
+        def tick(dt):
+            if car.dead or car.removed:
+                return
+            if car.mode == Vehicle.RAIL:
+                w.traffic.route_step(car, (goal.i, goal.j))
+            if math.hypot(car.x - gx, car.y - gy) < 20.0:
+                raise MissionFailed('Сиплый ушёл по трассе.')
+        m.ticks.append(tick)
+        yield lambda: car.dead or car.removed
+        m.ticks.remove(tick)
+        m.unblip(bl)
+        m.unarrow(a)
+    yield 1.0
+    yield from m.lose_cops()
+    m.say('Захар (по телефону): Слышал, на Маячном нынче тихо. Заезжай — рассчитаемся.')
+    yield 2.5
+
+
+def m_g1(m):
+    w = m.w
+    c = w.city
+    pl = w.player
+    pol = w.police
+    yield from m.briefing('grom', [
+        'Майор Громов. Для своих — Гром. Сядь, не маячь.',
+        'Твою «Трудягу» с ящиками засняли мои люди. Плёнка лежит у меня, а не в деле. Пока.',
+        'Макс: И сколько стоит это «пока»?',
+        'Услугу. У участка на острове стоит изъятая «Комета», в багажнике — чужой товар.',
+        'Пригони её сюда до описи. Погоню отзову, когда доедешь. Не раньше.'])
+    sx, sy = c.landmarks['police']['road']
+    x, y = sx + 13.0, sy + 2.9
+    for dx in (13.0, 20.0, -20.0, 27.0, -27.0):
+        if not w.static.overlap_circle(sx + dx, sy + 2.9, 2.2, F_CAR):
+            x = sx + dx
+            break
+    car = m.car('sports', x, y, 0.0, paint=0)
+    m.watch(car, '«Комета» уничтожена.')
+    yield from m.enter(car, 'Угони изъятую «Комету» от полицейского участка на острове.', tex='blip_dest')
+    pol.locked = 3
+    pol.set_level(3)
+    w.audio.play('siren', 0.6)
+    m.help('Весь участок на ушах. Перекраска не поможет — гони в Заречье через Большой мост.', 8.0)
+    rx, ry = c.landmarks['grom']['road']
+    yield from m.drive(car, rx, ry, 5.0, 'Пригони «Комету» к чайной Грома в Заречье.',
+                       'Товар в багажнике «Кометы». Вернись в неё.')
+    pol.locked = None
+    pol.clear()
+    pl.leave_vehicle(force=True)
+    car.locked = True
+    car.keep = False
+    m.say('Гром (в рацию): Всем постам — отбой, машина найдена. …Свободен, водитель. Пока.')
+    yield 3.0
+
+
+def m_g2(m):
+    w = m.w
+    c = w.city
+    pl = w.player
+    pol = w.police
+    yield from m.briefing('grom', [
+        'В Заречье и Слободе три заведения платят мне за спокойствие. Сегодня день сбора.',
+        'Возьмёшь мою служебную: человеку в такой машине вопросов не задают.',
+        'Макс: А если кто-то не захочет платить?',
+        'Тогда объясни ему, что спокойствие — вещь хрупкая.'])
+    rx, ry = c.landmarks['grom']['road']
+    car = m.car('police', rx - 7.0, ry, 0.0)
+    m.watch(car, 'Служебная машина Грома уничтожена.')
+    yield from m.enter(car, 'Садись в служебную машину Грома.')
+    # три лавки на торговых улицах Заречья: середины сторон кварталов
+    stops = ((120.0, 914.0, 'Хозяин пекарни'), (175.0, 866.0, 'Хозяйка аптеки'), (-105.0, 866.0, 'Хозяин мастерской'))
+    r = random.Random(11)
+    m.set_timer(240.0, 'Заведения закрылись. Гром остался без выручки.')
+    for i, (x, y, who) in enumerate(stops):
+        road, side, yaw = m.ms.roadside(x, y, 4.6)
+        look = random_look(r, 'O')
+        look.female = i == 1
+        owner = m.npc(side[0], side[1], yaw + math.pi / 2, look, hp=140.0)
+        m.counter('Собрано: %d из 3' % i)
+        yield from m.drive(car, road[0], road[1], 5.0, 'Собери плату: точка %d из 3.' % (i + 1),
+                           'Без машины Грома с тобой говорить не станут. Вернись в неё.')
+        if i < 2:
+            m.say('%s: %s' % (who, ('Вот, всё как договаривались. Привет майору.',
+                                    'Опять? Ладно, ладно… Держи. Чтоб он подавился.')[i]))
+            w.audio.play('pickup', 0.7)
+            yield 1.6
+            continue
+        m.stop_timer()
+        m.say('%s: Передай Грому: у меня теперь другая крыша. Вон она, кстати.' % who)
+        yield 1.4
+        thugs = []
+        for k, wpn in enumerate((W_PISTOL, W_BAT, W_UZI, W_PISTOL)):
+            # «крыша» выбегает из-за угла: по тротуару с обеих сторон
+            d = (17.0 + k * 1.5) * (1 if k % 2 == 0 else -1)
+            e = m.enemy(side[0] + math.cos(yaw) * d, side[1] + math.sin(yaw) * d, yaw + (math.pi if d > 0 else 0.0),
+                        gang_look('purple'), wpn, 100.0, 0.34, 40.0, gang='purple')
+            e.attack(pl.ped)
+            thugs.append(e)
+        pl.give_weapon(W_PISTOL, 51)
+        yield from m.kill_all(thugs, 'Разберись с новой «крышей».', 'Бандитов')
+        m.counter('Собрано: 2 из 3')
+        pol.clear()
+        m.help('Стрельбу Гром спишет на учения: полиция ничего «не видела».', 7.0)
+        ox, oy = (owner.x, owner.y) if not owner.removed else side
+        pk = m.ms.add_pickup('item', ox + math.cos(yaw) * 1.2, oy + math.sin(yaw) * 1.2)
+        m.pickups.append(pk)
+        b = m.blip(pk.x, pk.y, tex='blip_pickup')
+        if not owner.dead:
+            m.say('%s: Всё, всё! Плачу! Забирай!' % who)
+        m.obj('Забери деньги.')
+        yield lambda: pk.removed
+        m.unblip(b)
+    m.counter('Собрано: 3 из 3')
+    yield from m.drive(car, rx, ry, 5.0, 'Отвези выручку Грому в чайную.', 'Вернись в машину Грома.')
+    m.counter(None)
+    pol.clear()
+    pl.leave_vehicle(force=True)
+    car.locked = True
+    car.keep = False
+    m.say('Гром: Мастерскую теперь тоже охраняю я. Твоя доля — держи.')
+    yield 2.5
+
+
+def m_g3(m):
+    w = m.w
+    c = w.city
+    pl = w.player
+    pol = w.police
+    yield from m.briefing('grom', [
+        'Плохие новости, водитель. Сверху спустили приказ: сегодня берут Захара.',
+        'Макс: И ты говоришь это мне?',
+        'Старик платит мне десять лет. Сядет — заговорит. Мне это ни к чему.',
+        'СОБР уже выехал. Бери «Комету». Две с половиной минуты — и чтобы духу его там не было.'])
+    rx, ry = c.landmarks['grom']['road']
+    car = m.car('sports', rx - 7.0, ry, 0.0, paint=0)
+    yield from m.enter(car, 'Садись в «Комету».')
+    zl = c.landmarks['zakhar']
+    zx, zy = zl['road']
+    m.set_timer(150.0, 'СОБР добрался до Захара раньше тебя.')
+    m.help('Самый быстрый путь — по трассе вокруг залива: на восток, потом на юг.', 8.0)
+    b = m.blip(zx, zy, tex='blip_zakhar')
+    mk = m.marker(zx, zy, 5.5)
+    m.obj('Гони в Нефтегавань, к сараю Захара!')
+    old = [None]
+
+    def arrived():
+        # старик выходит к воротам, когда игрок уже рядом
+        if old[0] is None and math.hypot(pl.pos()[0] - zx, pl.pos()[1] - zy) < 90.0:
+            x, y = m.ms.free_spot(zl['door'][0] + 1.2, zl['door'][1] - 0.6)
+            old[0] = m.npc(x, y, -math.pi / 2, contact_look('zakhar'), hp=220.0)
+            m.watch(old[0], 'Захар погиб.')
+        return pl.vehicle is not None and mk.player_inside(False) and pl.speed() < 2.5
+    yield arrived
+    m.unblip(b)
+    m.unmark(mk)
+    m.stop_timer()
+    zakhar = old[0]
+    m.say('Захар: Гром прислал? Вот уж от кого не ждал. Поехали!')
+    yield from m.board(zakhar, pl.vehicle)
+    pol.locked = 4
+    pol.set_level(4)
+    w.audio.play('siren', 0.6)
+    lm = c.landmarks['airfield']
+    ax, ay = lm['apron'][0] - 11.0, lm['apron'][1] + 14.0
+    yield from m.goto(ax, ay, 6.5, 'СОБР на хвосте! Вези Захара на аэродром, к самолёту.',
+                      extra=lambda: zakhar.vehicle is not None and zakhar.vehicle is pl.vehicle)
+    pol.locked = None
+    pol.clear()
+    m.unwatch(zakhar)
+    m.unboard(zakhar, (lm['apron'][0] - 11.0, lm['apron'][1] + 4.0))
+    m.say('Захар: Не забуду, парень. Сарай и лодки — твои, пока не вернусь.')
+    yield 3.0
+
+
 def m_p1(m):
     w = m.w
     c = w.city
@@ -908,17 +1258,36 @@ MISSIONS = [
     dict(id='v2', contact='vano', title='Должок', reward=1200, fn=m_v2, req=['v1']),
     dict(id='v3', contact='vano', title='Конкуренты', reward=2000, fn=m_v3, req=['v2']),
     dict(id='v4', contact='vano', title='Круг почёта', reward=3000, fn=m_v4, req=['v3']),
-    dict(id='r1', contact='rosa', title='Шумные гости', reward=800, fn=m_r1, req=['v2']),
+    dict(id='r1', contact='rosa', title='Шумные гости', reward=800, fn=m_r1, req=['v1']),
     dict(id='r2', contact='rosa', title='Курьер', reward=1500, fn=m_r2, req=['r1']),
     dict(id='r3', contact='rosa', title='Разборка', reward=2500, fn=m_r3, req=['r2']),
     dict(id='r4', contact='rosa', title='Инкассация', reward=4000, fn=m_r4, req=['r3']),
-    dict(id='p1', contact='prof', title='Свидетель', reward=3000, fn=m_p1, req=['v3', 'r2']),
+    dict(id='z1', contact='zakhar', title='Улов', reward=1500, fn=m_z1, req=['r1']),
+    dict(id='z2', contact='zakhar', title='Хрупкий груз', reward=2500, fn=m_z2, req=['z1']),
+    dict(id='z3', contact='zakhar', title='Длинный язык', reward=3500, fn=m_z3, req=['z2']),
+    dict(id='g1', contact='grom', title='Вещдок', reward=2000, fn=m_g1, req=['z1', 'r2']),
+    dict(id='g2', contact='grom', title='День сбора', reward=3000, fn=m_g2, req=['g1']),
+    dict(id='g3', contact='grom', title='Облава', reward=5000, fn=m_g3, req=['g2', 'z3']),
+    dict(id='p1', contact='prof', title='Свидетель', reward=3000, fn=m_p1, req=['g1']),
     dict(id='p2', contact='prof', title='Груз', reward=4000, fn=m_p2, req=['p1']),
     dict(id='p3', contact='prof', title='Свой человек', reward=5000, fn=m_p3, req=['p2']),
-    dict(id='p4', contact='prof', title='Большой куш', reward=50000, fn=m_p4, req=['p3', 'v4', 'r4']),
+    dict(id='p4', contact='prof', title='Большой куш', reward=50000, fn=m_p4, req=['p3', 'v4', 'r4', 'g3']),
 ]
 TAXI = dict(id='taxi', contact=None, title='Таксист', reward=0, fn=m_taxi, side=True)
 STORY_TOTAL = len(MISSIONS)
+STORY_IDS = frozenset(m['id'] for m in MISSIONS)
+
+# что сообщить игроку, когда открывается задание (ключ — id открывшегося задания)
+ANNOUNCE = {
+    'r1': 'Вано: Будет скучно — загляни к Розе в бар в Ржавом квартале. Скажешь, что от меня. (метка «Р»)',
+    'z1': 'Роза: Моему поставщику нужен водитель. Захар, лодочный сарай в Нефтегавани — '
+          'за Портовым мостом. (метка «З»)',
+    'g1': 'Сообщение с незнакомого номера: «Чайная в Заречье, за Большим мостом. Спросить Грома. '
+          'Не тяни». (метка «Г»)',
+    'p1': 'Гром: С тобой хочет поговорить серьёзный человек. Башня в Деловом центре. (метка «П»)',
+    'g3': 'Гром: Срочно в чайную. Это касается твоего друга-лодочника.',
+    'p4': 'Проф готовит большое дело. Загляни в башню.',
+}
 
 
 class Missions(object):
@@ -1155,6 +1524,33 @@ class Missions(object):
         n = nodes[int(r.random() * len(nodes))]
         return n.x, n.y
 
+    def roadside(self, x, y, off=4.8, side=1):
+        """Ближайшая точка дороги и место у её обочины: ((x, y) на полосе, (x, y) рядом, yaw полосы)."""
+        lane, s, d = self.w.roadnet.nearest_lane(x, y, 90.0)
+        if lane is None:
+            return (x, y), (x, y), 0.0
+        px, py, yaw = lane.pos(s)
+        sx, sy = px + math.sin(yaw) * off * side, py - math.cos(yaw) * off * side
+        return (px, py), self.free_spot(sx, sy), yaw
+
+    def launch(self, v, persona=1.2, rush=True):
+        """Стоящая у обочины машина трогается и дальше едет сама по полосам (как трафик).
+
+        rush: водитель удирает — не ждёт на светофорах и резче разгоняется."""
+        lane, s, d = self.w.roadnet.nearest_lane(v.x, v.y, 40.0)
+        if lane is None:
+            return False
+        v.npc = True
+        v.locked = True
+        v.mode = Vehicle.RAIL
+        v.link = lane
+        v.s = s
+        v.persona = persona
+        v.rush = rush
+        v.speed = 0.0
+        v.target_speed = lane.speed * 0.6
+        return True
+
     def letterbox(self, on):
         from panda3d.core import CardMaker
         if self.letter is None:
@@ -1303,6 +1699,7 @@ class Missions(object):
             w.audio.play('passed', 0.9)
             hud.big('МИССИЯ ВЫПОЛНЕНА!', GOLD, 5.0, '$%d' % m.reward if m.reward else '')
             self._announce(m.spec['id'])
+            self.sync_story()
             self.save_game(auto=True)
         else:
             if m.side or quiet:
@@ -1314,16 +1711,31 @@ class Missions(object):
         hud.clear_subtitles()
         self.refresh_contacts()
 
+    def sync_story(self):
+        """Привести мир в соответствие с пройденным сюжетом (после задания и после загрузки)."""
+        if 'g3' in self.done:
+            # Захара вывезли из города: в лодочном сарае его больше нет
+            p = self.w.interiors.resident('zakhar')
+            if p is not None:
+                p.keep = False
+                self.w.remove_ped(p)
+
     def _announce(self, mid):
-        """После задания подсказываем, куда идти дальше."""
+        """После задания подсказываем, куда идти дальше: кто открылся или у кого ещё остались дела."""
         w = self.w
         text = None
-        if mid == 'v2':
-            text = 'Вано: Загляни к Розе в бар в Ржавом квартале. Скажешь — от меня. (метка «Р»)'
-        elif mid in ('v3', 'r2') and 'v3' in self.done and 'r2' in self.done:
-            text = 'Тобой заинтересовался серьёзный человек. Башня в Деловом центре (метка «П»).'
-        elif mid in ('p3', 'v4', 'r4') and all(k in self.done for k in ('p3', 'v4', 'r4')):
-            text = 'Проф готовит большое дело. Загляни в башню.'
+        for spec in MISSIONS:
+            if mid in spec['req'] and spec['id'] not in self.done and spec['id'] in ANNOUNCE and \
+                    all(r in self.done for r in spec['req']):
+                text = ANNOUNCE[spec['id']]
+                break
+        if text is None and len(self.done & STORY_IDS) < STORY_TOTAL:
+            me = next((sp['contact'] for sp in MISSIONS if sp['id'] == mid), None)
+            if me is not None and self.next_mission(me) is None:
+                # у этого заказчика пока пусто — напомнить, кто ещё ждёт
+                rest = [CONTACTS[n]['title'] for n in CONTACTS if n != me and self.next_mission(n) is not None]
+                if rest:
+                    text = 'Здесь пока всё. Работа есть у других: %s.' % ', '.join(rest)
         if text:
             w.hud.help(text, 10.0)
             w.audio.play('pager', 0.7)
@@ -1485,7 +1897,7 @@ class Missions(object):
             w.audio.play('money', 0.9)
             hud.big('Тайник %d из %d' % (n, total), GOLD, 3.0, '+$500')
             self._package_bonus(n, total)
-        elif k == 'item':
+        elif k in ('item', 'crate'):
             w.audio.play('pickup', 0.9)
         cb = pk.on_take
         pk.taken()
@@ -1793,6 +2205,7 @@ class Missions(object):
         if self.bonus_given:
             self._safehouse_bonus(range(1, self.bonus_given + 1))
         self.refresh_contacts()
+        self.sync_story()
         # игра сохраняется у кровати — там же герой и просыпается
         if 'safehouse' in w.interiors.rooms:
             w.interiors.enter('safehouse', instant=True, spot='wake')

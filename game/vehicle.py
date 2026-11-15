@@ -500,6 +500,7 @@ class Vehicle(object):
         self.link = None
         self.s = 0.0
         self.target_speed = 0.0
+        self.rush = False                # на «рельсах»: спешит и не ждёт на светофорах (беглец)
         self.persona = 1.0
         self.wait_t = 0.0
         self.creep_t = 0.0
@@ -740,7 +741,7 @@ class Vehicle(object):
         v = self.speed
         tv = self.target_speed
         if tv > v:
-            v = min(tv, v + 3.2 * dt)
+            v = min(tv, v + (5.2 if self.rush else 3.2) * dt)
         else:
             v = max(tv, v - 9.0 * dt)
         self.speed = v
