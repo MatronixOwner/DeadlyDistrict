@@ -1,0 +1,688 @@
+{
+"alpha": [
+"plants"
+],
+"items": {
+"armchair_dark": {
+"d": 0.741,
+"h": 0.812,
+"tex": [
+"leather_02"
+],
+"w": 0.791
+},
+"armchair_grey": {
+"d": 0.821,
+"h": 0.936,
+"tex": [
+"fabric_09",
+"wood_10"
+],
+"w": 0.797
+},
+"armchair_tall": {
+"d": 0.652,
+"h": 1.183,
+"tex": [
+"fabric_08",
+"wood_07"
+],
+"w": 0.68
+},
+"armchair_yellow": {
+"d": 0.604,
+"h": 0.924,
+"tex": [
+"fabric_07",
+"wood_06"
+],
+"w": 0.68
+},
+"basket": {
+"d": 0.639,
+"h": 0.578,
+"tex": [
+"dirty__clothes",
+"plastic_10"
+],
+"w": 0.656
+},
+"bed_bunk": {
+"d": 2.25,
+"h": 1.646,
+"tex": [
+"fabric_11",
+"metal_04"
+],
+"w": 1.05
+},
+"bed_cot": {
+"d": 2.2,
+"h": 0.856,
+"tex": [
+"fabric_10",
+"metal_02",
+"wood_15"
+],
+"w": 1.049
+},
+"bed_double": {
+"d": 2.153,
+"h": 1.047,
+"tex": [
+"fabric_04",
+"fabric_19",
+"fabric_20",
+"fabric_21",
+"metal_02",
+"wood_05"
+],
+"w": 1.749
+},
+"bed_grey": {
+"d": 2.14,
+"h": 0.897,
+"tex": [
+"fabric",
+"fabric_02",
+"fabric_09",
+"fabric_19",
+"fabric_20",
+"metal_03"
+],
+"w": 1.203
+},
+"bed_single": {
+"d": 2.113,
+"h": 1.066,
+"tex": [
+"fabric_01",
+"fabric_12",
+"fabric_17",
+"wood_09"
+],
+"w": 1.16
+},
+"bed_wide": {
+"d": 2.233,
+"h": 0.902,
+"tex": [
+"fabric_01",
+"fabric_07",
+"fabric_09",
+"fabric_12",
+"metal_03"
+],
+"w": 1.76
+},
+"blender": {
+"d": 0.293,
+"h": 0.571,
+"tex": [
+"metal_08",
+"plastic_03",
+"plastic_04"
+],
+"w": 0.278
+},
+"broom": {
+"d": 0.107,
+"h": 1.241,
+"tex": [
+"broom",
+"broom_02"
+],
+"w": 0.38
+},
+"bucket": {
+"d": 0.329,
+"h": 0.255,
+"tex": [
+"plastic_09",
+"plastic_10"
+],
+"w": 0.501
+},
+"chair_metal": {
+"d": 0.502,
+"h": 0.782,
+"tex": [
+"metal_03",
+"plastic_03"
+],
+"w": 0.465
+},
+"chair_office": {
+"d": 0.535,
+"h": 0.882,
+"tex": [
+"leather_01",
+"plastic_03"
+],
+"w": 0.558
+},
+"chair_plastic": {
+"d": 0.421,
+"h": 0.986,
+"tex": [
+"plastic_04"
+],
+"w": 0.429
+},
+"chair_slat": {
+"d": 0.447,
+"h": 0.932,
+"tex": [
+"wood_07"
+],
+"w": 0.447
+},
+"chair_soft": {
+"d": 0.481,
+"h": 0.931,
+"tex": [
+"leather",
+"wood_08"
+],
+"w": 0.432
+},
+"chair_swivel": {
+"d": 0.53,
+"h": 0.921,
+"tex": [
+"fabric_05",
+"plastic_03"
+],
+"w": 0.513
+},
+"chair_wood": {
+"d": 0.495,
+"h": 0.931,
+"tex": [
+"wood_04"
+],
+"w": 0.413
+},
+"coffee": {
+"d": 0.437,
+"h": 0.496,
+"tex": [
+"metal_03",
+"metal_04",
+"plastic_03"
+],
+"w": 0.306
+},
+"cup": {
+"d": 0.126,
+"h": 0.156,
+"tex": [
+"plastic_06"
+],
+"w": 0.129
+},
+"dish": {
+"d": 0.278,
+"h": 0.038,
+"tex": [
+"plastic_06"
+],
+"w": 0.285
+},
+"dresser": {
+"d": 0.474,
+"h": 0.594,
+"tex": [
+"metal_04",
+"wood_02",
+"wood_07"
+],
+"w": 1.128
+},
+"fridge": {
+"d": 0.795,
+"h": 1.775,
+"tex": [
+"metal_02",
+"metal_04",
+"plastic_06"
+],
+"w": 0.817
+},
+"fridge_big": {
+"d": 0.774,
+"h": 1.812,
+"tex": [
+"box_02__0",
+"metal_02",
+"metal_03",
+"metal_04",
+"plastic_06"
+],
+"w": 0.947
+},
+"fridge_black": {
+"d": 0.722,
+"h": 1.917,
+"tex": [
+"metal_02",
+"metal_04",
+"plastic_06",
+"white"
+],
+"w": 0.62
+},
+"lamp_floor": {
+"d": 0.592,
+"h": 1.394,
+"tex": [
+"metal_05",
+"paper_01"
+],
+"w": 0.607
+},
+"lamp_pendant": {
+"d": 0.241,
+"h": 0.822,
+"tex": [
+"emissor_001",
+"metal_04"
+],
+"w": 0.247
+},
+"lamp_table": {
+"d": 0.337,
+"h": 0.544,
+"tex": [
+"metal_05",
+"paper_01"
+],
+"w": 0.346
+},
+"lamp_tube": {
+"d": 1.052,
+"h": 0.07,
+"tex": [
+"emissor_001"
+],
+"w": 0.213
+},
+"microwave": {
+"d": 0.372,
+"h": 0.305,
+"tex": [
+"kitchen"
+],
+"w": 0.585
+},
+"microwave_steel": {
+"d": 0.372,
+"h": 0.311,
+"tex": [
+"kitchen"
+],
+"w": 0.585
+},
+"mop": {
+"d": 0.128,
+"h": 1.304,
+"tex": [
+"material"
+],
+"w": 0.164
+},
+"nightstand": {
+"d": 0.481,
+"h": 0.594,
+"tex": [
+"metal_04",
+"wood_02",
+"wood_07"
+],
+"w": 0.522
+},
+"painting_a": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.001
+},
+"painting_b": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.001
+},
+"painting_c": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.109
+},
+"painting_d": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.013
+},
+"painting_e": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.001
+},
+"painting_f": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.013
+},
+"painting_g": {
+"d": 0.043,
+"h": 0.751,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.105
+},
+"painting_wide": {
+"d": 0.073,
+"h": 0.783,
+"tex": [
+"paintings",
+"wood_02"
+],
+"w": 1.883
+},
+"plant_a": {
+"d": 0.717,
+"h": 0.821,
+"tex": [
+"plants",
+"plaster_02"
+],
+"w": 0.722
+},
+"plant_b": {
+"d": 0.717,
+"h": 0.924,
+"tex": [
+"plants",
+"plaster_02"
+],
+"w": 0.722
+},
+"plant_c": {
+"d": 0.882,
+"h": 0.621,
+"tex": [
+"plants",
+"plaster_02"
+],
+"w": 0.889
+},
+"plant_tall": {
+"d": 0.581,
+"h": 1.284,
+"tex": [
+"plants",
+"plaster_02"
+],
+"w": 0.592
+},
+"pot": {
+"d": 0.307,
+"h": 0.223,
+"tex": [
+"metal_03"
+],
+"w": 0.37
+},
+"pouf": {
+"d": 0.592,
+"h": 0.443,
+"tex": [
+"emissor_001",
+"fabric_16"
+],
+"w": 1.017
+},
+"sofa_beige": {
+"d": 0.727,
+"h": 0.836,
+"tex": [
+"fabric_11",
+"wood_10"
+],
+"w": 1.357
+},
+"sofa_black": {
+"d": 0.929,
+"h": 0.901,
+"tex": [
+"leather_01",
+"leather_03",
+"metal_01"
+],
+"w": 1.686
+},
+"sofa_blue": {
+"d": 0.81,
+"h": 0.843,
+"tex": [
+"fabric_12",
+"metal_04"
+],
+"w": 2.059
+},
+"sofa_brown": {
+"d": 0.727,
+"h": 0.919,
+"tex": [
+"fabric_13",
+"wood_10"
+],
+"w": 1.902
+},
+"sofa_corner": {
+"d": 2.214,
+"h": 0.879,
+"tex": [
+"fabric_10",
+"wood_10"
+],
+"w": 2.185
+},
+"sofa_grey": {
+"d": 0.773,
+"h": 0.999,
+"tex": [
+"fabric_15",
+"metal_04"
+],
+"w": 2.027
+},
+"sofa_light": {
+"d": 0.817,
+"h": 1.037,
+"tex": [
+"fabric_09",
+"wood_10"
+],
+"w": 2.003
+},
+"sofa_old": {
+"d": 0.81,
+"h": 0.974,
+"tex": [
+"leather",
+"leather_02",
+"metal_04"
+],
+"w": 2.029
+},
+"stool": {
+"d": 0.368,
+"h": 0.371,
+"tex": [
+"wood_07"
+],
+"w": 0.368
+},
+"stove": {
+"d": 0.796,
+"h": 1.105,
+"tex": [
+"kitchen"
+],
+"w": 0.772
+},
+"stove_black": {
+"d": 0.792,
+"h": 1.031,
+"tex": [
+"kitchen"
+],
+"w": 0.772
+},
+"stove_old": {
+"d": 0.673,
+"h": 1.001,
+"tex": [
+"kitchen"
+],
+"w": 0.842
+},
+"table_dark": {
+"d": 0.377,
+"h": 0.592,
+"tex": [
+"metal_04",
+"wood_10"
+],
+"w": 0.377
+},
+"table_orange": {
+"d": 0.506,
+"h": 0.596,
+"tex": [
+"wood_05",
+"wood_15"
+],
+"w": 0.915
+},
+"table_round": {
+"d": 0.64,
+"h": 0.558,
+"tex": [
+"wood_09"
+],
+"w": 0.627
+},
+"table_side": {
+"d": 0.464,
+"h": 0.594,
+"tex": [
+"wood_02",
+"wood_09",
+"wood_13"
+],
+"w": 0.447
+},
+"table_small": {
+"d": 0.506,
+"h": 0.596,
+"tex": [
+"wood_04",
+"wood_06"
+],
+"w": 0.514
+},
+"table_wood": {
+"d": 0.506,
+"h": 0.596,
+"tex": [
+"wood_04",
+"wood_06"
+],
+"w": 0.915
+},
+"toaster": {
+"d": 0.366,
+"h": 0.216,
+"tex": [
+"metal_03",
+"metal_04",
+"metal_08",
+"plastic_03"
+],
+"w": 0.179
+},
+"toilet": {
+"d": 0.844,
+"h": 0.93,
+"tex": [
+"white"
+],
+"w": 0.43
+},
+"trash": {
+"d": 0.459,
+"h": 0.518,
+"tex": [
+"plastic_03",
+"plastic_11"
+],
+"w": 0.471
+},
+"washbasin": {
+"d": 0.39,
+"h": 0.994,
+"tex": [
+"metal_01",
+"metal_02",
+"plastic_06"
+],
+"w": 0.512
+},
+"washbasin_cab": {
+"d": 0.497,
+"h": 0.752,
+"tex": [
+"metal_01",
+"metal_02",
+"metal_04",
+"plastic_06",
+"wood_08"
+],
+"w": 0.927
+},
+"washer": {
+"d": 0.718,
+"h": 1.143,
+"tex": [
+"hygiene"
+],
+"w": 0.675
+}
+}
+}

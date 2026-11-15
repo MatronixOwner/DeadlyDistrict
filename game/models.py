@@ -390,3 +390,54 @@ class Models(object):
             self.assets.setup_filter(t, True)
             self._ctex[name] = t
         return t
+
+    # ------------------------------------------------------------------
+    # мебель для интерьеров (tools/import_furniture.py)
+    # ------------------------------------------------------------------
+    def _furn_meta(self):
+        m = getattr(self, '_fmeta', None)
+        if m is None:
+            try:
+                with open(os.path.join(self.dir, 'furn', 'furn.json'), encoding='utf-8') as f:
+                    m = json.load(f)
+                self._furn_root = self.loader.loadModel(self.path('furn', 'furn.bam'))
+            except Exception:
+                m = dict(items={}, alpha=[])
+                self._furn_root = None
+            self._fmeta = m
+            self._ftex = {}
+            self._furn = {}
+        return m
+
+    def furn_size(self, name):
+        """Габариты предмета мебели (ширина, глубина, высота) или None, если такого нет."""
+        it = self._furn_meta()['items'].get(name)
+        return (it['w'], it['d'], it['h']) if it else None
+
+    def furn(self, name):
+        """Образец предмета мебели: стоит на полу серединой в начале координат, лицом в -Y.  Копировать copyTo."""
+        meta = self._furn_meta()
+        np_ = self._furn.get(name)
+        if np_ is not None:
+            return np_
+        if name not in meta['items'] or self._furn_root is None:
+            return None
+        src = self._furn_root.find('**/' + name)
+        if src.isEmpty():
+            return None
+        np_ = src.copyTo(NodePath('furn'))
+        from panda3d.core import TransparencyAttrib
+        for g in np_.getChildren():
+            tn = g.getName()
+            t = self._ftex.get(tn)
+            if t is None:
+                t = self.loader.loadTexture(self.path('furn', tn + '.png'))
+                self.assets.setup_filter(t)
+                self._ftex[tn] = t
+            g.setTexture(t)
+            if tn in meta['alpha']:
+                g.setTransparency(TransparencyAttrib.MBinary)
+                g.setTwoSided(True)
+        self._furn[name] = np_
+        return np_
+
