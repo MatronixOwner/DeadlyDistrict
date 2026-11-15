@@ -316,7 +316,7 @@ def test_three_shores_and_the_sea_between_them():
 def test_every_town_is_reachable_by_road():
     c = City()
     rn = RoadNet(c)
-    home = c.nearest_node(*c.landmarks['safehouse']['road'])
+    home = c.nearest_node(*c.landmarks['terminal']['road'])
     start = (home.i, home.j)
     for goal in ((5, 11), (8, 12), (12, 4), (13, 3), (12, 8), (12, 11)):       # Заречье, восток, трасса
         assert goal in c.nodes, goal

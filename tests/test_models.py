@@ -54,7 +54,7 @@ def test_vehicle_model_fits_its_spec(world, kind):
     w = world
     spec = SPECS[kind]
     assert kind in VEHICLE_MODELS
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     v = w.spawn_vehicle(kind, x, y - 1.5, 0.0)
     assert v.minfo is not None, 'нет модели для %s' % kind
     mn, mx = v.body.getTightBounds(v.tilt)
@@ -88,7 +88,7 @@ def test_vehicle_model_fits_its_spec(world, kind):
 ])
 def test_character_model_choice(world, name, look, kind, expect):
     w = world
-    x, y = w.city.landmarks['safehouse']['door']
+    x, y = w.city.landmarks['terminal']['door']
     p = w.spawn_ped(x + 3.0, y, 0.0, look, kind)
     assert p.vis is not None and p.vis.key in expect
     w.remove_ped(p)
@@ -98,7 +98,7 @@ def test_character_model_choice(world, name, look, kind, expect):
 def test_every_zone_look_gets_a_model(world):
     w = world
     rnd = random.Random(9)
-    x, y = w.city.landmarks['safehouse']['door']
+    x, y = w.city.landmarks['terminal']['door']
     keys = set()
     for zone in 'DOGRIBP':
         for _ in range(40):
@@ -116,7 +116,7 @@ def test_every_zone_look_gets_a_model(world):
 
 def test_animation_follows_state(game, world):
     w = world
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, make_look(model='m_grey_h2'), 'mission')
     p.keep = True
     p.set_state('stand')
@@ -190,7 +190,7 @@ def test_animation_follows_state(game, world):
 
 def test_women_and_special_poses(game, world):
     w = world
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, make_look(model='f_old', female=True), 'mission')
     p.keep = True
     p.set_state('goto')
@@ -229,7 +229,7 @@ def test_player_keeps_model_through_respawn(game, world):
 def test_animation_runs_on_game_time(game, world):
     """Клипы идут по игровому времени: на паузе персонажи замирают, а не шагают на месте."""
     w = world
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, random_look(random.Random(4), 'D'), 'civ')
     p.keep = True
     p.set_state('goto')

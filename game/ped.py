@@ -266,6 +266,7 @@ class Ped(object):
         self.punch_t = 0.0
         self.aiming = False
         self.ready_t = 0.0          # сколько ещё держать пистолет поднятым после выстрела
+        self.sight_cos = None       # часовой с ограниченным обзором: косинус половины угла (None — видит кругом)
         self.aim_pitch = 0.0
         self.stuck_t = 0.0
         self.strafe = random.choice((-1.0, 1.0))
@@ -633,7 +634,7 @@ class Ped(object):
             self.repath_t -= dt
             if self.repath_t <= 0.0:
                 self.repath_t = 0.4 + random.random() * 0.3
-                self._los = w.static.los(self.x, self.y, tx, ty)
+                self._los = w.static.los(self.x, self.y, tx, ty, self.z + 1.4)
             los = self._los
             pref = min(wp.range * 0.5, 22.0)
             if d > pref or not los:
@@ -705,7 +706,16 @@ class Ped(object):
                 self.timer -= dt
                 if self.timer <= 0.0:
                     self.timer = 0.5
-                    if d2 < 36.0 or w.static.los(self.x, self.y, px, py):
+                    sc = self.sight_cos
+                    if sc is not None:
+                        # часовой смотрит перед собой: со спины к нему можно подойти почти вплотную
+                        if d2 > 6.25 and d2 > 0.01:
+                            d = math.sqrt(d2)
+                            if ((px - self.x) * math.cos(self.yaw) + (py - self.y) * math.sin(self.yaw)) / d < sc:
+                                return
+                        if w.static.los(self.x, self.y, px, py, self.z + 1.4) and abs(p.z - self.z) < 2.5:
+                            self.attack(p)
+                    elif d2 < 36.0 or w.static.los(self.x, self.y, px, py, self.z + 1.4):
                         self.attack(p)
 
     def _follow(self, dt):

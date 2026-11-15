@@ -70,6 +70,32 @@ class Bot(object):
             self.say('took a police car')
             self.cool = 0.3
             return
+        # сюжет: надо просто оказаться за рулём любой машины (спутник сядет рядом сам)
+        if ('Садитесь с Брюсом в машину' in m.objective or 'Вернись за Брюсом' in m.objective or
+                ('Брюс' in m.objective and 'порт' in m.objective)) and pl.vehicle is None and not m.arrows:
+            v = w.spawn_vehicle('sedan', pl.ped.x + 3.0, pl.ped.y, 0.0)
+            pl.enter_side = -1
+            pl.enter_vehicle(v, silent=True)
+            self.say('took a car')
+            self.cool = 0.3
+            return
+        # спутник: бот не ждёт, пока тот добежит до двери, — сажает его в машину сразу
+        for f in m.ticks:
+            b = getattr(f, '__self__', None)
+            if b is not None and b.__class__.__name__ == 'Buddy' and b.active and not b.p.dead:
+                v = pl.vehicle
+                if v is not None and b.p.vehicle is None and v.spec.seats > 1:
+                    w.put_in_vehicle(b.p, v)
+                    del b.trail[:]
+                elif v is None and b.p.vehicle is None and math.hypot(b.p.x - pl.ped.x, b.p.y - pl.ped.y) > 6.0:
+                    b._jump_near(pl.ped.x, pl.ped.y)
+        # спутник отстал: ждём его рядом
+        for b in list(m.blips):
+            o = b.obj
+            if o is not None and b.tex == 'blip_friend' and not isinstance(o, Vehicle) and o.vehicle is None:
+                self.move_player(o.x + 2.5, o.y)
+                self.cool = 0.6
+                return
         # цель-машина, в которую надо сесть
         for a in m.arrows:
             o = a.obj

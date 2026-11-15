@@ -529,6 +529,8 @@ class Player(object):
         # сесть в машину
         if self.no_enter_t > 0.0:
             self.no_enter_t -= dt
+            if inp.hit('f') and not self.indoors:
+                self._try_enter()
         elif (inp.hit('f') or inp.hit('enter')) and not self.indoors:
             self._try_enter()
 
@@ -733,7 +735,9 @@ class Player(object):
                     self.fire_cd = wp.rate
                     w.weapons.player_fire(wp, driveby=True)
         # выход
-        if inp.hit('f') or inp.hit('enter'):
+        if self.no_enter_t > 0.0:
+            self.no_enter_t -= dt
+        if inp.hit('f') or (inp.hit('enter') and self.no_enter_t <= 0.0):
             self.exit_wish = True
         if self.exit_wish:
             if thr > 0.0:

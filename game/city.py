@@ -92,6 +92,7 @@ ZONE_NAMES = {
     'L': 'Маячный',
     'beach': 'Городской пляж',
     'docks': 'Причалы',
+    'ship': 'Сухогруз «Арктур»',
     'coast': 'Побережье',
     'sea': 'Залив',
     'road': 'Трасса',
@@ -100,9 +101,27 @@ ZONE_NAMES = {
     'bridge_east': 'Портовый мост',
 }
 
+# Названия улиц: линии сетки с запада на восток и с юга на север.  Проспекты — широкие (см. ROAD_*_AVE).
+STREETS_X = ['Западная набережная', 'Кузнечная улица', 'Гончарная улица', 'Адмиральский проспект', 'Садовая улица',
+             'Театральная улица', 'проспект Мира', 'Якорная улица', 'Портовое шоссе', 'Канатная улица',
+             'Причальный проезд', 'Заводская улица', 'Нефтяное шоссе', 'Маячная улица', 'Лётная улица',
+             'Восточная улица']
+STREETS_Y = ['Морской проспект', 'Пляжная улица', 'Полицейский проспект', 'Банковская улица', 'Парковая улица',
+             'Портовый проспект', 'Сосновая улица', 'Ржавая улица', 'Северная набережная',
+             'Речной проспект', 'Чайная улица', 'Заречный проспект', 'Слободская улица', 'Огородная улица',
+             'Дальняя улица']
+# номера домов для сюжета: место -> (улица, дом)
+ADDRESS = {'safehouse': ('Сосновая', 12), 'bruce': ('Сосновая', 31), 'boss': ('Банковская', 21)}
+
+# корабль у среднего пирса: высота палубы над причалом
+SHIP_DECK = 3.4
+
 # особые здания:  (i, j) квартала -> (имя, подсказка)
 LANDMARKS = {
-    (1, 3): 'safehouse',
+    (1, 3): 'terminal',         # общага у конечной автобуса: здесь Макс выходит в начале игры
+    (3, 6): 'safehouse',        # дом Макса с гаражом на Сосновой
+    (6, 6): 'bruce',            # дом Брюса, брата Макса
+    (6, 3): 'boss',             # казино, где сидит босс
     (0, 4): 'vano',
     (2, 2): 'spray',
     (1, 5): 'guns',
@@ -121,7 +140,7 @@ LANDMARKS = {
 }
 
 LANDMARK_SIGNS = {
-    'safehouse': 'sign_safehouse', 'vano': 'sign_garage', 'spray': 'sign_spray', 'spray2': 'sign_spray',
+    'terminal': 'sign_safehouse', 'boss': 'sign_casino', 'vano': 'sign_garage', 'spray': 'sign_spray', 'spray2': 'sign_spray',
     'guns': 'sign_guns', 'guns2': 'sign_guns', 'rosa': 'sign_rosa', 'hospital': 'sign_hospital',
     'police': 'sign_police', 'bank': 'sign_bank', 'prof': 'sign_club', 'taxi': 'sign_taxi',
     'gas': 'sign_gas', 'port': 'sign_port', 'zakhar': 'sign_boats', 'grom': 'sign_tea',
@@ -282,6 +301,8 @@ class City(object):
         self.extra_land = []          # то же для карты: (x0, y0, x1, y1, z)
         self.bridges = []             # отрезки-мосты (dict отрезка)
         self.walk_strips = []         # внешние тротуары: (x0, y0, x1, y1)
+        self.covered = []             # крытые места, куда можно въехать: (x0, y0, x1, y1, высота потолка)
+        self.ramps = []               # наклонные площадки: индексы в self.pads
         self._chunk_ids = {}
         self.n_chunks = 0
 
@@ -473,10 +494,15 @@ class City(object):
     # ------------------------------------------------------------------
     # площадки
     # ------------------------------------------------------------------
-    def _pad(self, x0, y0, x1, y1, z, zone=None, on_map=False):
-        """Ровная площадка вне кварталов (причал, пирс, внешний тротуар)."""
+    def _pad(self, x0, y0, x1, y1, z, zone=None, on_map=False, slope=None):
+        """Ровная площадка вне кварталов (причал, пирс, палуба, внешний тротуар).
+
+        slope=(ось, z_начала, z_конца) делает площадку наклонной: высота меняется вдоль оси 'x' или 'y'
+        от меньшей координаты к большей (трап, аппарель).  z в этом случае — её наибольшая высота."""
         k = len(self.pads)
-        self.pads.append((x0, y0, x1, y1, z, zone))
+        self.pads.append((x0, y0, x1, y1, z, zone, slope))
+        if slope is not None:
+            self.ramps.append(k)
         for cx in range(int(x0 // 40.0), int(x1 // 40.0) + 1):
             for cy in range(int(y0 // 40.0), int(y1 // 40.0) + 1):
                 self._pad_grid.setdefault((cx, cy), []).append(k)
@@ -489,12 +515,62 @@ class City(object):
         if not lst:
             return None
         best = None
+        bz = 0.0
         pads = self.pads
         for k in lst:
             p = pads[k]
-            if p[0] <= x <= p[2] and p[1] <= y <= p[3] and (best is None or p[4] > best[4]):
-                best = p
+            if p[0] <= x <= p[2] and p[1] <= y <= p[3]:
+                z = self.pad_z(p, x, y)
+                if best is None or z > bz:
+                    best = p
+                    bz = z
         return best
+
+    @staticmethod
+    def pad_z(p, x, y):
+        """Высота площадки в точке (у наклонной зависит от места)."""
+        s = p[6]
+        if s is None:
+            return p[4]
+        if s[0] == 'x':
+            t = (x - p[0]) / (p[2] - p[0])
+        else:
+            t = (y - p[1]) / (p[3] - p[1])
+        return s[1] + (s[2] - s[1]) * (0.0 if t < 0.0 else (1.0 if t > 1.0 else t))
+
+    def ceiling(self, x, y):
+        """Высота потолка над точкой, если она под крышей гаража или покрасочной (иначе None)."""
+        for (x0, y0, x1, y1, z) in self.covered:
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return z
+        return None
+
+    def street_name(self, x, y, reach=17.0):
+        """Название улицы, на которой или рядом с которой стоит точка (None — улицы рядом нет)."""
+        kind, obj = self.where(x, y)
+        if kind == 'seg':
+            if obj['bridge'] is not None:
+                return None                              # у мостов свои названия — как у районов
+            return STREETS_Y[obj['j']] if obj['kind'] == 'h' else STREETS_X[obj['i']]
+        best = None
+        bd = reach
+        i, j = self.cell_at(x, y)
+        for jj in (j, j + 1):
+            if 0 <= jj < len(self.ys) and abs(self.ys[jj] - y) < bd and (self._seg_exists_h(i, jj) if 0 <= i < self.nx
+                                                                           else False):
+                bd = abs(self.ys[jj] - y)
+                best = STREETS_Y[jj]
+        for ii in (i, i + 1):
+            if 0 <= ii < len(self.xs) and abs(self.xs[ii] - x) < bd and (self._seg_exists_v(ii, j) if 0 <= j < self.ny
+                                                                           else False):
+                bd = abs(self.xs[ii] - x)
+                best = STREETS_X[ii]
+        return best
+
+    def address(self, name):
+        """Адрес сюжетного места строкой: «Сосновая, 12»."""
+        a = ADDRESS.get(name)
+        return '%s, %d' % a if a else ''
 
     # ------------------------------------------------------------------
     # запросы
@@ -572,7 +648,7 @@ class City(object):
             return self.bridge_z(obj, (x if obj['kind'] == 'h' else y) - obj['a'])
         p = self.pad_at(x, y)
         if p is not None:
-            return p[4]
+            return p[4] if p[6] is None else self.pad_z(p, x, y)
         return self.terrain.height(x, y)
 
     def zone_at(self, x, y):
@@ -887,6 +963,14 @@ class City(object):
             for cx in (fx0 + 3, fx0 + 9, fx1 - 9, fx1 - 3):
                 self.cyls.append(dict(x=cx, y=fy0 - 0.9, z0=CURB, z1=CURB + GF_H + FLOOR_H, r=0.55, tex='concrete',
                                       color=(1.0, 0.97, 0.9), block=b.id, solid=True, n=8))
+        elif name == 'boss':
+            # казино: невысокое здание в духе ар-деко, перед входом — стоянка для «своих»
+            bld = Building(fx0, fy0, fx1, fy1, GF_H + 4 * FLOOR_H, 'fac_deco_b', b.id, gf_tex='gf_office',
+                           tint=(1.0, 0.93, 0.86), sides_gf='s', name=name, blank_tex='concrete',
+                           roof_tex='roof_gravel')
+            for cx in (fx0 + 2.5, fx1 - 2.5):
+                self.cyls.append(dict(x=cx, y=fy0 - 0.8, z0=CURB, z1=CURB + GF_H, r=0.4, tex='concrete',
+                                      color=(0.95, 0.9, 0.8), block=b.id, solid=True, n=8))
         else:       # prof: клуб/офис
             bld = Building(fx0, fy0, fx1, fy1, GF_H + 18 * FLOOR_H, 'fac_glass_b', b.id, gf_tex='gf_office',
                            sides_gf='s', name=name, blank_tex='concrete', roof_tex='roof_gravel')
@@ -901,6 +985,9 @@ class City(object):
         if name == 'hospital':
             self._spot(lm['road'][0] + 10, b.y0 - PARK_STRIP * 0.5 if not ROAD_Y_AVE[b.j] else b.y0 + 1.3, 0.0,
                        'D', kind='ambulance', block=b.id)
+        if name == 'boss':
+            # куда ставят машину, привезённую боссу: у тротуара правее входа
+            lm['park'] = (lm['road'][0] + 9.0, b.y0 - PARK_STRIP * 0.5 if not ROAD_Y_AVE[b.j] else b.y0 - 1.9)
 
     def _plaza(self, b, r, lx0, ly0, lx1, ly1):
         self._ground(lx0, ly0, lx1, ly1, 'pavers', b.id)
@@ -1074,7 +1161,7 @@ class City(object):
                 self._big_sign(bld, 's', LANDMARK_SIGNS[lm], z=CURB + GF_H + 1.6)
                 self._register_landmark(lm, bld, 's', b)
             else:
-                if lm == 'safehouse':
+                if lm == 'terminal':
                     bld.fac = 'fac_brick_c'
                     bld.gf_tex = 'gf_door'
                     bld.h = GF_H + 4 * FLOOR_H
@@ -1112,6 +1199,7 @@ class City(object):
         lm = self._register_landmark(name, fake, 's', b)
         lm['bay'] = (cx, y0 + depth * 0.5)           # точка внутри бокса
         lm['bay_rect'] = (cx - bay, y0, cx + bay, y0 + depth)
+        self.covered.append((cx - bay, y0, cx + bay, y0 + depth, CURB + h - 0.5))
         # вывеска над въездом
         self.special.setdefault('free_signs', []).append(
             dict(x=cx, y=y0 - 0.12, z=CURB + h + 1.4, w=8.8, h=2.2, tex='sign_spray', side='s', block=b.id))
@@ -1217,6 +1305,10 @@ class City(object):
             for k, w in enumerate(widths):
                 lx0, lx1 = xx, xx + w
                 xx += w
+                if lm == 'safehouse' and row == 0 and len(widths) >= 4 and k in (1, 2):
+                    if k == 1:
+                        self._home_estate(b, r, lx0, y0, lx0 + w * 2.0, ymid)
+                    continue
                 hw = r.rangef(10.0, min(13.0, w - 7.0))
                 hd = r.rangef(8.0, 10.0)
                 drive_left = r.chance(0.5)
@@ -1238,6 +1330,11 @@ class City(object):
                                roof_color=r.pick(roofs), blank_tex='fac_siding')
                 bld.open_sides = front           # сторона с дверью
                 self.buildings.append(bld)
+                if lm == 'bruce' and row == 0 and k == len(widths) // 2:
+                    bld.h = 2 * FLOOR_H
+                    bld.tint = (0.80, 0.90, 1.0)
+                    bld.name = 'bruce'
+                    self._register_landmark('bruce', bld, 's', b)
                 # подъездная дорожка + машина
                 dx0 = lx0 + 0.8 if drive_left else lx1 - 0.8 - dw
                 if row == 0:
@@ -1271,6 +1368,51 @@ class City(object):
         self._wall(x0 + 1.0, ymid, x1 - 1.0, ymid, 1.1, 'hedge', b.id, thick=0.7, kind='hedge')
         if r.chance(0.35):
             self.packages.append((x0 + 1.4, ymid + 1.5))
+
+    def _home_estate(self, b, r, x0, y0, x1, ymid):
+        """Дом Макса: двухэтажный дом и гараж на три машины с въездом с улицы.
+
+        Гараж — три стены и плоская крыша; крыша не мешает проезду (она только нарисована),
+        ворота рисует и двигает garage.py."""
+        hw, hd = 13.0, 10.0
+        hx0, hy0 = x0 + 3.0, y0 + 7.5
+        bld = Building(hx0, hy0, hx0 + hw, hy0 + hd, 2 * FLOOR_H, 'fac_siding', b.id, gf_h=0.0,
+                       tint=(0.98, 0.92, 0.78), roof_type='gable', roof_tex='roof_tiles',
+                       roof_color=(0.62, 0.5, 0.46), blank_tex='fac_siding', name='safehouse')
+        bld.open_sides = 's'
+        self.buildings.append(bld)
+        lm = self._register_landmark('safehouse', bld, 's', b)
+        # дорожка от тротуара к двери
+        cx = hx0 + hw * 0.5
+        self.ground.append((cx - 1.0, y0, cx + 1.0, hy0, 'pavers', (2.0, 2.0), (0.9, 0.9, 0.9), b.id, CURB + 0.02, 0))
+        self._prop('mailbox', cx - 1.6, y0 + 0.5, math.pi / 2, b.id)
+        # гараж: внутри 10.2 x 7.2 м, ворота во всю ширину смотрят на улицу
+        gw, gd, t, gh = 10.2, 7.2, 0.4, 3.0
+        gx0 = x1 - 3.0 - gw - 2 * t
+        gy0 = y0 + 9.0
+        ix0, iy0, ix1, iy1 = gx0 + t, gy0, gx0 + t + gw, gy0 + gd
+        tint = (0.92, 0.9, 0.86)
+        for (px0, py0, px1, py1) in ((gx0, gy0, ix0, iy1 + t), (ix1, gy0, ix1 + t, iy1 + t), (ix0, iy1, ix1, iy1 + t)):
+            w_ = Building(px0, py0, px1, py1, gh, 'fac_siding', b.id, gf_h=0.0, tint=tint, roof_tex='roof_tar',
+                          blank_tex='fac_siding', sides_win='', name='garage')
+            w_.night = False
+            self.buildings.append(w_)
+        self._box(gx0 - 0.3, gy0 - 0.5, CURB + gh, ix1 + t + 0.3, iy1 + t + 0.3, CURB + gh + 0.35, 'roof_tar', b.id,
+                  color=(0.5, 0.5, 0.52), solid=False, faces='xXyYZz')
+        self.ground.append((ix0, iy0, ix1, iy1, 'concrete', (4.0, 4.0), (0.74, 0.74, 0.76), b.id, CURB + 0.03, 0))
+        # площадка перед воротами и выезд на улицу
+        self.ground.append((ix0, y0, ix1, iy0, 'concrete', (4.0, 4.0), (0.86, 0.86, 0.86), b.id, CURB + 0.02, 0))
+        slots = [(ix0 + gw * (k + 0.5) / 3.0, iy0 + gd * 0.5 + 0.2) for k in range(3)]
+        self.special['garage'] = dict(rect=(ix0, iy0, ix1, iy1), door_y=iy0, z=CURB, h=gh, slots=slots, yaw=math.pi / 2,
+                                      front=(ix0 + gw * 0.5, y0 - 1.6), block=b.id)
+        self.covered.append((ix0 - t, iy0 - 0.5, ix1 + t, iy1 + t, CURB + gh))
+        lm['garage'] = (ix0 + gw * 0.5, iy0 + gd * 0.5)
+        # живая изгородь по бокам участка и пара деревьев
+        self._wall(x0 + 0.4, y0 + 2.0, x0 + 0.4, ymid, 1.1, 'hedge', b.id, thick=0.7, kind='hedge')
+        self._wall(x1 - 0.4, y0 + 2.0, x1 - 0.4, ymid, 1.1, 'hedge', b.id, thick=0.7, kind='hedge')
+        self._prop('tree', hx0 + hw + 3.2, hy0 + hd + 3.0, 0.0, b.id, seed=77, size=1.2)
+        self._prop('tree', hx0 - 1.0, hy0 + hd + 5.0, 0.0, b.id, seed=78, size=1.0)
+        self._prop('bench', hx0 + hw * 0.5, hy0 + hd + 2.0, 0.0, b.id)
 
     def _gas_station(self, b, r, x0, y0, x1, y1):
         """Заправка на южной половине квартала."""
@@ -1748,6 +1890,8 @@ class City(object):
         wall_c = (0.74, 0.74, 0.72)
         # парапет вдоль воды: с проёмами у пирсов и там, где над причалами идёт мост
         gaps = [(py - 9.0, py + 9.0) for py in piers]
+        ship_cy = piers[1] + 9.0 + 2.0 + 8.0           # ось сухогруза: напротив неё в парапете въезд на аппарель
+        gaps.append((ship_cy - 3.4, ship_cy + 3.4))
         for seg in self.bridges:
             if seg['kind'] == 'h' and seg['a'] < dx1 < seg['b']:
                 hw = seg['width'] * 0.5 + 1.1
@@ -1786,12 +1930,72 @@ class City(object):
             fake.id = oc(dx0 + 20, cy)
             self._prop('crane', dx1 - 9.0, ya + 8.0, math.pi, fake.id)
             self._containers(fake, r, dx0 + 8.0, ya + 2.0, dx1 - 18.0, yb - 2.0, along_x=False, density=0.6)
-        # сухогруз у среднего пирса
-        sy = piers[1] + 9.0 + 2.0
-        self.special['ship'] = dict(x0=dx1 + 5.0, y0=sy, x1=dx1 + 75.0, y1=sy + 16.0, chunk=oc(dx1 + 40, sy + 8))
-        self.boxes.append(dict(x0=dx1 + 5.0, y0=sy, z0=WATER_Z, x1=dx1 + 75.0, y1=sy + 16.0, z1=5.0, tex=None,
-                               block=oc(dx1 + 40, sy + 8), color=(0, 0, 0), uv_m=3.0, solid=True, top_tex=None,
-                               top_color=None, faces='', stack_h=6.0))
+        # ---- сухогруз у среднего пирса.  На палубу можно подняться: по трапу с пирса и по аппарели с причала.
+        py = piers[1]
+        sx0, sx1 = dx1 + 5.0, dx1 + 75.0
+        sy0, sy1 = py + 11.0, py + 27.0
+        cy = (sy0 + sy1) * 0.5
+        deck = CURB + SHIP_DECK
+        chunk = oc(dx1 + 40, cy)
+        self._pad(sx0, sy0, sx1, sy1, deck, 'ship')
+        # аппарель: с причала на корму, по оси корабля (по ней съезжает машина)
+        rx0 = dx1 - 17.0
+        ramp = (rx0, cy - 2.7, sx0 + 0.4, cy + 2.7)
+        self._pad(ramp[0], ramp[1], ramp[2], ramp[3], deck, 'ship', slope=('x', CURB, deck))
+        # трап: вдоль борта в просвете между пирсом и корпусом, наверху — площадка у разрыва фальшборта
+        gx0, gx1 = sx0 + 9.0, sx0 + 18.0
+        gy0, gy1 = py + 8.9, sy0 + 0.1
+        self._pad(gx0, gy0, gx1, gy1, deck, 'ship', slope=('x', CURB, deck))
+        self._pad(gx1, gy0, gx1 + 2.2, gy1, deck, 'ship')
+        rail = (0.30, 0.31, 0.34)
+        bw = (0.16, 0.17, 0.20)
+        # перила трапа со стороны пирса и торец площадки
+        self._wall(gx0 + 1.3, gy0, gx1 + 2.2, gy0, 1.0 + SHIP_DECK, 'metal_paint', chunk, color=rail, thick=0.12)
+        self._wall(gx1 + 2.2, gy0, gx1 + 2.2, gy1, 1.0, 'metal_paint', chunk, color=rail, thick=0.12, z0=deck)
+        # борта аппарели
+        for yy in (ramp[1], ramp[3]):
+            self._wall(rx0 + 2.5, yy, sx0, yy, 0.9 + SHIP_DECK, 'metal_paint', chunk, color=rail, thick=0.14)
+        # фальшборт вокруг палубы: разрывы у площадки трапа и у аппарели
+        self._wall(sx0, sy0, gx1, sy0, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
+        self._wall(gx1 + 2.2, sy0, sx1, sy0, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
+        self._wall(sx0, sy1, sx1, sy1, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
+        self._wall(sx1, sy0, sx1, sy1, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
+        self._wall(sx0, sy0, sx0, ramp[1], 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
+        self._wall(sx0, ramp[3], sx0, sy1, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
+
+        def solid(x0_, y0_, x1_, y1_, z1_):
+            self.boxes.append(dict(x0=x0_, y0=y0_, z0=deck, x1=x1_, y1=y1_, z1=z1_, tex=None, block=chunk,
+                                   color=(0, 0, 0), uv_m=3.0, solid=True, top_tex=None, top_color=None, faces='',
+                                   stack_h=6.0))
+        # надстройка — на носу: корма свободна, на неё выходит аппарель
+        house = (sx1 - 17.0, sy0 + 2.0, sx1 - 5.0, sy1 - 2.0)
+        solid(house[0], house[1], house[2], house[3], deck + 9.6)
+        # контейнеры двумя рядами вдоль бортов; посередине — проезд от жёлтого контейнера к аппарели
+        rr = Rng(self.seed * 31 + 5)
+        cont = []
+        for row, yy in enumerate((sy0 + 1.7, sy1 - 1.7 - 2.44)):
+            for n in range(6):
+                if (row, n) in ((0, 1), (1, 0), (1, 3)):
+                    continue                            # проходы между контейнерами
+                cx0 = sx0 + 9.5 + n * 6.9
+                if row == 0 and gx1 - 1.0 < cx0 + 6.1 and cx0 < gx1 + 3.4:
+                    continue                            # у выхода с трапа пусто
+                lv = 1 if rr.chance(0.55) else 2
+                cont.append((cx0, yy, cx0 + 6.1, yy + 2.44, lv, rr.randint(0, len(self.CONTAINER_COLORS) - 1)))
+                solid(cx0, yy, cx0 + 6.1, yy + 2.44, deck + 2.6 * lv)
+        # жёлтый контейнер: в конце проезда, воротами к корме; три стенки — преграда, ворота — отдельно
+        yx0, yx1 = sx0 + 40.0, sx0 + 48.0
+        yy0, yy1 = cy - 1.8, cy + 1.8
+        t = 0.16
+        solid(yx0, yy0 - t, yx1, yy0, deck + 3.0)
+        solid(yx0, yy1, yx1, yy1 + t, deck + 3.0)
+        solid(yx1, yy0 - t, yx1 + t, yy1 + t, deck + 3.0)
+        self.special['ship'] = dict(
+            x0=sx0, y0=sy0, x1=sx1, y1=sy1, chunk=chunk, deck=deck, cy=cy, ramp=ramp, house=house,
+            stairs=(gx0, gy0, gx1, gy1), landing=(gx1, gy0, gx1 + 2.2, gy1), containers=cont,
+            yellow=(yx0, yy0, yx1, yy1), yellow_door=(yx0, cy), yellow_car=((yx0 + yx1) * 0.5 + 0.3, cy, math.pi),
+            stairs_foot=(gx0 - 1.5, py + 6.5), ramp_foot=(rx0 - 6.0, cy))
+        self.packages.append((sx1 - 2.5, sy0 + 1.2))          # тайник на баке, за надстройкой
         # стоянка грузовиков у южного края
         fake.id = oc(dx0 + 20, dy0 + 20)
         for k in range(5):
@@ -1900,7 +2104,7 @@ class City(object):
                 chunk = b.id if b is not None else self.outer_chunk(x, y)
                 self.signals.append(dict(node=(i, j), dir=d, x=x, y=y, yaw=yaw, block=chunk))
         # стартовая точка игрока
-        sh = self.landmarks.get('safehouse')
+        sh = self.landmarks.get('terminal')              # игра начинается у конечной автобуса
         if sh:
             self.start_pos = (sh['door'][0], sh['door'][1], math.pi / 2 * -1)
         else:

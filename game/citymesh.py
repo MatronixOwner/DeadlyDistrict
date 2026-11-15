@@ -728,34 +728,72 @@ class CityMesh(object):
         if ship:
             mb = self._mb(ship['chunk'])
             x0, y0, x1, y1 = ship['x0'], ship['y0'], ship['x1'], ship['y1']
-            mb.box(None, x0, y0, WATER_Z - 2.0, x1, y1, 1.2, (0.42, 0.12, 0.10, 1))
-            mb.box(None, x0, y0, 1.2, x1, y1, 5.0, (0.10, 0.11, 0.14, 1), top_color=(0.36, 0.2, 0.16, 1))
+            dz = ship['deck']
+            hull = (0.10, 0.11, 0.14, 1)
+            deck_c = (0.36, 0.33, 0.30, 1)
+            mb.box(None, x0, y0, WATER_Z - 2.0, x1, y1, 0.9, (0.42, 0.12, 0.10, 1))
+            mb.box(None, x0, y0, 0.9, x1, y1, dz, hull, top_color=deck_c)
+            # разметка проезда на палубе
+            cy = ship['cy']
+            for k in range(8):
+                xa = x0 + 6.0 + k * 4.4
+                mb.quad(None, (xa, cy - 2.75, dz + 0.02), (xa + 2.2, cy - 2.75, dz + 0.02),
+                        (xa + 2.2, cy - 2.6, dz + 0.02), (xa, cy - 2.6, dz + 0.02), color=(0.85, 0.72, 0.2, 1))
+                mb.quad(None, (xa, cy + 2.6, dz + 0.02), (xa + 2.2, cy + 2.6, dz + 0.02),
+                        (xa + 2.2, cy + 2.75, dz + 0.02), (xa, cy + 2.75, dz + 0.02), color=(0.85, 0.72, 0.2, 1))
             # нос
-            cy = (y0 + y1) * 0.5
-            mb.tri(None, (x1, y0, 5.0), (x1 + 12.0, cy, 5.0), (x1, y1, 5.0), color=(0.36, 0.2, 0.16, 1))
-            mb.quad(None, (x1, y0, WATER_Z - 2), (x1 + 12.0, cy, WATER_Z - 2), (x1 + 12.0, cy, 5.0), (x1, y0, 5.0),
-                    color=(0.10, 0.11, 0.14, 1))
-            mb.quad(None, (x1 + 12.0, cy, WATER_Z - 2), (x1, y1, WATER_Z - 2), (x1, y1, 5.0), (x1 + 12.0, cy, 5.0),
+            mb.tri(None, (x1, y0, dz), (x1 + 12.0, cy, dz), (x1, y1, dz), color=deck_c)
+            mb.quad(None, (x1, y0, WATER_Z - 2), (x1 + 12.0, cy, WATER_Z - 2), (x1 + 12.0, cy, dz + 1.0), (x1, y0, dz + 1.0),
+                    color=hull)
+            mb.quad(None, (x1 + 12.0, cy, WATER_Z - 2), (x1, y1, WATER_Z - 2), (x1, y1, dz + 1.0), (x1 + 12.0, cy, dz + 1.0),
                     color=(0.09, 0.10, 0.12, 1))
-            # надстройка
-            mb.box('fac_conc_a', x0 + 3.0, y0 + 2.0, 5.0, x0 + 14.0, y1 - 2.0, 14.6, (1, 1, 1, 1), uv_m=3.5,
-                   top_key='roof_gravel')
-            mb.cylinder(None, x0 + 8.0, cy, 14.6, 19.0, 1.6, 8, (0.8, 0.2, 0.15, 1), top_color=(0.05, 0.05, 0.05, 1))
-            rnd = random.Random(5)
-            for ix in range(7):
-                for iy in range(4):
-                    if rnd.random() < 0.2:
-                        continue
-                    for s in range(rnd.randint(1, 3)):
-                        cx0 = x0 + 18.0 + ix * 6.6
-                        cy0 = y0 + 2.4 + iy * 2.8
-                        mb.box('corrugated', cx0, cy0, 5.0 + s * 2.6, cx0 + 6.1, cy0 + 2.44, 7.6 + s * 2.6,
-                               _c4(rnd.choice(c.CONTAINER_COLORS)), uv_m=2.6)
+            # надстройка — на носу
+            hx0, hy0, hx1, hy1 = ship['house']
+            mb.box('fac_conc_a', hx0, hy0, dz, hx1, hy1, dz + 9.6, (1, 1, 1, 1), uv_m=3.5, top_key='roof_gravel')
+            hcx = (hx0 + hx1) * 0.5
+            mb.cylinder(None, hcx, cy, dz + 9.6, dz + 14.0, 1.6, 8, (0.8, 0.2, 0.15, 1), top_color=(0.05, 0.05, 0.05, 1))
+            # контейнеры на палубе
+            for (cx0, cy0, cx1, cy1, lv, ci) in ship['containers']:
+                rnd = random.Random(int(cx0 * 7 + cy0 * 13))
+                for s_ in range(lv):
+                    col = c.CONTAINER_COLORS[(ci + s_ * 3) % len(c.CONTAINER_COLORS)]
+                    if col[0] > 0.8 and col[1] > 0.6 and col[2] < 0.3:
+                        col = (0.2, 0.55, 0.3)          # жёлтый на этом корабле один — тот самый
+                    mb.box('corrugated', cx0, cy0, dz + s_ * 2.6, cx1, cy1, dz + 2.6 + s_ * 2.6, _c4(col), uv_m=2.6)
+            # жёлтый контейнер: пол, три стенки и крыша (ворота — отдельный подвижный узел, см. missions)
+            yx0, yy0, yx1, yy1 = ship['yellow']
+            yel = (0.93, 0.74, 0.12, 1)
+            t = 0.16
+            mb.box('corrugated', yx0, yy0 - t, dz, yx1, yy0, dz + 3.0, yel, uv_m=2.6)
+            mb.box('corrugated', yx0, yy1, dz, yx1, yy1 + t, dz + 3.0, yel, uv_m=2.6)
+            mb.box('corrugated', yx1, yy0 - t, dz, yx1 + t, yy1 + t, dz + 3.0, yel, uv_m=2.6)
+            mb.box('corrugated', yx0, yy0 - t, dz + 3.0, yx1 + t, yy1 + t, dz + 3.14, yel, uv_m=2.6)
+            mb.quad(None, (yx0, yy0, dz + 0.03), (yx1, yy0, dz + 0.03), (yx1, yy1, dz + 0.03), (yx0, yy1, dz + 0.03),
+                    color=(0.30, 0.26, 0.20, 1))
+            # аппарель: наклонная плита с причала на корму
+            rx0, ry0, rx1, ry1 = ship['ramp']
+            mb.quad('metal_paint', (rx0, ry0, CURB + 0.02), (rx1, ry0, dz + 0.02), (rx1, ry1, dz + 0.02),
+                    (rx0, ry1, CURB + 0.02), uv=(0.0, 0.0, 8.0, 2.0), color=(0.34, 0.35, 0.38, 1))
+            for yy in (ry0, ry1):                        # боковины плиты
+                mb.tri(None, (rx0, yy, CURB), (rx1, yy, CURB), (rx1, yy, dz), color=(0.20, 0.21, 0.24, 1))
+                mb.tri(None, (rx1, yy, CURB), (rx0, yy, CURB), (rx1, yy, dz), color=(0.20, 0.21, 0.24, 1))
+            # трап: ступени вдоль борта и площадка наверху
+            gx0, gy0, gx1, gy1 = ship['stairs']
+            n = 17
+            for k in range(n):
+                xa = gx0 + (gx1 - gx0) * k / n
+                xb = gx0 + (gx1 - gx0) * (k + 1) / n
+                za = CURB + (dz - CURB) * (k + 1) / n
+                mb.box(None, xa, gy0, za - 0.22, xb, gy1, za, (0.42, 0.43, 0.46, 1), top_color=(0.55, 0.56, 0.58, 1))
+            lx0, ly0, lx1, ly1 = ship['landing']
+            mb.box(None, lx0, ly0, dz - 0.2, lx1, ly1, dz, (0.42, 0.43, 0.46, 1), top_color=(0.55, 0.56, 0.58, 1))
             night = self._night(ship['chunk'])
-            P.glow(night, x0 + 8.0, cy, 20.0, 3.0, (1.0, 0.2, 0.15, 1.0))
-            P.glow(night, x1 + 11.0, cy, 6.0, 2.4, (0.3, 1.0, 0.4, 1.0))
+            P.glow(night, hcx, cy, dz + 15.0, 3.0, (1.0, 0.2, 0.15, 1.0))
+            P.glow(night, x1 + 11.0, cy, dz + 2.0, 2.4, (0.3, 1.0, 0.4, 1.0))
             for k in range(4):
-                P.glow(night, x0 + 14.2, y0 + 3.5 + k * 3.0, 11.0, 2.0, (1.0, 0.9, 0.6, 0.9))
+                P.glow(night, hx0 - 0.2, y0 + 3.5 + k * 3.0, dz + 6.0, 2.0, (1.0, 0.9, 0.6, 0.9))
+            for k in range(5):                           # фонари вдоль проезда: ночью палубу видно
+                P.glow(night, x0 + 8.0 + k * 9.0, cy, dz + 5.5, 2.6, (1.0, 0.92, 0.7, 0.8))
 
     # ------------------------------------------------------------------
     def _signals(self):

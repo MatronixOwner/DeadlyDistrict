@@ -51,7 +51,7 @@ def test_walk_and_collide(game, world):
     x1, y1 = pl.pos()
     assert y1 < y0 - 5.0
     # в стену дома пройти нельзя (в стороне от двери: в дверь-то войти можно)
-    lm = world.city.landmarks['safehouse']
+    lm = world.city.landmarks['terminal']
     pl.teleport(lm['door'][0] + 4.0, lm['door'][1] - 3.0)
     world.cam.yaw = math.pi / 2
     harness.run(game, 6.0, keys=('w', 'shift'))
@@ -63,7 +63,7 @@ def test_enter_drive_exit(game, world):
     w = world
     pl = w.player
     harness.quiet(w)
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     car = w.spawn_vehicle('sedan', x - 8.0, y - 1.0, 0.0)
     pl.teleport(x - 8.0, y + 1.5)
     harness.press(game, 'f')
@@ -104,7 +104,7 @@ def test_shooting_and_wanted(game, world):
     pl = w.player
     harness.quiet(w, peds=True)
     pl.give_weapon(W_PISTOL, 50)
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     pl.teleport(x, y - 3.0)
     victim = w.spawn_ped(x + 8.0, y - 3.0, math.pi, random_look(random, 'D'))
     victim.keep = True
@@ -131,7 +131,7 @@ def test_rocket_destroys_car(game, world):
     w = world
     pl = w.player
     harness.quiet(w, peds=True)
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     pl.teleport(x, y - 3.0)
     car = w.spawn_vehicle('hatch', x + 14.0, y - 3.3, 0.0)
     car.keep = True
@@ -300,8 +300,15 @@ def test_story_mission(game, world, mid):
     pl.invincible = True
     ms = w.missions
     spec = next(m for m in M.MISSIONS if m['id'] == mid)
-    x, y = w.city.landmarks[spec['contact']]['door']
-    pl.teleport(x, y - 2.0)
+    if spec.get('story'):
+        ms.done -= M.STORY_IDS                  # сюжет ещё не пройден: задание идёт с самого начала
+        ms.done |= set(spec['req'])
+        ms.ckpt.clear()
+        ms.sync_story()
+        pl.money = 0
+    else:
+        x, y = w.city.landmarks[spec['contact']]['door']
+        pl.teleport(x, y - 2.0)
     assert ms.start(spec)
     bot = Bot(game, verbose=False)
     t = 0.0
@@ -510,13 +517,16 @@ def test_graphics_settings_menu(game, world):
 # пролог
 # ----------------------------------------------------------------------
 def _after_intro(g, w, errors):
-    """После пролога (досмотренного или пропущенного) игра в рабочем состоянии: герой проснулся у себя."""
+    """После пролога (досмотренного или пропущенного) игра в рабочем состоянии: герой стоит на остановке,
+    управление у игрока, и ему звонит брат."""
     ms = w.missions
     pl = w.player
     assert ms.intro is None and g.state == 'play' and not g.ui.active
-    assert w.interiors.current is not None and w.interiors.current.name == 'safehouse'
-    assert not pl.freeze and pl.script_move is None and pl.ped.act is None and not pl.invincible
-    assert not pl.ped.node.isHidden() and abs(pl.ped.z) < 0.05
+    assert w.interiors.current is None
+    sx, sy, syaw = w.city.start_pos
+    assert math.hypot(pl.ped.x - (sx - 11.5), pl.ped.y - (sy - 1.3)) < 6.0
+    assert not pl.freeze and pl.script_move is None and not pl.invincible
+    assert not pl.ped.node.isHidden() and abs(pl.ped.z - w.city.ground_z(*pl.pos())) < 0.05
     assert w.hud.visible and w.cam.override is None and ms.letter.isHidden()
     assert w.traffic.enabled and w.sky.time_scale == 1.0 and w.scene_engine is None
     assert not w.interiors.cinema
@@ -530,10 +540,14 @@ def _after_intro(g, w, errors):
     harness.run(g, 0.8, keys=('w',))
     x1, y1 = pl.pos()
     assert math.hypot(x1 - x0, y1 - y0) > 1.0
+    # ...и тут же звонит Брюс: первое задание началось
+    harness.run(g, 4.0)
+    assert ms.active is not None and ms.active.spec['id'] == 's1'
+    assert w.hud.phone_on
 
 
 def test_intro_plays_to_the_end(game):
-    """Пролог без единого нажатия: автобус, остановка, звонок, комната — и игра начинается."""
+    """Пролог без единого нажатия: трасса, мост, остановка — и игра начинается звонком брата."""
     g = game
     random.seed(7)
     errors = g._errors_total
@@ -543,7 +557,7 @@ def test_intro_plays_to_the_end(game):
     pl = w.player
     assert ms.intro is not None and pl.freeze
     lines = []
-    seen = dict(bus=False, hidden=False, walked=False, phone=False, room=False, bed=False, paused=False)
+    seen = dict(bus=False, hidden=False, walked=False, room=False, paused=False)
     t = 0.0
     while ms.intro is not None and t < 120.0:
         g.step(DT)
@@ -557,22 +571,21 @@ def test_intro_plays_to_the_end(game):
         seen['bus'] |= it['bus'] is not None and abs(it['bus'].speed) > 5.0
         seen['hidden'] |= pl.ped.node.isHidden()
         seen['walked'] |= pl.script_move is not None and pl.ped.speed > 0.5
-        seen['phone'] |= pl.ped.act is not None and pl.ped.act[0] == 'phone'
         seen['room'] |= w.interiors.current is not None
-        seen['bed'] |= pl.ped.act is not None and pl.ped.act[0] == 'sleep' and pl.ped.z > 0.3
         seen['paused'] |= g.state != 'play'
         assert pl.freeze and not w.hud.visible
         assert w.police.level == 0 and pl.ped.health == 100
-    assert 40.0 < t < 90.0, t
-    assert len(lines) >= 8 and lines[0].startswith('Порт-Глухов')
-    assert any(s.startswith('Вано:') for s in lines) and any(s.startswith('Макс:') for s in lines)
-    assert seen == dict(bus=True, hidden=True, walked=True, phone=True, room=True, bed=True, paused=False), seen
+    assert 20.0 < t < 60.0, t
+    assert len(lines) >= 4 and lines[0].startswith('Порт-Глухов')
+    assert any(s_.startswith('Водитель:') for s_ in lines) and any('брат' in s_ for s_ in lines)
+    assert not any('Вано' in s_ for s_ in lines)                 # старого сюжета в прологе больше нет
+    assert seen == dict(bus=True, hidden=True, walked=True, room=False, paused=False), seen
     _after_intro(g, w, errors)
 
 
-@pytest.mark.parametrize('when', [0.1, 3.0, 9.0, 18.0, 25.5, 33.0, 46.0, 53.0, 59.0])
+@pytest.mark.parametrize('when', [0.1, 3.0, 9.0, 18.0, 25.5, 30.0])
 def test_intro_can_be_skipped_any_time(game, when):
-    """Esc в любой момент пролога: декорации убраны, герой дома, пауза не открылась."""
+    """Esc в любой момент пролога: декорации убраны, герой на остановке, пауза не открылась."""
     g = game
     random.seed(11)
     errors = g._errors_total
@@ -586,7 +599,7 @@ def test_intro_can_be_skipped_any_time(game, when):
 
 
 def test_intro_enter_steps_through_shots(game):
-    """Enter листает кадры пролога: за десяток-другой нажатий он заканчивается."""
+    """Enter листает кадры пролога: за несколько нажатий он заканчивается."""
     g = game
     random.seed(13)
     errors = g._errors_total
@@ -597,13 +610,13 @@ def test_intro_enter_steps_through_shots(game):
         harness.run(g, 0.5)
         harness.press(g, 'enter')
         n += 1
-    assert 6 <= n < 30, n
+    assert 3 <= n < 20, n
     harness.run(g, 0.3)
     _after_intro(g, w, errors)
 
 
-def test_first_hints_lead_out_of_the_room(game):
-    """После пролога подсказки: сначала про комнату и выход, на улице — куда идти."""
+def test_first_call_and_hints(game):
+    """После пролога звонит Брюс: его реплики, адрес дома и подсказка, как добыть машину."""
     g = game
     random.seed(17)
     g.new_game()
@@ -612,15 +625,24 @@ def test_first_hints_lead_out_of_the_room(game):
     said = []
     orig = w.hud.help
     w.hud.help = lambda text, dur=6.0: (said.append(text), orig(text, dur))[1]
+    lines = []
     try:
         harness.run(g, 1.0)
         harness.press(g, 'escape')
-        harness.run(g, 4.0)
-        assert len(said) == 1 and 'комната' in said[0] and 'стрелк' in said[0]
-        w.interiors.leave(instant=True)
         harness.quiet(w, peds=True)
-        harness.run(g, 14.0)
-        assert len(said) == 2 and 'Вано' in said[1]
+        t = 0.0
+        while t < 40.0 and not (ms.active is not None and ms.active.markers):
+            g.step(DT)
+            t += DT
+            text = w.hud.sub_plain
+            if text and (not lines or lines[-1] != text):
+                lines.append(text)
+        assert lines[0] == 'Брюс: Хей, братан, как приехал?'
+        assert 'Макс: Да прекрасно добрался.' in lines and 'Брюс: Удачи.' in lines
+        assert any('домик купил' in s_ and w.city.address('safehouse') in s_ for s_ in lines)
+        assert ms.active.objective.startswith('Доберись до дома') and w.city.address('safehouse') in ms.active.objective
+        assert not w.hud.phone_on                                # трубку положили
+        assert any('F' in h for h in said)                       # как сесть в машину
     finally:
         w.hud.help = orig
 
@@ -642,28 +664,34 @@ def test_intro_interrupted_by_menu(game):
     assert g.state == 'menu' and w.missions.intro is None and not w.interiors.cinema
     harness.run(g, 1.0)
     assert not any(v.scripted for v in w.vehicles)
-    w = harness.start_game(g, street=False)
+    w = harness.start_game(g, street=False, story=True)
     _after_intro(g, w, errors)
 
 
 # ----------------------------------------------------------------------
 # сюжет: цепочка заказчиков
 # ----------------------------------------------------------------------
-def test_story_chain_is_reachable():
-    """Сюжет проходим в любом порядке: пока пройдено не всё, какое-то задание доступно."""
+def test_story_and_jobs_structure():
+    """Сюжет — задания Брюса и босса, они идут по порядку и начинаются звонком.  Остальное — подработка
+    у заказчиков: она открывается после сюжета и проходима в любом порядке."""
     ids = [m['id'] for m in M.MISSIONS]
-    assert len(ids) == len(set(ids)) == 18 and set(ids) == M.STORY_IDS and M.STORY_TOTAL == 18
-    assert set(m['contact'] for m in M.MISSIONS) == set(M.CONTACTS) and len(M.CONTACTS) == 5
+    assert len(ids) == len(set(ids)) == 20
+    assert [m['id'] for m in M.STORY] == ['s1', 's2'] and M.STORY_TOTAL == 2 and M.STORY_IDS == {'s1', 's2'}
+    assert all(m['contact'] is None and m.get('story') for m in M.STORY)
+    assert M.STORY[0]['req'] == [] and M.STORY[1]['req'] == ['s1']
+    assert [m['reward'] for m in M.STORY] == [5000, 10000]
+    assert len(M.JOBS) == 18 and M.JOB_IDS == set(ids) - M.STORY_IDS
+    assert set(m['contact'] for m in M.JOBS) == set(M.CONTACTS) and len(M.CONTACTS) == 5
     by_contact = {}
-    for m in M.MISSIONS:
-        assert all(r in M.STORY_IDS for r in m['req']), m['id']
+    for m in M.JOBS:
         prev = by_contact.get(m['contact'])
         if prev is not None:
             assert prev in m['req'], 'задания одного заказчика идут по порядку: %s' % m['id']
         by_contact[m['contact']] = m['id']
-    assert set(M.ANNOUNCE) <= M.STORY_IDS
+    assert set(M.ANNOUNCE) <= M.JOB_IDS
     first = [m['id'] for m in M.MISSIONS if not m['req']]
-    assert first == ['v1']                                    # в начале игры одна дорога — к Вано
+    assert first == ['s1']                                    # в начале игры одна дорога — звонок брата
+    assert next(m for m in M.JOBS if m['id'] == 'v1')['req'] == ['s2']       # подработка — после сюжета
 
     def avail(done):
         return [m['id'] for m in M.MISSIONS if m['id'] not in done and all(r in done for r in m['req'])]
@@ -671,21 +699,10 @@ def test_story_chain_is_reachable():
     rnd = random.Random(5)
     for trial in range(300):
         done = set()
-        while len(done) < 18:
+        while len(done) < 20:
             a = avail(done)
             assert a, 'тупик после %s' % sorted(done)
             done.add(rnd.choice(a))
-    # финал — последним, и только когда закрыты все четыре остальные ветки
-    p4 = next(m for m in M.MISSIONS if m['id'] == 'p4')
-    need = set()
-    todo = list(p4['req'])
-    while todo:
-        r = todo.pop()
-        if r not in need:
-            need.add(r)
-            todo.extend(next(m for m in M.MISSIONS if m['id'] == r)['req'])
-    assert need == M.STORY_IDS - {'p4'}
-    # новые заказчики открываются не из гаража Вано, а по цепочке
     req = {m['id']: set(m['req']) for m in M.MISSIONS}
     assert req['z1'] == {'r1'} and 'z1' in req['g1'] and 'g1' in req['p1']
 
@@ -714,7 +731,7 @@ def test_story_announces_next_contact(game, world):
                 for name, info in M.CONTACTS.items():
                     assert (info['title'] in said[0]) == (ms.next_mission(name) is not None and
                                                            name != spec['contact']), (mid, said[0])
-        assert ms.progress() == (18, 18)
+        assert ms.progress() == (2, 2) and ms.jobs_progress() == (18, 18)
         assert not said                                      # после финала звать некуда
     finally:
         w.hud.help = orig
@@ -809,7 +826,7 @@ def test_every_door_leads_in_and_back_out(game, world):
     its = w.interiors
     harness.quiet(w, peds=True)
     assert [r.name for r in its.order] == ['safehouse', 'vano', 'rosa', 'prof', 'guns', 'guns2', 'police',
-                                           'hospital', 'bank', 'zakhar', 'grom']
+                                           'hospital', 'bank', 'zakhar', 'grom', 'boss']
     for r in its.order:
         x, y = r.out
         pl.teleport(x, y - 3.0, math.pi / 2)
@@ -847,7 +864,9 @@ def test_street_is_frozen_while_indoors(game, world):
     """Пока герой в помещении, улица стоит (её не видно), а часы идут; вышел — всё на прежних местах и едет."""
     w = world
     its = w.interiors
-    harness.run(game, 1.5)
+    w.player.teleport(*w.city.landmarks['safehouse']['door'])      # у своего дома: туда же герой и выйдет
+    w.traffic.populate()
+    harness.run(game, 2.5)
     cars = [v for v in w.vehicles if v.mode == Vehicle.RAIL and v.npc and abs(v.speed) > 2.0]
     assert cars
     its.enter('safehouse', instant=True)
@@ -1065,7 +1084,7 @@ def test_every_hidden_package_can_be_reached(game, world):
     for v in list(w.vehicles):
         if not v.keep:
             w.remove_vehicle(v)
-    assert len(c.packages) == 46
+    assert len(c.packages) == 47
     lost = []
     for i, pk in enumerate(c.packages):
         x, y = pk[0], pk[1]

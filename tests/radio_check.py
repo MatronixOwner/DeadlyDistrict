@@ -114,6 +114,13 @@ def main():
         s = au.music_snd
         return s is not None and s.status() == s.PLAYING
 
+    def started(timeout=3.0):
+        """Дождаться, пока звуковой движок действительно заиграет: на занятой машине это не мгновенно."""
+        t0 = time.time()
+        while not playing() and time.time() - t0 < timeout:
+            frames(0.1, real=True)
+        return playing()
+
     assert base.musicManager is not None and base.musicManager.isValid(), 'звуковой движок не запустился'
     tracks = A.scan_tracks()
     assert len(tracks) == len(made), tracks
@@ -122,13 +129,13 @@ def main():
 
     frames(0.3)
     assert not playing(), 'пешком радио молчит'
-    x, y = w.city.landmarks['safehouse']['road']
+    x, y = w.city.landmarks['terminal']['road']
     car = w.spawn_vehicle('sedan', x, y - 1.5, 0.0)
     car.radio = A.USER_STATION
     pl.teleport(x, y - 4.0)
     pl.enter_vehicle(car, silent=True)
     frames(0.3)
-    assert au.station == A.USER_STATION and playing(), 'в машине радио не заиграло'
+    assert au.station == A.USER_STATION and started(), 'в машине радио не заиграло'
     assert au.user_tracks == len(made)
     heard = set()
     for _ in range(len(made)):
@@ -160,10 +167,10 @@ def main():
         if A.STATIONS[k][1] is None:
             assert not playing(), 'станция «выключено» должна молчать'
         else:
-            assert playing(), 'молчит станция %s' % A.STATIONS[k][0]
+            assert started(), 'молчит станция %s' % A.STATIONS[k][0]
     harness.press(g, 'r')
     frames(0.2)
-    assert car.radio == A.USER_STATION and playing()
+    assert car.radio == A.USER_STATION and started()
 
     # вышел из машины — тишина; сел в другую — та же станция
     pl.leave_vehicle(force=True)
@@ -173,7 +180,7 @@ def main():
     car2.radio = 3
     pl.enter_vehicle(car2, silent=True)
     frames(0.3)
-    assert car2.radio == A.USER_STATION and playing()
+    assert car2.radio == A.USER_STATION and started()
 
     # без своих песен станция не молчит: играет программа из музыки игры
     pl.leave_vehicle(force=True)
@@ -181,7 +188,7 @@ def main():
     shutil.rmtree(mdir)
     pl.enter_vehicle(car2, silent=True)
     frames(0.3)
-    assert au.user_tracks == 0 and playing() and len(au.playlist) >= 4
+    assert au.user_tracks == 0 and started() and len(au.playlist) >= 4
 
     if os.environ.get('DD_RADIO_LISTEN'):
         frames(float(os.environ['DD_RADIO_LISTEN']), real=True)

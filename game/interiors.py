@@ -500,9 +500,9 @@ class Builder(object):
 # комнаты
 # ---------------------------------------------------------------------------
 def room_safehouse(b):
-    """Комната Макса в общаге: кровать, диван, кухонный угол."""
+    """Дом Макса на Сосновой: кровать, диван, кухонный угол."""
     b.shell(7.0, 5.6, 2.8, ('int_parquet', 2.0, (0.9, 0.86, 0.8, 1.0)), ('int_paper', 1.2, (0.80, 0.78, 0.62, 1.0)),
-            base=DARKWOOD, light='warm', title='Комната Макса')
+            base=DARKWOOD, light='warm', title='Дом Макса')
     b.door('s', 1.2, 'int_door_old', main=True)
     b.window('n', 2.0)
     b.window('n', 4.2)
@@ -657,6 +657,56 @@ def room_prof(b):
     b.person('guard', make_look(model='m_leather_c', scale=1.05), 6.6, 0.8, 110.0, ('arms', 'idle'), 'Охранник',
              ['Охранник: Руки на виду. И без резких движений.'])
     b.spot('talk', 5.25, 4.6, 90.0)
+
+
+def room_boss(b):
+    """Казино «Фортуна»: игорный зал, стойка и угол босса с охраной."""
+    b.shell(13.0, 9.6, 3.4, ('int_carpet', 2.4, (0.42, 0.14, 0.16, 1.0)), ('int_paper', 1.4, (0.26, 0.20, 0.30, 1.0)),
+            wainscot=('int_wooddark', 1.4, WHITE, 1.2), light='dim', title='Казино «Фортуна»',
+            ceil=('int_wooddark', 2.0, (0.45, 0.42, 0.40, 1.0)))
+    b.door('s', 6.5, 'int_door_shop', main=True)
+    # игорные столы: зелёное сукно
+    for (x, y) in ((2.6, 3.2), (2.6, 6.2)):
+        b.box(x - 1.15, y - 0.75, x + 1.15, y + 0.75, 0.0, 0.8, 'int_wooddark', WHITE, 1.0, top_key='int_carpet',
+              top_color=(0.14, 0.46, 0.24, 1.0))
+        b.stool(x - 0.6, y - 1.15)
+        b.stool(x + 0.6, y - 1.15)
+        b.stool(x - 0.6, y + 1.15)
+        b.put('cup', x + 0.4, y + 0.1, 0, 0.8, solid=False)
+    # стойка с бутылками у восточной стены
+    b.counter(10.3, 1.4, 10.9, 5.2, 1.1)
+    b.shelf('e', 1.4, 5.2, 0.0, 0.95, 'int_wooddark', (1.2, 1.2), 0.45)
+    b.shelf('e', 1.4, 5.2, 1.15, 2.55, 'int_bottles', (1.6, 0.7), 0.3)
+    for y in (2.0, 3.3, 4.6):
+        b.stool(9.85, y)
+    # угол босса: диван, столик, кресла напротив
+    b.rug(6.5, 7.3, 3.2, 4.6, 'int_rug', (1.0, 0.82, 0.7, 1.0))
+    b.put('sofa_black', 6.5, 8.9, 0)
+    b.put('table_dark', 6.5, 7.6)
+    b.put('armchair_dark', 4.9, 7.2, 60)
+    b.put('armchair_dark', 8.1, 7.2, -60)
+    b.put('lamp_floor', 8.6, 9.0)
+    b.put('plant_tall', 0.6, 9.0)
+    b.put('plant_tall', 12.4, 9.0)
+    b.put('plant_tall', 12.4, 0.6)
+    b.cabinet(0.33, 0.9, 90, 1.0, 0.6, 1.9, 'int_drinks', (0.4, 0.12, 0.32, 1.0), (0, 0.45, 1, 1))
+    b.picture('n', 2.6, 1.6, 1.6, 1.0, 'int_vault', BLACK)
+    b.picture('n', 10.6, 1.6, 1.4, 1.0, 'int_poster_b')
+    b.picture('w', 4.8, 1.5, 1.2, 0.5, 'sign_casino', BLACK, True)
+    for (x, y) in ((2.6, 3.2), (2.6, 6.2), (6.5, 7.4), (9.6, 3.3)):
+        b.lamp(x, y, 'pendant', (1.0, 0.8, 0.5), 2.6, 0.5)
+    b.person('boss', None, 6.5, 8.75, -90.0, ('sit', 'sit_talk', 'sit'), 'Босс',
+             ['Босс: Без дела сюда не ходят.', 'Босс: Время — деньги. Мои деньги.'], sit=True)
+    b.person('guard_a', make_look(model='m_leather_b', scale=1.06), 4.4, 8.9, -70.0, ('arms', 'idle'), 'Охранник',
+             ['Охранник: Близко не подходи.'])
+    b.person('guard_b', make_look(model='m_shirt_h3b', scale=1.04), 8.9, 8.2, -110.0, ('arms', 'idle'), 'Охранник',
+             ['Охранник: Смотри, но руками не трогай.'])
+    b.person('dealer', make_look(model='m_shirt_c'), 2.6, 4.25, -90.0, ('idle', 'arms', 'listen'), 'Крупье',
+             ['Крупье: Ставки сделаны.', 'Крупье: Заведение всегда в плюсе.'])
+    b.person('player1', make_look(model='m_old_h3'), 2.0, 2.05, 90.0, ('sit', 'sit_talk'), sit=True)
+    b.person('player2', make_look(model='f_goth', female=True), 9.85, 3.3, 0.0, ('sit', 'sit'), sit=True)
+    b.spot('talk', 6.5, 5.9, 90.0)
+    b.spot('side', 5.5, 6.1, 80.0)
 
 
 def room_guns(b):
@@ -904,10 +954,11 @@ ROOMS = [
     ('bank', room_bank, 'bank'),
     ('zakhar', room_zakhar, 'zakhar'),
     ('grom', room_grom, 'grom'),
+    ('boss', room_boss, 'boss'),
 ]
 DOOR_TEX = {'safehouse': 'int_door_old', 'vano': 'int_door_metal', 'rosa': 'int_door_shop', 'prof': 'int_door',
             'guns': 'int_door_shop', 'guns2': 'int_door_metal', 'police': 'int_door', 'hospital': 'int_door',
-            'bank': 'int_door_shop', 'zakhar': 'int_door_old', 'grom': 'int_door_shop'}
+            'bank': 'int_door_shop', 'zakhar': 'int_door_old', 'grom': 'int_door_shop', 'boss': 'int_door_shop'}
 
 
 class Interiors(object):
@@ -1176,10 +1227,8 @@ class Interiors(object):
         if self.cinema or (w.cam.x - cur.exit[0]) ** 2 + (w.cam.y - cur.exit[1]) ** 2 < 9.0:
             cur.arrow_in.np.hide()                  # вплотную к камере стрелка закрыла бы пол-экрана
         if on_foot and not pl.freeze and abs(p.x - cur.exit[0]) < 0.62 and p.y - cur.oy < 0.72:
-            ms = w.missions
-            if ms is None or ms.active is None:
-                self._begin('leave', cur)
-                return
+            self._begin('leave', cur)
+            return
         self._hide_tall(cur)
         self._people(cur, dt)
 

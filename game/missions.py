@@ -12,6 +12,7 @@ from .mathutil import clamp, angle_diff
 from . import settings as settings_mod
 
 from .ui import ACCENT as GOLD, DANGER as REDC, COOL as BLUEC      # цвета больших сообщений
+from .ui import money as ui_money
 
 CONTACTS = {
     'vano': dict(title='Вано', blip='blip_vano', place='гараж Вано'),
@@ -36,6 +37,9 @@ def contact_look(name):
     if name == 'grom':
         return make_look(skin=SKINS[1], hair=(0.2, 0.18, 0.16), shirt=(0.2, 0.3, 0.6), pants=(0.12, 0.14, 0.2),
                          torso='police', scale=1.04, fat=1.15, model='cop_m')
+    if name in ('bruce', 'boss'):
+        from .story import person_look
+        return person_look(name)
     if name == 'kostya':
         return make_look(skin=SKINS[1], hair=(0.2, 0.16, 0.1), shirt=(0.12, 0.12, 0.12), pants=(0.2, 0.2, 0.24),
                          torso='jacket', scale=1.0, model='m_leather_b')
@@ -1251,8 +1255,14 @@ def m_taxi(m):
         yield 1.5
 
 
+from . import story as S                                   # noqa: E402
+
+# Сюжет — задания Брюса и босса: они начинаются телефонным звонком (contact=None).
+# Остальное — подработка у знакомых: заказчики ждут в своих заведениях и открываются после сюжета.
 MISSIONS = [
-    dict(id='v1', contact='vano', title='Знакомство', reward=500, fn=m_v1, req=[]),
+    dict(id='s1', contact=None, title='Брат за брата', reward=5000, fn=S.m_s1, req=[], story=True, wait=2.0),
+    dict(id='s2', contact=None, title='Жёлтый контейнер', reward=10000, fn=S.m_s2, req=['s1'], story=True, wait=28.0),
+    dict(id='v1', contact='vano', title='Знакомство', reward=500, fn=m_v1, req=['s2']),
     dict(id='v2', contact='vano', title='Должок', reward=1200, fn=m_v2, req=['v1']),
     dict(id='v3', contact='vano', title='Конкуренты', reward=2000, fn=m_v3, req=['v2']),
     dict(id='v4', contact='vano', title='Круг почёта', reward=3000, fn=m_v4, req=['v3']),
@@ -1272,11 +1282,15 @@ MISSIONS = [
     dict(id='p4', contact='prof', title='Большой куш', reward=50000, fn=m_p4, req=['p3', 'v4', 'r4', 'g3']),
 ]
 TAXI = dict(id='taxi', contact=None, title='Таксист', reward=0, fn=m_taxi, side=True)
-STORY_TOTAL = len(MISSIONS)
-STORY_IDS = frozenset(m['id'] for m in MISSIONS)
+STORY = [m for m in MISSIONS if m.get('story')]
+JOBS = [m for m in MISSIONS if not m.get('story')]
+STORY_TOTAL = len(STORY)
+STORY_IDS = frozenset(m['id'] for m in STORY)
+JOB_IDS = frozenset(m['id'] for m in JOBS)
 
 # что сообщить игроку, когда открывается задание (ключ — id открывшегося задания)
 ANNOUNCE = {
+    'v1': 'Пока босс молчит, в городе есть подработка. Начни с гаража Вано в Старом городе (метка «В»).',
     'r1': 'Вано: Будет скучно — загляни к Розе в бар в Ржавом квартале. Скажешь, что от меня. (метка «Р»)',
     'z1': 'Роза: Моему поставщику нужен водитель. Захар, лодочный сарай в Нефтегавани — '
           'за Портовым мостом. (метка «З»)',
@@ -1320,6 +1334,10 @@ class Missions(object):
         self.msg_t = 0.0
         self.hint_t = 3.0
         self.bonus_given = 0
+        self.ckpt = {}                  # до какого места пройдено сюжетное задание (после провала — оттуда)
+        self.noise = []                 # выстрелы этого кадра: (x, y, на сколько метров слышно, кто стрелял)
+        self.call_t = 6.0               # через сколько секунд позвонит Брюс со следующим делом
+        self.ship_door = S.ShipDoor(world)
         self._build_static()
 
     # ------------------------------------------------------------------
@@ -1430,6 +1448,9 @@ class Missions(object):
         if self.letter is not None:
             self.letter.removeNode()
             self.letter = None
+        self.ship_door.remove()
+        hud.phone_hide()
+        hud.set_task_bar(None)
         w.player.freeze = False
         w.cam.override = None
 
@@ -1477,7 +1498,33 @@ class Missions(object):
                     self.contact_blip[name] = w.hud.add_blip(CONTACTS[name]['blip'], x, y, edge=True, scale=1.25)
 
     def progress(self):
-        return len([m for m in MISSIONS if m['id'] in self.done]), STORY_TOTAL
+        """Сюжет: (пройдено, всего)."""
+        return len(self.done & STORY_IDS), STORY_TOTAL
+
+    def jobs_progress(self):
+        """Подработка у заказчиков: (пройдено, всего)."""
+        return len(self.done & JOB_IDS), len(JOBS)
+
+    def next_story(self):
+        """Следующее сюжетное задание (его начинает звонок) или None."""
+        for spec in STORY:
+            if spec['id'] not in self.done:
+                return spec if all(r in self.done for r in spec['req']) else None
+        return None
+
+    def _story_call(self, dt):
+        """Брюс звонит со следующим делом, когда герою не до чего другого."""
+        spec = self.next_story()
+        if spec is None:
+            return
+        w = self.w
+        pl = w.player
+        if pl.state not in ('foot', 'car') or pl.freeze or not pl.controls or w.police.level > 0 or \
+                w.interiors.trans is not None or self.fail_cd > 0.0 or w.game.state != 'play':
+            return
+        self.call_t -= dt
+        if self.call_t <= 0.0:
+            self.start(spec)
 
     # ------------------------------------------------------------------
     # вспомогательное для сценариев
@@ -1693,27 +1740,39 @@ class Missions(object):
                 p.kind = 'civ'
                 p.spawned = True
                 p.start_walk()
+        hud.phone_hide()
+        hud.set_task_bar(None)
+        pl.ped.stop_act()
         if passed:
             self.done.add(m.spec['id'])
+            self.ckpt.pop(m.spec['id'], None)
             if m.reward:
                 pl.add_money(m.reward)
             w.audio.play('passed', 0.9)
-            hud.big('МИССИЯ ВЫПОЛНЕНА!', GOLD, 5.0, '$%d' % m.reward if m.reward else '')
+            hud.big('Задание выполнено', GOLD, 5.0, ('+' + ui_money(m.reward)) if m.reward else '')
             self._announce(m.spec['id'])
             self.sync_story()
             self.save_game(auto=True)
+            nxt = self.next_story()
+            if nxt is not None:
+                self.call_t = nxt.get('wait', 25.0)
         else:
             if m.side or quiet:
                 hud.big(m.spec['title'], BLUEC, 4.0, reason)
             else:
                 w.audio.play('failed', 0.8)
-                hud.big('МИССИЯ ПРОВАЛЕНА', REDC, 4.5, reason)
+                hud.big('Задание провалено', REDC, 4.5, reason)
             self.fail_cd = 5.0
+            if m.spec.get('story'):
+                self.call_t = 14.0                  # Брюс перезвонит
+                self.sync_story()
         hud.clear_subtitles()
         self.refresh_contacts()
 
     def sync_story(self):
         """Привести мир в соответствие с пройденным сюжетом (после задания и после загрузки)."""
+        # жёлтый контейнер на сухогрузе: после дела стоит открытый и пустой
+        self.ship_door.set_open('s2' in self.done, instant=True)
         if 'g3' in self.done:
             # Захара вывезли из города: в лодочном сарае его больше нет
             p = self.w.interiors.resident('zakhar')
@@ -1730,7 +1789,7 @@ class Missions(object):
                     all(r in self.done for r in spec['req']):
                 text = ANNOUNCE[spec['id']]
                 break
-        if text is None and len(self.done & STORY_IDS) < STORY_TOTAL:
+        if text is None and mid in JOB_IDS and len(self.done & JOB_IDS) < len(JOBS):
             me = next((sp['contact'] for sp in MISSIONS if sp['id'] == mid), None)
             if me is not None and self.next_mission(me) is None:
                 # у этого заказчика пока пусто — напомнить, кто ещё ждёт
@@ -1742,7 +1801,8 @@ class Missions(object):
             w.audio.play('pager', 0.7)
 
     def notify(self, event, obj=None, arg=None):
-        pass
+        if event == 'gunfire':
+            self.noise.append(obj)
 
     def on_ped_died(self, ped, killer, by_player):
         # выпавшие деньги и оружие
@@ -1808,9 +1868,11 @@ class Missions(object):
                     elif mk is not None and mk.player_inside(True) and self.msg_t <= 0.0:
                         self.msg_t = 4.0
                         hud.help('Сначала избавься от полиции.', 3.0)
+            if self.active is None and self.intro is None:
+                self._story_call(dt)
             # такси
             v = pl.vehicle
-            if v is not None and v.kind == 'taxi' and self.active is None:
+            if v is not None and v.kind == 'taxi' and self.active is None and self.intro is None:
                 if 'taxi' not in self.hints:
                     self.hints.add('taxi')
                     hud.help('Ты в такси. Нажми T, чтобы подработать таксистом.', 7.0)
@@ -1818,6 +1880,8 @@ class Missions(object):
                     self.start(TAXI)
         if self.msg_t > 0.0:
             self.msg_t -= dt
+        del self.noise[:]                           # выстрелы этого кадра задание уже услышало
+        self.ship_door.update(dt)
         self._update_chasers(dt)
         self._services(dt, px, py, on_foot)
         self._hints(dt)
@@ -2042,18 +2106,14 @@ class Missions(object):
         elif w.police.level > 0 and 'wanted' not in h:
             h.add('wanted')
             hud.help('Тебя ищет полиция! Скройся из виду, найди взятку-звезду или перекрась машину.', 9.0)
-        elif 'start' not in h and self.active is None and pl.state == 'foot':
+        elif 'start' not in h and pl.state == 'foot' and (self.active is None or not w.hud.sub_plain):
             h.add('start')
             self.hint_t = 11.0
             if pl.indoors:
-                hud.help('Это твоя комната: у кровати можно сохранить игру. WASD — движение, мышь — обзор. '
+                hud.help('Это твой дом: у кровати можно сохранить игру. WASD — движение, мышь — обзор. '
                          'Выход — дверь с жёлтой стрелкой.', 10.0)
             else:
                 hud.help('WASD — движение, мышь — обзор, Shift — бег, пробел — прыжок, F — сесть в машину.', 10.0)
-        elif 'goal' not in h and self.active is None and not self.done and not pl.indoors:
-            h.add('goal')
-            hud.help('Вано ждёт в гараже к западу от дома: розовая метка «В» на радаре. '
-                     'Shift — бег, F — сесть в машину.', 10.0)
 
     # ------------------------------------------------------------------
     def start_intro(self):
@@ -2091,7 +2151,7 @@ class Missions(object):
         sky = w.sky
         cam = w.cam
         rn = w.roadnet
-        sx, sy = c.landmarks['safehouse']['door']
+        sx, sy = c.landmarks['terminal']['door']
 
         def stage(x, y):
             """Перенести (пока невидимого) героя к месту съёмки и убрать оттуда едущие машины."""
@@ -2185,7 +2245,7 @@ class Missions(object):
             engine(bus)
         it['tick'] = tick
         tick(0.0)
-        say('Из имущества — сумка, ключ от комнаты и номер человека по имени Вано.', 2.0)
+        say('Из имущества — сумка да телефон. Из родни в этом городе — один брат.', 2.0)
         yield lambda: t[0] >= total
 
         # --- 4. конечная: Макс выходит, автобус уезжает
@@ -2206,63 +2266,16 @@ class Missions(object):
         it['tick'] = tick
         yield say('Водитель: Конечная, парень. Дальше — только море.', 1.6)
 
-        # --- 5. звонок
+        # --- 5. автобус ушёл, Макс остаётся на остановке: дальше играет игрок
+        yield 2.2
         it['tick'] = None
         w.scene_engine = None
         if not bus.removed:
             bus.keep = False
             w.remove_vehicle(bus)
         it['bus'] = None
-        px, py = stop_x - 2.9, sy - 1.3
-        pl.script_move = None
-        pl.teleport(px, py, -math.pi / 2)
-        p.play('phone', True)
-        w.audio.play('pager', 0.8)
-        cam.override = (px + 0.55, py - 2.0, 1.62, px, py, 1.5)
-        yield say('Вано: Макс? Вано говорит. Добрался? Комната твоя, ключ под ковриком.')
-        cam.override = (px + 2.0, py - 1.1, 1.5, px - 0.2, py, 1.45)
-        yield say('Вано: Отоспись. А утром — ко мне в гараж. Есть работа для того, кто умеет ездить.')
-        cam.override = (px + 0.35, py - 1.25, 1.66, px, py, 1.56)
-        yield say('Макс: Умею.', 0.5)
-
-        # --- 6. к двери
-        p.stop_act()
-        pl.teleport(sx - 5.5, sy - 0.9, 0.0)
-        pl.script_move = (sx, sy + 0.75, 1.45)
-        cam.override = (sx + 4.2, sy - 5.2, 1.7, sx - 1.0, sy + 0.6, 1.35)
-        hud.clear_subtitles()
-        yield lambda: pl.script_move is None
-        p.yaw = math.pi / 2
-        p.play('door', False)
-        w.audio.play('door', 0.6, 0.9)
-        yield 0.8
-        hud.fade(1.0, 3.5)
-        yield 0.45
-
-        # --- 7. комната
-        room = w.interiors.rooms.get('safehouse')
-        if room is not None:
-            p.stop_act()
-            w.interiors.enter('safehouse', instant=True)
-            ox, oy = room.ox, room.oy
-            pl.script_move = (ox + 4.9, oy + 3.3, 1.2)
-            cam.override = (ox + 0.75, oy + 4.3, 2.05, ox + 4.6, oy + 2.9, 0.85)
-            hud.fade(0.0, 2.5)
-            yield say('Не дворец. Но в этом городе всё начинается с малого.', 1.2)
-            # лёг, не раздеваясь (через короткое затемнение: поза меняется за кадром)
-            hud.clear_subtitles()
-            hud.fade(1.0, 4.0)
-            yield 0.4
-            pl.script_move = None
-            pl.teleport(ox + 6.3, oy + 4.35, -math.pi / 2)
-            p.z = 0.5
-            p.play('sleep', True)
-            cam.override = (ox + 4.2, oy + 2.5, 2.1, ox + 6.2, oy + 4.5, 0.6)
-            yield 0.35
-            hud.fade(0.0, 2.5)
-            yield 2.6
-        hud.fade(1.0, 1.4)
-        yield 0.9
+        hud.fade(1.0, 2.5)
+        yield 0.5
 
     def _step_intro(self, dt):
         w = self.w
@@ -2306,7 +2319,7 @@ class Missions(object):
         w.scene_engine = None
 
     def _end_intro(self):
-        """Конец пролога (или пропуск): убрать декорации, утро, герой у кровати в своей комнате."""
+        """Конец пролога (или пропуск): убрать декорации, утро, герой на остановке — и тут звонит Брюс."""
         w = self.w
         it = self.intro
         if it is None:
@@ -2338,17 +2351,15 @@ class Missions(object):
         pl.freeze = False
         # пока шла сценка, героя носило по всей карте и улицу у дома «разобрали»: заселяем её заново
         sx, sy, syaw = w.city.start_pos
-        pl.teleport(sx, sy, syaw)
-        w.cam.pitch = -0.22
+        pl.teleport(sx - 11.5, sy - 1.3, 0.0)           # у остановки, где его высадил автобус
+        w.cam.face(sx - 11.5, sy - 1.3, 0.0)
+        w.cam.pitch = -0.16
         w.traffic.populate()
         w.crowd.populate()
-        if 'safehouse' in w.interiors.rooms:
-            w.interiors.enter('safehouse', instant=True, spot='wake')
-            self.in_save = True
         hud.fade(1.0, instant=True)
         hud.fade(0.0, 0.9)
-        hud.mission_title('Гиблый район')
-        self.hint_t = 2.5
+        self.hint_t = 14.0
+        self.call_t = 1.6                               # брат уже набирает номер
 
     # ------------------------------------------------------------------
     # возрождение после гибели / ареста
@@ -2425,7 +2436,8 @@ class Missions(object):
             money=pl.money, done=sorted(self.done), packages=sorted(self.packages),
             ammo=dict((str(k), v) for k, v in pl.ammo.items()), weapon=pl.weapon_id,
             health=pl.ped.health, armor=pl.ped.armor, hour=w.sky.hour, day=w.sky.day,
-            stats=w.stats, hints=sorted(self.hints), bonus=self.bonus_given, finale=self.finale_shown)
+            stats=w.stats, hints=sorted(self.hints), bonus=self.bonus_given, finale=self.finale_shown,
+            ckpt=dict(self.ckpt), version=2)
         return settings_mod.write_save(data)
 
     def load_game(self, data):
@@ -2455,6 +2467,8 @@ class Missions(object):
             if k in st:
                 w.stats[k] = st[k]
         self.finale = self.finale_shown = bool(data.get('finale', False))
+        self.ckpt = dict((str(k), int(v)) for k, v in data.get('ckpt', {}).items())
+        self.call_t = 9.0
         # убрать найденные тайники, выдать накопленные награды
         for pk in self.pickups:
             if pk.kind == 'package' and pk.index in self.packages:

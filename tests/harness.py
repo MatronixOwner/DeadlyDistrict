@@ -55,8 +55,11 @@ def press(g, key, dt=1.0 / 30.0):
     g.step(dt)
 
 
-def start_game(g, street=True):
-    """Новая игра с пропуском пролога.  street: вывести героя из комнаты на улицу, к двери дома."""
+def start_game(g, street=True, story=False):
+    """Новая игра с пропуском пролога.
+
+    story=False — сюжет считается пройденным и Брюс не звонит: большинству проверок нужен просто
+    свободный город.  street: если герой оказался в помещении, вывести его на улицу."""
     g.new_game()
     w = g.world
     for i in range(12):
@@ -64,8 +67,15 @@ def start_game(g, street=True):
             break
         run(g, 0.35)
         press(g, 'escape')
+    ms = w.missions
+    assert ms.intro is None, 'intro not skipped'
+    if not story:
+        from game import missions as M
+        ms.done |= M.STORY_IDS
+        ms.call_t = 1e9
+        ms.refresh_contacts()
+        ms.sync_story()
     run(g, 0.5)
-    assert w.missions.intro is None, 'intro not skipped'
     if street and w.interiors.current is not None:
         w.interiors.leave(instant=True)
         run(g, 0.2)

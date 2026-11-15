@@ -214,7 +214,7 @@ class Police(object):
             d2 = dx * dx + dy * dy
             if d2 > 70.0 * 70.0:
                 continue
-            if d2 < 12.0 * 12.0 or st.los(p.x, p.y, px, py):
+            if d2 < 12.0 * 12.0 or st.los(p.x, p.y, px, py, p.z + 1.4):
                 seen = True
                 if p.target is not pp and p.vehicle is None and p.state not in ('down', 'in_car'):
                     p.attack(pp)
