@@ -177,3 +177,39 @@ def test_window_config_for_each_screen_mode():
             assert ConfigVariableInt('multisamples').getValue() == 8
         finally:
             unloadPrcFile(pg)
+
+
+def test_build_includes_every_asset_file():
+    """Каждый файл из assets/ должен попадать в сборку: в версии 0.3 в неё чуть не ушли модели без текстур."""
+    import ast
+    import os
+    from panda3d.core import GlobPattern           # так же сопоставляет шаблоны сборщик build_apps
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, 'setup.py'), encoding='utf-8').read()
+    patterns = None
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Dict):
+            for k, v in zip(node.keys, node.values):
+                if isinstance(k, ast.Constant) and k.value == 'include_patterns':
+                    patterns = [e.value for e in v.elts]
+    assert patterns, 'include_patterns не найдены в setup.py'
+    dev_only = {'assets/tex/_photo.json'}                  # нужен только генераторам текстур
+    missed = []
+    for base, dirs, files in os.walk(os.path.join(root, 'assets')):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root).replace(os.sep, '/')
+            if rel in dev_only:
+                continue
+            if not any(GlobPattern(pat).matches(rel) for pat in patterns):
+                missed.append(rel)
+    assert not missed, 'не попадут в сборку: %s' % missed[:10]
+
+
+def test_selftest_does_not_rely_on_assert():
+    """В собранном приложении assert не выполняется — самопроверка должна обходиться без него."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, 'main.py'), encoding='utf-8').read()
+    body = src[src.index('def selftest():'):src.index('def main():')]
+    assert '\n    assert ' not in body
+    assert body.count('_need(') >= 10

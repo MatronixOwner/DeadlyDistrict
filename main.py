@@ -31,8 +31,22 @@ def _message_box(text):
         pass
 
 
+class SelfTestError(Exception):
+    pass
+
+
+def _need(cond, text):
+    """Проверка самотеста.  Не assert: в собранном приложении Python работает в режиме оптимизации,
+    и операторы assert там не выполняются вовсе."""
+    if not cond:
+        raise SelfTestError(text)
+
+
 def selftest():
-    """Прогнать игру без окна: меню, новая игра, пауза.  Возвращает код выхода."""
+    """Прогнать игру без окна: меню, новая игра, пауза; проверить, что все файлы на месте.
+
+    Возвращает код выхода.  Запускается и из исходников, и из собранного приложения
+    (DeadlyDistrict-selftest --selftest) — так ловится нехватка файлов в сборке."""
     from panda3d.core import loadPrcFileData
     loadPrcFileData('', 'window-type offscreen\nload-display p3tinydisplay\naudio-library-name null\n'
                         'sync-video 0\nwin-size 640 360\ntextures-power-2 none\n')
@@ -50,7 +64,7 @@ def selftest():
         else:
             game.inp._up('enter')
         game.step(dt)
-    assert w.missions.intro is None, 'intro did not finish'
+    _need(w.missions.intro is None, 'intro did not finish')
     game.inp._dn('w')
     for _ in range(90):
         game.step(dt)
@@ -63,16 +77,27 @@ def selftest():
         game.step(dt)
     game.base.graphicsEngine.renderFrame()
     missing = sorted(set(game.assets.missing))
-    assert not missing, 'missing textures: %s' % missing
+    _need(not missing, 'missing textures: %s' % missing)
     # mp3 для «Астрахань FM» читает встроенный ffmpeg — убеждаемся, что он подключился
     from panda3d.core import MovieAudio
     cur = MovieAudio.get(game.assets.path('sfx', 'mp3_check.mp3')).open()
-    assert cur is not None and cur.length() > 0.2, 'mp3 decoder (p3ffmpeg) is not available'
+    _need(cur is not None and cur.length() > 0.2, 'mp3 decoder (p3ffmpeg) is not available')
     mdl = w.models
-    assert mdl.ok and mdl.chars_ok and not mdl.failed, 'models not loaded: %s' % sorted(mdl.failed)
-    assert w.player.ped.vis is not None, 'player has no skeletal model'
-    assert all(v.minfo is not None for v in w.vehicles), 'vehicle without a model'
-    assert not game.audio._missing, 'missing sounds: %s' % sorted(game.audio._missing)
+    _need(mdl.ok and mdl.chars_ok and not mdl.failed, 'models not loaded: %s' % sorted(mdl.failed))
+    _need(w.player.ped.vis is not None, 'player has no skeletal model')
+    _need(all(v.minfo is not None for v in w.vehicles), 'vehicle without a model')
+    # каждая модель и каждая её текстура должны быть в сборке, а не только те, что встретились за минуту игры
+    from game.vehicle import SPECS, PAINTS
+    for key in sorted(mdl.meta['chars']):
+        tex = mdl.char_texture(key)
+        _need(tex is not None and tex.getXSize() > 8, 'character texture is missing: %s' % key)
+    for kind in sorted(SPECS):
+        _need(mdl.vehicle_info(kind, SPECS[kind]) is not None, 'vehicle model is missing: %s' % kind)
+        _need(mdl.vehicle_body(kind, SPECS[kind], PAINTS[0]) is not None, 'vehicle body failed: %s' % kind)
+    _need(not mdl.failed, 'models failed: %s' % sorted(mdl.failed))
+    for name in sorted(mdl.meta['weapons']):
+        _need(os.path.isfile(os.path.join(mdl.dir, 'weapons', name + '.bam')), 'weapon model is missing: %s' % name)
+    _need(not game.audio._missing, 'missing sounds: %s' % sorted(game.audio._missing))
     print('SELFTEST OK: vehicles=%d peds=%d models=%d root=%s' % (
         len(w.vehicles), len(w.peds), len(mdl.meta['chars']) + len(mdl.meta['vehicles']), game.assets.root))
     return 0

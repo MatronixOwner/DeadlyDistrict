@@ -34,8 +34,10 @@ setup(
                 'assets/models/*.json',
                 'assets/models/*.md',
                 'assets/models/chars/*.bam',
+                'assets/models/chars/*.png',        # текстуры персонажей
                 'assets/models/anims/*.bam',
                 'assets/models/veh/*.bam',
+                'assets/models/veh/*.png',          # слои краски и деталей машин
                 'assets/models/weapons/*.bam',
             ],
             'include_modules': {'*': ['game.*']},
