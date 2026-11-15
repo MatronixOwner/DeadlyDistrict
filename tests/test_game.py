@@ -50,11 +50,13 @@ def test_walk_and_collide(game, world):
     harness.run(game, 2.0, keys=('w',))
     x1, y1 = pl.pos()
     assert y1 < y0 - 5.0
-    # в стену дома пройти нельзя
+    # в стену дома пройти нельзя (в стороне от двери: в дверь-то войти можно)
+    lm = world.city.landmarks['safehouse']
+    pl.teleport(lm['door'][0] + 4.0, lm['door'][1] - 3.0)
     world.cam.yaw = math.pi / 2
     harness.run(game, 6.0, keys=('w', 'shift'))
-    lm = world.city.landmarks['safehouse']
     assert pl.pos()[1] < lm['rect'][1] + 0.1
+    assert world.interiors.current is None
 
 
 def test_enter_drive_exit(game, world):
@@ -79,8 +81,10 @@ def test_carjack_traffic(game, world):
     w = world
     pl = w.player
     v = None
-    for _ in range(200):
-        v = w.nearest_vehicle(pl.ped.x, pl.ped.y, 150.0, lambda q: q.npc and q.mode == Vehicle.RAIL)
+    for _ in range(600):
+        # машина, которая едет не слишком быстро: на ходу из быстрой водителя не вытащить
+        v = w.nearest_vehicle(pl.ped.x, pl.ped.y, 150.0,
+                              lambda q: q.npc and q.mode == Vehicle.RAIL and math.hypot(q.vx, q.vy) < 4.0)
         if v is not None:
             break
         game.step(DT)
@@ -355,21 +359,35 @@ def test_first_mission_like_a_player(game, world):
     pl = w.player
     ms = w.missions
     harness.quiet(w)
-    x, y = w.city.landmarks['vano']['door']
-    pl.teleport(x, y - 6.0)
+    its = w.interiors
+    room = its.rooms['vano']
+    x, y = room.out
+    pl.teleport(x, y - 4.0)
     harness.run(game, 0.3)
     assert ms.active is None
     w.cam.yaw = math.pi / 2                       # лицом к гаражу
-    harness.run(game, 3.0, keys=('w',))           # идём в розовый маркер
+    harness.run(game, 3.0, keys=('w',))           # в дверь с жёлтой стрелкой
+    assert its.current is room and pl.indoors
+    assert its.resident('vano') is not None       # хозяин на месте
+    # к розовой метке возле Вано
+    tx, ty = room.spots['talk'][:2]
+    for _ in range(200):
+        px, py = pl.pos()
+        if ms.active is not None:
+            break
+        w.cam.yaw = math.atan2(ty - py, tx - px)
+        harness.run(game, 0.1, keys=('w',))
     assert ms.active is not None and ms.active.spec['id'] == 'v1'
-    assert pl.freeze                              # идёт брифинг
+    harness.run(game, 0.2)
+    assert pl.freeze and its.current is room      # брифинг идёт в гараже
     for _ in range(8):                            # пролистываем реплики
         if not pl.freeze:
             break
         harness.run(game, 0.6)
         harness.press(game, 'enter')
-    harness.run(game, 0.5)
-    assert not pl.freeze
+    harness.run(game, 1.2)
+    assert not pl.freeze and pl.state == 'foot'    # лишний Enter после сценки не сажает в машину
+    assert its.current is None and not pl.indoors   # после разговора герой снова на улице, у двери
     assert 'Волну' in ms.active.objective
     car = ms.active.vehicles[0]
     dx, dy = car.door_pos(-1)

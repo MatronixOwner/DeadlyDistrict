@@ -102,6 +102,8 @@ class Camera(object):
             tz = p.z + 1.56
             aim = pl.aiming
             dist = (2.9, 3.9, 5.4)[self.zoom]
+            if pl.indoors:
+                dist = min(dist, 3.6)
             if aim:
                 dist = 2.3
                 fov = 56.0
@@ -189,6 +191,8 @@ class Player(object):
         self.weapon_id = W_FIST
         self.weapon = WEAPONS[W_FIST]
         self.aiming = False
+        self.indoors = False           # герой в помещении: оружие убрано
+        self.no_enter_t = 0.0          # после сценки Enter ещё мгновение не сажает в машину
         self.aim_yaw = syaw
         self.invincible = False
         self.damage_taken_k = 1.0
@@ -309,7 +313,7 @@ class Player(object):
             return
         self.weapon_id = wid
         self.weapon = WEAPONS[wid]
-        self.ped.set_weapon(wid)
+        self.ped.set_weapon(W_FIST if self.indoors else wid)     # в помещении оружие убрано
         self.w.hud.weapon_changed()
 
     def cycle(self, d):
@@ -402,8 +406,8 @@ class Player(object):
         ix = inp.axis('a', 'd', 'arrow_left', 'arrow_right')
         iy = inp.axis('s', 'w', 'arrow_down', 'arrow_up')
         wp = self.weapon
-        fire = inp.held('mouse1') or inp.held('control')
-        self.aiming = (inp.held('mouse3') or fire) and wp.kind != 'melee'
+        fire = (inp.held('mouse1') or inp.held('control')) and not self.indoors
+        self.aiming = (inp.held('mouse3') or fire) and wp.kind != 'melee' and not self.indoors
         cy, sy = math.cos(cam.yaw), math.sin(cam.yaw)
         mx = cy * iy + sy * ix
         my = sy * iy - cy * ix
@@ -476,10 +480,12 @@ class Player(object):
                 self.step_d = 0.0
                 w.audio.play('step', 0.25 + min(0.3, sp * 0.04), 0.9 + random.random() * 0.2)
         # действие: оружие
-        if fire or inp.held('mouse1'):
+        if (fire or inp.held('mouse1')) and not self.indoors:
             self._fire(inp)
         # сесть в машину
-        if inp.hit('f') or inp.hit('enter'):
+        if self.no_enter_t > 0.0:
+            self.no_enter_t -= dt
+        elif (inp.hit('f') or inp.hit('enter')) and not self.indoors:
             self._try_enter()
 
     def _fire(self, inp):

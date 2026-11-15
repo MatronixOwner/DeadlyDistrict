@@ -261,6 +261,7 @@ class Game(object):
         hud.zone_name = None
         hud.set_timer(None)
         hud.set_counter(None)
+        w.interiors.reset()
         w.missions = Missions(w)
         self.audio.stop_loops()
         w.radio_station = -1
@@ -399,10 +400,10 @@ class Game(object):
             self.ui.set_extra(None)
             self.ui.close()
         w = self.world
-        px, py = w.player.pos()
+        px, py = w.map_pos()
         done, total = w.missions.progress()
         text = ('Район: %s\nВремя: %s, день %d\nПогода: %s\n\nСюжет: %d из %d\nТайники: %d из %d\n\n'
-                'В — Вано\nР — Роза\nП — Проф') % (
+                'В — Вано, Р — Роза\nЗ — Захар, Г — Гром\nП — Проф') % (
             w.city.zone_name(px, py) or '—', w.sky.clock_text(), w.sky.day, self._weather_name(), done, total,
             len(w.missions.packages), len(w.city.packages))
         m = Menu(self.ui, 'Карта', [Item('Назад', back)], text=text, back=back, x=-1.25, top=0.44)

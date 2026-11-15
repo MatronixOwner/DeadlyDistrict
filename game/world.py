@@ -16,6 +16,7 @@ from .weapons import Weapons
 from .police import Police
 from .player import Player, Camera
 from .models import Models
+from .interiors import Interiors
 from .defs import random_look, cop_look, medic_look, gang_look, W_PISTOL, W_SHOTGUN, W_FIST, WEAPONS
 from .mathutil import clamp, angle_diff
 from .audio import STATIONS
@@ -61,6 +62,7 @@ class World(object):
         step(0.8, 'Заселяем улицы…')
         self.models = Models(self.assets, self.base.loader)
         self.models.preload()
+        self.interiors = None
         self.fx = Fx(self)
         self.sky = None
         self.hud = None
@@ -71,6 +73,8 @@ class World(object):
         self.weapons = Weapons(self)
         self.police = Police(self)
         self.missions = None
+        step(0.9, 'Обставляем комнаты…')
+        self.interiors = Interiors(self)
         self._cam_fx = 0.0
         self._cam_fy = 1.0
         self.slowmo = 1.0
@@ -129,6 +133,15 @@ class World(object):
         l = abs(dy * self._cam_fx - dx * self._cam_fy)
         return l - margin < f * 1.25 + 2.0
 
+    def map_pos(self):
+        """Положение героя на карте города (в помещении — дверь здания, где он находится)."""
+        its = self.interiors
+        if its is not None:
+            p = its.map_pos()
+            if p is not None:
+                return p
+        return self.player.pos()
+
     def nearest_vehicle(self, x, y, maxd=10.0, cond=None):
         best = None
         bd = maxd
@@ -151,13 +164,21 @@ class World(object):
         cam = self.cam
         self._cam_fx, self._cam_fy = math.cos(cam.yaw), math.sin(cam.yaw)
         pl.update(dt, inp)
-        self.roadnet.update(dt)
-        self.traffic.update(dt)
-        for v in self.vehicles:
-            v.update(dt)
-        self.crowd.update(dt)
+        its = self.interiors
+        its.update(dt)
+        room = its.current.name if its.current is not None else None
+        indoor = room is not None
+        if not indoor:
+            # пока герой в помещении, улица стоит: её никто не видит, а всё останется на своих местах
+            self.roadnet.update(dt)
+            self.traffic.update(dt)
+            for v in self.vehicles:
+                v.update(dt)
+            self.crowd.update(dt)
         for p in self.peds:
             if not p.is_player:
+                if p.room != room:
+                    continue
                 if p.lod_far and (self.frame + id(p) // 8) % 2:
                     continue
                 p.update(dt * 2.0 if p.lod_far else dt)
@@ -166,10 +187,12 @@ class World(object):
             pp.update(dt)
         elif pl.state != 'car':
             pp._animate(dt)
-        self._collide_vehicles()
+        if not indoor:
+            self._collide_vehicles()
         self._collide_peds(dt)
         self.weapons.update(dt)
-        self.police.update(dt)
+        if not indoor:
+            self.police.update(dt)
         if self.missions is not None:
             self.missions.update(dt)
         self._update_emitters(dt)
@@ -354,6 +377,10 @@ class World(object):
                 if d2 < 0.49:
                     d = math.sqrt(d2) or 0.01
                     k = (0.7 - d)
+                    if p.fixed:
+                        pp.x -= dx / d * k
+                        pp.y -= dy / d * k
+                        continue
                     p.x += dx / d * k * 0.7
                     p.y += dy / d * k * 0.7
                     pp.x -= dx / d * k * 0.3
@@ -754,5 +781,6 @@ class World(object):
                               'N — следующая песня.', 9.0)
         sky = self.sky
         if sky is not None:
-            au.loop('rain', 'rain' if sky.rain > 0.05 else None, 0.55 * sky.rain)
-            au.loop('amb', 'ambience', 0.22 * (0.5 + 0.5 * (1.0 - sky.night)))
+            k = 0.3 if sky.indoor is not None else 1.0          # за стенами улицу слышно глухо
+            au.loop('rain', 'rain' if sky.rain > 0.05 else None, 0.55 * sky.rain * k)
+            au.loop('amb', 'ambience', 0.22 * (0.5 + 0.5 * (1.0 - sky.night)) * k)

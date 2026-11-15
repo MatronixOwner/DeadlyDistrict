@@ -26,10 +26,21 @@ def save(a, name, colors=64, w=None, h=None):
     im = a if isinstance(a, Image.Image) else img(a)
     if w:
         im = im.resize((w, h), Image.LANCZOS)
+    pw, ph = pot(im.size[0]), pot(im.size[1])        # стороны — степени двойки: так текстуру примет любая видеокарта
+    if (pw, ph) != im.size:
+        im = im.resize((pw, ph), Image.LANCZOS)
     if colors and im.mode == 'RGB':
         im = im.quantize(colors, method=Image.MEDIANCUT, dither=Image.NONE)
     im.save(os.path.join(OUT, name + '.png'), optimize=True)
     made.append(name)
+
+
+def pot(n):
+    """Ближайшая степень двойки."""
+    p = 1
+    while p * 2 <= n:
+        p *= 2
+    return p * 2 if n - p > p * 2 - n else p
 
 
 def font(name, size):
@@ -132,7 +143,6 @@ def gen_wall_things():
     save(resize(src('Misc/filingcabinet_01.jpg'), 64, 124), 'int_filing', 48)
     save(resize(src('Doors/door_store_drinks_01.jpg'), 64, 144), 'int_drinks', 64)
     save(resize(src('Doors/door_store_food_01.jpg'), 64, 147), 'int_snacks', 64)
-    save(resize(arr(gc.src_rgba('Panels/electrical_panel_outside.png').convert('RGB')), 64, 157), 'int_elbox', 32)
 
     # полка бара: бутылки на фоне зеркала
     r = np.random.RandomState(4)

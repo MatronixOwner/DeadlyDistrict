@@ -439,7 +439,7 @@ class Hud(object):
         w = self.w
         pl = w.player
         cam = w.cam
-        px, py = pl.pos()
+        px, py = w.map_pos()
         sp = pl.speed()
         want = 105.0 + min(70.0, sp * 3.2)
         self.radar_range += (want - self.radar_range) * min(1.0, dt * 1.5)

@@ -36,6 +36,9 @@ setup(
                 'assets/models/chars/*.bam',
                 'assets/models/chars/*.png',        # текстуры персонажей
                 'assets/models/anims/*.bam',
+                'assets/models/furn/*.bam',         # мебель для интерьеров
+                'assets/models/furn/*.png',
+                'assets/models/furn/*.json',
                 'assets/models/veh/*.bam',
                 'assets/models/veh/*.png',          # слои краски и деталей машин
                 'assets/models/weapons/*.bam',

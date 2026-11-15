@@ -18,6 +18,8 @@ BLUEC = (0.35, 0.6, 1.0, 1.0)
 CONTACTS = {
     'vano': dict(title='Вано', blip='blip_vano', place='гараж Вано'),
     'rosa': dict(title='Роза', blip='blip_rosa', place='бар «У Розы»'),
+    'zakhar': dict(title='Захар', blip='blip_zakhar', place='лодочный сарай в Нефтегавани'),
+    'grom': dict(title='Гром', blip='blip_grom', place='чайная в Заречье'),
     'prof': dict(title='Проф', blip='blip_prof', place='башня Профа'),
 }
 
@@ -30,6 +32,15 @@ def contact_look(name):
     if name == 'rosa':
         return make_look(skin=SKINS[0], hair=(0.62, 0.1, 0.08), shirt=(0.8, 0.12, 0.3), pants=(0.8, 0.12, 0.3),
                          torso='tee', female=True, scale=0.97, fat=0.95, model='f_goth')
+    if name == 'zakhar':
+        return make_look(skin=SKINS[1], hair=(0.75, 0.75, 0.75), shirt=(0.4, 0.42, 0.44), pants=(0.2, 0.26, 0.4),
+                         torso='tee', beard=True, scale=0.98, fat=1.05, model='m_grey_h4b')
+    if name == 'grom':
+        return make_look(skin=SKINS[1], hair=(0.2, 0.18, 0.16), shirt=(0.2, 0.3, 0.6), pants=(0.12, 0.14, 0.2),
+                         torso='police', scale=1.04, fat=1.15, model='cop_m')
+    if name == 'kostya':
+        return make_look(skin=SKINS[1], hair=(0.2, 0.16, 0.1), shirt=(0.12, 0.12, 0.12), pants=(0.2, 0.2, 0.24),
+                         torso='jacket', scale=1.0, model='m_leather_b')
     return make_look(skin=SKINS[5], hair=(0.7, 0.7, 0.72), shirt=(0.3, 0.3, 0.36), pants=(0.3, 0.3, 0.36),
                      torso='jacket', glasses=True, scale=1.0, fat=0.95, model='m_old')
 
@@ -260,7 +271,88 @@ class Run(object):
             yield lambda: pol.level == 0
 
     def briefing(self, contact, lines):
-        """Короткая сценка-разговор с контактом (пропуск — Enter или пробел)."""
+        """Сценка-разговор с контактом у него в помещении (Enter или пробел — следующая реплика).
+
+        Строка, начинающаяся с «Макс: », — реплика героя, остальные произносит хозяин.  После разговора
+        герой оказывается на улице у двери, и задание продолжается там."""
+        ms = self.ms
+        w = self.w
+        pl = w.player
+        its = w.interiors
+        room = its.rooms.get(contact)
+        if room is None:
+            yield from self._briefing_street(contact, lines)
+            return
+        if its.current is not room:
+            its.enter(contact, instant=True)
+        npc = its.resident(contact)
+        x, y, yaw = room.spots['talk']
+        pl.freeze = True
+        p = pl.ped
+        p.x, p.y = x, y
+        p.speed = 0.0
+        if npc is not None:
+            nx, ny = npc.x, npc.y
+        else:
+            nx, ny = x + math.cos(yaw) * 1.6, y + math.sin(yaw) * 1.6
+        d = math.hypot(nx - x, ny - y) or 1.0
+        ux, uy = (nx - x) / d, (ny - y) / d
+        rx, ry = uy, -ux
+        p.yaw = math.atan2(uy, ux)
+        p.sync()
+        sit = bool(npc is not None and npc.resident['sit'])
+        home = npc.yaw if npc is not None else 0.0
+        if npc is not None and not sit:
+            npc.yaw = math.atan2(-uy, -ux)               # хозяин поворачивается к гостю
+        hz = 1.16 if sit else 1.5
+        mx, my = x + ux * d * 0.5, y + uy * d * 0.5
+        shots = dict(
+            wide=(mx + rx * (2.4 + d * 0.5), my + ry * (2.4 + d * 0.5), 1.6, mx, my, 1.25),
+            npc=(x - ux * 0.95 + rx * 0.6, y - uy * 0.95 + ry * 0.6, 1.68, nx, ny, hz),
+            hero=(nx - ux * 0.2 - rx * 0.8, ny - uy * 0.2 - ry * 0.8, hz + 0.12, x, y, 1.55))
+        w.hud.show(False)
+        w.hud.mission_title('')              # заголовок не должен висеть поверх сценки
+        ms.letterbox(True)
+        w.hud.clear_subtitles()
+        title = CONTACTS[contact]['title']
+        inp = w.game.inp
+        for i, line in enumerate(lines):
+            hero = line.startswith('Макс: ')
+            w.cam.override = shots['wide' if i == 0 else ('hero' if hero else 'npc')]
+            if npc is not None:
+                if hero:
+                    npc.play('sit' if sit else 'listen', True)
+                else:
+                    npc.play('sit_talk' if sit else 'talk', True)
+            p.play('talk' if hero else 'listen', True)
+            dur = 1.8 + len(line) * 0.06
+            w.hud.subtitle(line if hero else '%s: %s' % (title, line), dur + 0.5, clear=True)
+            t = [0.0]
+
+            def cond():
+                t[0] += w.dt
+                if t[0] > 0.4 and (inp.hit('enter') or inp.hit('space') or inp.hit('mouse1')):
+                    return True
+                return t[0] > dur
+            yield cond
+        w.hud.clear_subtitles()
+        w.hud.fade(1.0, 6.0)
+        yield 0.25
+        if npc is not None:
+            npc.stop_act()
+            npc.yaw = home
+        p.stop_act()
+        its.leave(instant=True)
+        w.cam.override = None
+        pl.freeze = False
+        pl.no_enter_t = 0.7                  # реплики листали клавишей Enter — она же сажает в машину
+        w.hud.show(True)
+        ms.letterbox(False)
+        w.hud.fade(0.0, 3.0)
+        w.hud.mission_title(self.spec['title'])
+
+    def _briefing_street(self, contact, lines):
+        """Разговор у двери на улице — для контактов без своего помещения."""
         ms = self.ms
         w = self.w
         pl = w.player
@@ -852,6 +944,8 @@ class Missions(object):
         self.shop_mks = []
         self.in_save = True
         self.in_shop = False
+        self.in_heal = False
+        self.heal_mk = None
         self._spray_t = 0.0
         self.letter = None
         self.respawning = False
@@ -867,8 +961,16 @@ class Missions(object):
         c = w.city
         hud = w.hud
         lm = c.landmarks
+        rooms = w.interiors.rooms
+        # сохранение — у кровати в комнате Макса
         sx, sy = lm['safehouse']['door']
-        self.save_mk = Marker(w, sx + 2.2, sy, 1.0, BLUE, 1.4)
+        room = rooms.get('safehouse')
+        if room is not None:
+            bx, by = room.spots['bed'][:2]
+            self.save_mk = Marker(w, bx, by, 0.8, BLUE, 1.2)
+            sx, sy = room.out
+        else:
+            self.save_mk = Marker(w, sx + 2.2, sy, 1.0, BLUE, 1.4)
         self.markers.append(self.save_mk)
         self.static_blips.append(hud.add_blip('blip_save', sx, sy, edge=True, scale=1.1))
         for name in ('spray', 'spray2'):
@@ -878,11 +980,24 @@ class Missions(object):
         for name in ('guns', 'guns2'):
             if name in lm:
                 x, y = lm[name]['door']
-                mk = Marker(w, x, y, 1.1, GREEN, 1.4)
+                room = rooms.get(name)
+                if room is not None:                 # прилавок внутри магазина
+                    mx, my = room.spots['shop'][:2]
+                    mk = Marker(w, mx, my, 0.9, GREEN, 1.2)
+                    x, y = room.out
+                else:
+                    mk = Marker(w, x, y, 1.1, GREEN, 1.4)
                 self.markers.append(mk)
                 self.shop_mks.append(mk)
                 self.static_blips.append(hud.add_blip('blip_guns', x, y, edge=False, rng=400.0))
         x, y = lm['hospital']['door']
+        self.heal_mk = None
+        room = rooms.get('hospital')
+        if room is not None:                         # регистратура: перевязка за деньги
+            mx, my = room.spots['heal'][:2]
+            self.heal_mk = Marker(w, mx, my, 0.9, (0.95, 0.95, 0.95, 1.0), 1.2)
+            self.markers.append(self.heal_mk)
+            x, y = room.out
         self.static_blips.append(hud.add_blip('blip_hospital', x, y, edge=False, rng=300.0))
         x, y = lm['police']['door']
         self.static_blips.append(hud.add_blip('blip_police', x, y, edge=False, rng=300.0))
@@ -974,12 +1089,21 @@ class Missions(object):
                     w.hud.remove_blip(b)
                     self.contact_blip[name] = None
             else:
+                if name not in w.city.landmarks:
+                    continue
                 x, y = w.city.landmarks[name]['door']
+                room = w.interiors.rooms.get(name)
                 if mk is None:
-                    mk = Marker(w, x, y, 1.3, PINK, 1.7)
+                    if room is not None:             # розовая метка — внутри, рядом с хозяином
+                        mx, my = room.spots['talk'][:2]
+                        mk = Marker(w, mx, my, 0.85, PINK, 1.2)
+                    else:
+                        mk = Marker(w, x, y, 1.3, PINK, 1.7)
                     self.markers.append(mk)
                     self.contact_mk[name] = mk
                 if self.contact_blip.get(name) is None:
+                    if room is not None:
+                        x, y = room.out
                     self.contact_blip[name] = w.hud.add_blip(CONTACTS[name]['blip'], x, y, edge=True, scale=1.25)
 
     def progress(self):
@@ -1457,6 +1581,24 @@ class Missions(object):
         if inside and not self.in_shop and w.police.level == 0:
             w.game.open_shop()
         self.in_shop = inside
+        # больница: перевязка
+        if self.heal_mk is not None:
+            inside = on_foot and not pl.freeze and self.heal_mk.player_inside(True)
+            if inside and not self.in_heal:
+                p = pl.ped
+                cost = 100
+                if p.health >= p.max_health - 1.0:
+                    hud.subtitle('Медсестра: Вы здоровы. Не занимайте очередь.', 3.0, clear=True)
+                elif pl.money < cost:
+                    hud.subtitle('Медсестра: Перевязка — $%d. Касса там же, где и совесть.' % cost, 3.5, clear=True)
+                else:
+                    pl.add_money(-cost)
+                    p.health = p.max_health
+                    hud.fade(1.0, 6.0)
+                    self._spray_t = 0.5
+                    w.audio.play('pickup', 0.8)
+                    hud.help('Тебя осмотрели и перевязали: -$%d. Здоровье восстановлено.' % cost, 5.0)
+            self.in_heal = inside
 
     def sleep_and_save(self):
         """Сохранение в убежище: проходит шесть часов, здоровье восстанавливается."""
@@ -1651,3 +1793,7 @@ class Missions(object):
         if self.bonus_given:
             self._safehouse_bonus(range(1, self.bonus_given + 1))
         self.refresh_contacts()
+        # игра сохраняется у кровати — там же герой и просыпается
+        if 'safehouse' in w.interiors.rooms:
+            w.interiors.enter('safehouse', instant=True, spot='wake')
+            self.in_save = True

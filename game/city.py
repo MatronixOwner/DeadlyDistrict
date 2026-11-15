@@ -116,13 +116,15 @@ LANDMARKS = {
     (8, 3): 'port',
     (7, 0): 'spray2',
     (8, 6): 'guns2',
+    (12, 5): 'zakhar',          # лодочный сарай в Нефтегавани
+    (5, 10): 'grom',            # чайная в Заречье
 }
 
 LANDMARK_SIGNS = {
     'safehouse': 'sign_safehouse', 'vano': 'sign_garage', 'spray': 'sign_spray', 'spray2': 'sign_spray',
     'guns': 'sign_guns', 'guns2': 'sign_guns', 'rosa': 'sign_rosa', 'hospital': 'sign_hospital',
     'police': 'sign_police', 'bank': 'sign_bank', 'prof': 'sign_club', 'taxi': 'sign_taxi',
-    'gas': 'sign_gas', 'port': 'sign_port',
+    'gas': 'sign_gas', 'port': 'sign_port', 'zakhar': 'sign_boats', 'grom': 'sign_tea',
 }
 
 GENERIC_SIGNS = ['sign_shawarma', 'sign_beer', 'sign_pawn', 'sign_pharm', 'sign_food', 'sign_tattoo',

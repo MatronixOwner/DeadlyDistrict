@@ -295,6 +295,9 @@ class Ped(object):
         self._was_lying = False
         self._lod_n = random.randrange(4)
         self.idle_clip = None       # особая поза покоя: 'talk', 'listen', 'arms', 'phone'
+        self.act = None             # клип, заданный сценой: [имя, по кругу, темп, начать заново]
+        self.room = None            # имя комнаты, если персонаж живёт в интерьере
+        self.fixed = False          # не сдвигается, когда его толкают (сидит за столом, стоит за стойкой)
         self.walk_clip = None       # особая походка: 'texting'
         self.vis = None             # модель со скелетной анимацией (pedvisual.PedVisual)
         if kind == 'civ':
@@ -538,6 +541,13 @@ class Ped(object):
         self._animate(dt)
 
     # ------------------------------------------------------------------
+    def play(self, clip, loop=False, rate=1.0):
+        """Сыграть клип по воле сценария (пока персонаж стоит).  Одноразовый клип замирает на последнем кадре."""
+        self.act = [clip, loop, rate, True]
+
+    def stop_act(self):
+        self.act = None
+
     def flee_from(self, x, y, duration=8.0):
         if self.dead or self.state in ('down', 'in_car'):
             return
@@ -947,6 +957,10 @@ class Ped(object):
             armed = 'rifle' if w.long else 'pistol'
         if vis.cur == 'getup' and vis.busy() and sp < 0.6:
             pass                                        # дать подняться
+        elif self.act is not None and sp <= 0.12 and self.punch_t <= 0.0:
+            a = self.act
+            vis.play(a[0], a[1], a[2], 0.25, a[3])
+            a[3] = False
         elif self.punch_t > 0.0:
             if kind == 'thrown':
                 vis.play('throw', False, 3.0, 0.08, self.punch_t > self._punch_prev)

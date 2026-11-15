@@ -242,10 +242,18 @@ def tex_image(data, alpha=False):
         return im
     im = Image.open(io.BytesIO(data))
     im = im.convert('RGBA' if alpha and im.mode in ('RGBA', 'LA', 'P') else 'RGB')
-    if max(im.size) > TEX_MAX:
-        k = TEX_MAX / float(max(im.size))
-        im = im.resize((max(8, int(im.size[0] * k)), max(8, int(im.size[1] * k))), Image.LANCZOS)
+    k = min(1.0, TEX_MAX / float(max(im.size)))
+    size = (pot(im.size[0] * k), pot(im.size[1] * k))       # стороны — степени двойки
+    if size != im.size:
+        im = im.resize(size, Image.LANCZOS)
     return im
+
+
+def pot(n):
+    p = 8
+    while p * 2 <= n:
+        p *= 2
+    return p * 2 if n - p > p * 2 - n else p
 
 
 def packs():

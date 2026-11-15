@@ -320,7 +320,7 @@ def build_map(game, size=0.86):
         x, y = hud.blip_pos(b)
         put(b.tex, x, y, 0.028 * b.scale, b.color)
     pl = w.player
-    px, py = pl.pos()
+    px, py = w.map_pos()
     heading = pl.vehicle.yaw if pl.vehicle is not None else pl.ped.yaw
     put('blip_player', px, py, 0.034, (1, 1, 1, 1), 90.0 - math.degrees(heading))
     return root

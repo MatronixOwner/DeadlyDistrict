@@ -148,6 +148,8 @@ class Sky(object):
         self.rain_z = 0.0
         self.lights_on = False
         self.night_on = False
+        self.indoor = None              # свет помещения (interiors.LIGHTS) — пока герой под крышей
+        self._indoor_on = False
         self.w.citymesh.night_root.hide()
         self.w.citymesh.night_root.setLightOff(1)
         self._apply(0.0)
@@ -279,6 +281,27 @@ class Sky(object):
             sun = _mix(sun, (sun[0] * 0.35, sun[1] * 0.36, sun[2] * 0.4), ck)
         self.fog_color = hor
         base = self.base
+        ind = self.indoor
+        if (ind is not None) != self._indoor_on:
+            self._indoor_on = ind is not None
+            if ind is not None:
+                self.root.hide()
+                self.rain_np.hide()
+            else:
+                self.root.show()
+        if ind is not None:
+            # под крышей: свой свет, за стенами — темнота, тумана нет
+            base.setBackgroundColor(0.012, 0.012, 0.016)
+            self.amb.setColor(LColor(ind[0][0], ind[0][1], ind[0][2], 1))
+            self.sun.setColor(LColor(ind[1][0], ind[1][1], ind[1][2], 1))
+            self.fill.setColor(LColor(ind[2][0], ind[2][1], ind[2][2], 1))
+            self.fog.setColor(0.012, 0.012, 0.016)
+            self.fog.setLinearRange(300.0, 900.0)
+            self.sun_np.setPos(2.5, -5.0, 9.0)
+            self.sun_np.lookAt(0, 0, 0)
+            self.fill_np.setPos(-4.0, 6.0, 5.0)
+            self.fill_np.lookAt(0, 0, 0)
+            return
         base.setBackgroundColor(hor[0], hor[1], hor[2])
         self.dome.setColorScale(zen[0], zen[1], zen[2], 1.0)
         self.amb.setColor(LColor(amb[0], amb[1], amb[2], 1))
@@ -356,7 +379,7 @@ class Sky(object):
     def follow(self, cam, dt):
         """Небо и дождь следуют за камерой."""
         self.root.setPos(cam.x, cam.y, cam.z - 4.0)
-        if self.rain > 0.03:
+        if self.rain > 0.03 and self.indoor is None:
             self.rain_np.show()
             self.rain_z = (self.rain_z + dt * 22.0) % self.rain_h
             self.rain_np.setPos(cam.x, cam.y, max(0.0, cam.z - 6.0) - self.rain_z)

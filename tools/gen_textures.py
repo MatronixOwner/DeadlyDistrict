@@ -847,6 +847,8 @@ SIGNS = [
     ('sign_gas', 'БЕНЗИН', (220, 30, 30), (250, 250, 250), 'RussoOne.ttf'),
     ('sign_port', 'ПОРТ', (30, 60, 100), (250, 250, 250), 'RussoOne.ttf'),
     ('sign_airfield', 'АЭРОДРОМ', (236, 236, 232), (30, 70, 140), 'RussoOne.ttf'),
+    ('sign_boats', 'ЛОДКИ · МОТОРЫ', (28, 60, 96), (240, 226, 170), 'OswaldBold.ttf'),
+    ('sign_tea', 'ЧАЙНАЯ', (150, 60, 30), (250, 230, 180), 'RussoOne.ttf'),
 ]
 
 
@@ -1479,6 +1481,8 @@ def gen_ui():
     blip('blip_vano', b_letter('В', (40, 110, 200, 255)))
     blip('blip_rosa', b_letter('Р', (200, 40, 110, 255)))
     blip('blip_prof', b_letter('П', (60, 160, 70, 255)))
+    blip('blip_zakhar', b_letter('З', (40, 160, 170, 255)))
+    blip('blip_grom', b_letter('Г', (200, 120, 30, 255)))
     blip('blip_save', b_letter('S', (240, 240, 240, 255), (30, 30, 30, 255)))
     blip('blip_taxi', b_letter('T', (250, 200, 30, 255), (20, 20, 20, 255)))
 
