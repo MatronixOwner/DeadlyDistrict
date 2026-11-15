@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Меню: главное, пауза, настройки, карта, магазин."""
+"""Меню: главное, пауза, настройки, карта, магазин.
+
+Строки меню — плашки; выбранная строка светлая с тёмным текстом.  Облик (шрифты и цвета) — в ui.py.
+"""
 import math
 
 from panda3d.core import CardMaker, TextNode, TransparencyAttrib, PandaNode, NodePath
-from direct.gui.OnscreenText import OnscreenText
 
+from . import ui
+from .ui import INK, PAPER, MUTE, DIM, ACCENT, rgba
 from .mapinfo import MAP_CX, MAP_CY, MAP_HALF
 
-GOLD = (1.0, 0.82, 0.2, 1.0)
-WHITE = (0.92, 0.92, 0.92, 1.0)
-GREY = (0.55, 0.55, 0.58, 1.0)
-SEL = (1.0, 0.86, 0.3, 1.0)
+GOLD = ACCENT
+WHITE = PAPER
+GREY = MUTE
+ROWS = 16                   # сколько строк умеет показать меню
+LEFT = 0.14                 # отступ от левого края экрана
+ROW_W = 1.02                # ширина строки обычного меню
+ROW_WIDE = 1.46             # ...и широкого (магазин, настройки с длинными значениями)
 
 
 class Item(object):
@@ -54,38 +61,40 @@ class MenuUI(object):
         self.game = game
         base = game.base
         self.base = base
-        a = game.assets
+        kit = self.kit = ui.Kit(game.assets)
         self.root = base.aspect2d.attachNewNode(PandaNode('menu'), sort=20)
         cm = CardMaker('dim')
         cm.setFrame(-5, 5, -1.5, 1.5)
         self.dim = base.aspect2d.attachNewNode(cm.generate(), sort=15)
-        self.dim.setColor(0, 0, 0, 0.55)
+        self.dim.setColor(INK[0], INK[1], INK[2], 0.66)
         self.dim.setTransparency(TransparencyAttrib.MAlpha)
         self.dim.hide()
-        self.f_title = a.font('DelaGothicOne.ttf', 110, outline=3.0)
-        self.f_item = a.font('RussoOne.ttf', 64, outline=2.0)
-        self.logo = OnscreenText(text='', parent=self.root, pos=(0, 0.66), scale=0.2, fg=GOLD, font=self.f_title,
-                                 align=TextNode.ACenter, mayChange=True)
-        self.logo_sub = OnscreenText(text='', parent=self.root, pos=(0, 0.53), scale=0.075, fg=(0.9, 0.3, 0.25, 1),
-                                     font=self.f_title, align=TextNode.ACenter, mayChange=True)
-        self.title = OnscreenText(text='', parent=self.root, pos=(-0.95, 0.6), scale=0.12, fg=GOLD,
-                                  font=self.f_title, align=TextNode.ALeft, mayChange=True)
-        self.body = OnscreenText(text='', parent=self.root, pos=(-0.95, 0.42), scale=0.062, fg=WHITE,
-                                 font=self.f_item, align=TextNode.ALeft, mayChange=True, wordwrap=32)
-        self.hint = OnscreenText(text='', parent=self.root, pos=(0, -0.93), scale=0.045, fg=GREY, font=self.f_item,
-                                 align=TextNode.ACenter, mayChange=True)
+        self.left = self.root.attachNewNode('left')              # всё меню привязано к левому краю экрана
+        # название игры в главном меню: две строки и подпись
+        self.logo = kit.label(self.left, '', LEFT, 0.60, 0.21, PAPER, kit.title, 'l', shadow=False)
+        self.logo2 = kit.label(self.left, '', LEFT, 0.415, 0.21, ACCENT, kit.title, 'l', shadow=False)
+        self.logo_sub = kit.label(self.left, '', LEFT + 0.008, 0.335, 0.040, MUTE, kit.bold, 'l', shadow=False)
+        self.title = kit.label(self.left, '', LEFT, 0.66, 0.115, PAPER, kit.title, 'l', shadow=False)
+        self.rule = kit.card(self.left, LEFT, LEFT + 0.15, 0.610, 0.618, ACCENT, 1.0)
+        self.body = kit.label(self.left, '', LEFT, 0.42, 0.05, PAPER, kit.text, 'l', wrap=34, shadow=False)
+        self.hint = kit.label(self.left, '', LEFT, -0.915, 0.034, MUTE, kit.text, 'l', shadow=False)
+        self.rows = []
         self.labels = []
         self.values = []
-        for i in range(14):
-            self.labels.append(OnscreenText(text='', parent=self.root, pos=(0, 0), scale=0.085, fg=WHITE,
-                                            font=self.f_item, align=TextNode.ALeft, mayChange=True))
-            self.values.append(OnscreenText(text='', parent=self.root, pos=(0, 0), scale=0.085, fg=WHITE,
-                                            font=self.f_item, align=TextNode.ARight, mayChange=True))
+        for i in range(ROWS):
+            row = kit.card(self.left, 0.0, 1.0, 0.0, 1.0, INK, 0.0, 'row')
+            self.rows.append(row)
+            self.labels.append(kit.label(self.left, '', 0, 0, 0.06, PAPER, kit.bold, 'l', shadow=False))
+            self.values.append(kit.label(self.left, '', 0, 0, 0.06, PAPER, kit.text, 'r', shadow=False))
         self.stack = []
         self.extra = None           # дополнительный узел (карта)
         self.root.hide()
         self.mouse_pos = None
         self.show_logo = False
+        self.aspect = 0.0
+        self._top = 0.0
+        self._row_h = 0.1
+        self._row_w = ROW_W
         game.inp.listeners.append(self.on_key)
 
     # ------------------------------------------------------------------
@@ -125,57 +134,81 @@ class MenuUI(object):
             return
         self.root.show()
         self.dim.show()
-        if self.show_logo and len(self.stack) == 1:
-            self.logo.setText('DEADLY DISTRICT')
-            self.logo_sub.setText('ГИБЛЫЙ РАЙОН')
+        asp = self.base.getAspectRatio()
+        self.aspect = asp
+        self.left.setX(-asp)
+        logo = self.show_logo and len(self.stack) == 1
+        if logo:
+            self.logo.setText('DEADLY')
+            self.logo2.setText('DISTRICT')
+            self.logo_sub.setText(ui.spaced(u'ГИБЛЫЙ РАЙОН'))
             self.title.setText('')
+            self.rule.hide()
         else:
             self.logo.setText('')
+            self.logo2.setText('')
             self.logo_sub.setText('')
-            self.title.setText(m.title)
+            self.title.setText((m.title or '').upper())
+            if m.title:
+                self.rule.show()
+            else:
+                self.rule.hide()
+        top = 0.18 if logo else 0.50
         self.body.setText(m.text or '')
-        self.body.setScale(m.text_scale)
-        self.body.setPos(m.x, m.top + 0.02)
-        n_items = len(m.items)
-        top = m.top
+        self.body.setScale(m.text_scale * 0.86)
+        self.body.setPos(LEFT, top)
         if m.text:
             # пункты под текстом
-            lines = m.text.count('\n') + 1
-            top = m.top - lines * m.text_scale * 1.2 - 0.1
+            tn = self.body.textNode
+            top -= max(1, tn.getNumRows()) * tn.getLineHeight() * m.text_scale * 0.86 + 0.07
+        n_items = len(m.items)
+        # строки: высота зависит от того, сколько пунктов надо уместить до нижней подсказки
+        row_h = min(0.118, m.spacing * 0.94)
+        if n_items > 1:
+            row_h = min(row_h, (top + 0.80) / n_items)
+        size = min(0.060, row_h * 0.52)
+        width = ROW_WIDE if m.wide else ROW_W
         self._top = top
-        vx = 0.95 if not m.wide else 1.15
-        for i in range(len(self.labels)):
-            lab, val = self.labels[i], self.values[i]
+        self._row_h = row_h
+        self._row_w = width
+        for i in range(ROWS):
+            row, lab, val = self.rows[i], self.labels[i], self.values[i]
             if i >= n_items:
+                row.hide()
                 lab.setText('')
                 val.setText('')
                 continue
             it = m.items[i]
-            z = top - i * m.spacing
-            lab.setPos(m.x, z)
-            lab.setScale(m.scale)
-            val.setPos(vx, z)
-            val.setScale(m.scale)
+            z1 = top - i * row_h
+            z0 = z1 - row_h + 0.010
             sel = (i == m.sel)
-            if not it.enabled:
-                col = (0.4, 0.4, 0.42, 1)
-            elif sel:
-                col = SEL
+            row.show()
+            row.setPos(LEFT, 0, z0)
+            row.setScale(width, 1, z1 - z0)
+            if sel and it.enabled:
+                row.setColor(PAPER[0], PAPER[1], PAPER[2], 0.96)
+                col = INK
             else:
-                col = WHITE
+                row.setColor(INK[0], INK[1], INK[2], 0.58)
+                col = PAPER if it.enabled else DIM
+            base_z = z0 + (z1 - z0) * 0.5 - size * 0.30
+            lab.setPos(LEFT + 0.04, base_z)
+            lab.setScale(size)
             lab.setFg(col)
-            val.setFg(col)
-            lab.setText(('› ' if sel else '  ') + it.label)
+            lab.setText(it.label)
+            val.setPos(LEFT + width - 0.04, base_z)
+            val.setScale(size)
+            val.setFg(col if sel else (MUTE if it.enabled else DIM))
             if it.value is not None:
                 v = it.value()
                 if it.change is not None and sel:
-                    v = '‹ %s ›' % v
+                    v = u'‹  %s  ›' % v
                 val.setText(v)
             else:
                 val.setText('')
-        hint = 'Стрелки или мышь — выбор, Enter — подтвердить'
+        hint = u'↑↓  выбор      Enter  подтвердить'
         if m.back is not None or len(self.stack) > 1:
-            hint += ', Esc — назад'
+            hint += u'      Esc  назад'
         self.hint.setText(hint if m.subtitle is None else m.subtitle)
 
     # ------------------------------------------------------------------
@@ -267,9 +300,12 @@ class MenuUI(object):
                 abs(mz - self.mouse_pos[1]) < 1e-4:
             return False
         self.mouse_pos = (mx, mz)
+        x0 = -self.aspect + LEFT
+        if not (x0 <= mx <= x0 + self._row_w):
+            return False
         for i, it in enumerate(m.items):
-            z = self._top - i * m.spacing
-            if z - m.spacing * 0.3 <= mz <= z + m.spacing * 0.7 and m.x - 0.05 <= mx <= 1.2:
+            z1 = self._top - i * self._row_h
+            if z1 - self._row_h <= mz <= z1:
                 if it.enabled:
                     if i != m.sel:
                         m.sel = i
@@ -279,6 +315,8 @@ class MenuUI(object):
 
     def update(self, dt):
         if self.stack:
+            if abs(self.base.getAspectRatio() - self.aspect) > 1e-3:
+                self.refresh()                       # окно изменило форму — раскладываем заново
             self._hover()
 
 

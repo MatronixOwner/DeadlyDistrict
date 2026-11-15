@@ -164,26 +164,22 @@ class Game(object):
             pass
 
     def _loading_begin(self):
-        from direct.gui.OnscreenText import OnscreenText
+        from . import ui
+        kit = ui.Kit(self.assets)
         a2d = self.base.aspect2d
         self._ld = a2d.attachNewNode('loading')
-        f1 = self.assets.font('DelaGothicOne.ttf', 110, outline=3.0)
-        f2 = self.assets.font('RussoOne.ttf', 56, outline=2.0)
-        OnscreenText(text='DEADLY DISTRICT', parent=self._ld, pos=(0, 0.25), scale=0.2, fg=(1.0, 0.82, 0.2, 1),
-                     font=f1, align=TextNode.ACenter)
-        OnscreenText(text='ГИБЛЫЙ РАЙОН', parent=self._ld, pos=(0, 0.1), scale=0.08, fg=(0.9, 0.3, 0.25, 1), font=f1,
-                     align=TextNode.ACenter)
-        self._ld_text = OnscreenText(text='Загрузка…', parent=self._ld, pos=(0, -0.42), scale=0.06,
-                                     fg=(0.85, 0.85, 0.85, 1), font=f2, align=TextNode.ACenter, mayChange=True)
-        cm = CardMaker('bar_bg')
-        cm.setFrame(-0.6, 0.6, -0.55, -0.52)
-        bg = self._ld.attachNewNode(cm.generate())
-        bg.setColor(0.2, 0.2, 0.22, 1)
-        cm = CardMaker('bar')
-        cm.setFrame(0, 1.2, -0.55, -0.52)
-        self._ld_bar = self._ld.attachNewNode(cm.generate())
-        self._ld_bar.setColor(1.0, 0.82, 0.2, 1)
-        self._ld_bar.setPos(-0.6, 0, 0)
+        kit.card(self._ld, -5, 5, -1.5, 1.5, ui.INK, 1.0)
+        asp = self.base.getAspectRatio()
+        x = -asp + 0.14
+        kit.label(self._ld, 'DEADLY', x, 0.20, 0.21, ui.PAPER, kit.title, 'l', shadow=False)
+        kit.label(self._ld, 'DISTRICT', x, 0.015, 0.21, ui.ACCENT, kit.title, 'l', shadow=False)
+        kit.label(self._ld, ui.spaced(u'ГИБЛЫЙ РАЙОН'), x + 0.008, -0.065, 0.040, ui.MUTE, kit.bold, 'l', shadow=False)
+        self._ld_text = kit.label(self._ld, u'Загрузка…', x, -0.80, 0.040, ui.MUTE, kit.text, 'l', shadow=False)
+        w = asp * 2.0 - 0.28
+        kit.card(self._ld, x, x + w, -0.872, -0.866, ui.PAPER, 0.16)
+        self._ld_bar = self._ld.attachNewNode('bar')
+        self._ld_bar.setPos(x, 0, 0)
+        kit.card(self._ld_bar, 0.0, w, -0.872, -0.866, ui.ACCENT, 1.0)
         self._ld_bar.setScale(0.001, 1, 1)
         self._render()
 
@@ -393,9 +389,9 @@ class Game(object):
 
     def open_map(self):
         from .menu import Menu, Item, build_map
-        node = build_map(self)
+        node = build_map(self, 0.84)
         node.reparentTo(self.ui.root)
-        node.setPos(0.42, 0, -0.02)
+        node.setPos(self.base.getAspectRatio() - 0.84 - 0.12, 0, 0.0)
         self.ui.set_extra(node)
 
         def back():
@@ -697,6 +693,7 @@ class Game(object):
     def open_shop(self):
         from .menu import Menu, Item
         from .defs import WEAPONS, WEAPON_ORDER
+        from . import ui
         if self.state != 'play':
             return
         w = self.world
@@ -725,7 +722,7 @@ class Game(object):
                 pl.add_money(-wd.price)
                 pl.give_weapon(wid)
                 self.audio.play('money', 0.7)
-                m.title = 'Оружейный магазин — $%d' % pl.money
+                m.text = balance()
             return f
 
         def buy_armor():
@@ -735,7 +732,10 @@ class Game(object):
             pl.add_money(-800)
             pl.ped.armor = 100.0
             self.audio.play('money', 0.7)
-            m.title = 'Оружейный магазин — $%d' % pl.money
+            m.text = balance()
+
+        def balance():
+            return 'На счету: %s' % ui.money(pl.money)
 
         def label(wid):
             wd = WEAPONS[wid]
@@ -746,13 +746,14 @@ class Game(object):
                 wd = WEAPONS[wid]
                 a = pl.ammo.get(wid)
                 own = '' if a is None else ('  есть' if a < 0 else '  есть: %d' % a)
-                return '$%d%s' % (wd.price, own)
+                return '%s%s' % (ui.money(wd.price), own)
             return f
         items = [Item(label(wid), buy(wid), value=have(wid)) for wid in WEAPON_ORDER if WEAPONS[wid].price > 0]
-        items.append(Item('Бронежилет', buy_armor, value=lambda: '$800'))
+        items.append(Item('Бронежилет', buy_armor, value=lambda: ui.money(800)))
         items.append(Item('Уйти', close))
-        m = Menu(self.ui, 'Оружейный магазин — $%d' % pl.money, items, back=close, top=0.44, spacing=0.11,
-                 scale=0.075, wide=True)
+        m = Menu(self.ui, 'Оружейный магазин', items, back=close, top=0.44, spacing=0.11,
+                 scale=0.075, wide=True, text=balance())
+        m.text_scale = 0.058
         self.ui.open(m)
 
     def open_save(self):

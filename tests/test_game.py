@@ -548,7 +548,7 @@ def test_intro_plays_to_the_end(game):
     while ms.intro is not None and t < 120.0:
         g.step(DT)
         t += DT
-        text = w.hud.sub_text.getText()
+        text = w.hud.sub_plain
         if text and (not lines or lines[-1] != text):
             lines.append(text)
         it = ms.intro

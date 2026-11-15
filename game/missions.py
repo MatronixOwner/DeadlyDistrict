@@ -11,9 +11,7 @@ from .collision import F_PED, F_CAR
 from .mathutil import clamp, angle_diff
 from . import settings as settings_mod
 
-GOLD = (1.0, 0.82, 0.2, 1.0)
-REDC = (0.95, 0.2, 0.15, 1.0)
-BLUEC = (0.35, 0.6, 1.0, 1.0)
+from .ui import ACCENT as GOLD, DANGER as REDC, COOL as BLUEC      # цвета больших сообщений
 
 CONTACTS = {
     'vano': dict(title='Вано', blip='blip_vano', place='гараж Вано'),
