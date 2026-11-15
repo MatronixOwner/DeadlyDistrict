@@ -385,6 +385,25 @@ def mitten(ch):
 
 HEAD_BONES = ('head', 'head_leaf', 'neck_01')
 CUT_BODY, CUT_HEAD = 0.35, 0.30         # где резать: доля пути от основания шеи до головы
+NECK_MARKS = (('m_red', 62, 195, 70, 203), ('m_red', 470, 181, 478, 191))      # (текстура, x0, y0, x1, y1)
+
+
+def clean_marks(img, x0, y0, x1, y1):
+    """Красные точки в прямоугольнике текстуры -> средний цвет кожи вокруг них."""
+    skin = []
+    red = []
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            r, g, b = img.getpixel((x, y))
+            if r > 140 and r > g * 1.6:
+                red.append((x, y))
+            elif r > 150 and g > 105:
+                skin.append((r, g, b))
+    if not skin:
+        return
+    c = tuple(sum(v[k] for v in skin) // len(skin) for k in range(3))
+    for xy in red:
+        img.putpixel(xy, c)
 NECK_SKIRT = 0.10                       # на сколько метров шея головы уходит вниз, в воротник
 HEAD_U = 4.0                            # сдвиг u, которым помечены вершины головы
 
@@ -434,6 +453,29 @@ def combine(ref, body, head, head_tex):
             key = (min(wid[u], wid[v]), max(wid[u], wid[v]))
             edges.setdefault(key, []).append((u, v))
     ni = ref.jnames.index('neck_01')
+    # нижнее кольцо шеи в текстуре головы лежит на самой кромке воротника её прежнего тела (у красной
+    # футболки это красная кайма).  Сдвигаем текстурные координаты кольца внутрь шеи — кайма не видна.
+    ring = set()
+    for key, lst in edges.items():
+        if len(lst) == 1:
+            u, v = lst[0]
+            if not (hpos[u, 1] > cut_h + 0.06 and hpos[v, 1] > cut_h + 0.06):
+                ring.update((int(u), int(v)))
+    if ring:
+        huv = huv.copy()
+        above = {}
+        for tri in ht:
+            for p in tri:
+                p = int(p)
+                if p not in ring:
+                    continue
+                for q in tri:
+                    q = int(q)
+                    if q not in ring and hpos[q, 1] > hpos[p, 1] + 0.008 and (
+                            p not in above or hpos[q, 1] > hpos[above[p], 1]):
+                        above[p] = q
+        for p, q in above.items():
+            huv[p] = huv[p] + (huv[q] - huv[p]) * 0.35
     add_pos, add_nrm, add_uv, add_tri = [], [], [], []
     base_n = len(hpos)
     # цвет «юбки» — обычная кожа шеи: берём точку текстуры с медианным цветом среди вершин шеи
@@ -744,8 +786,14 @@ def do_chars(meta):
         parts = {}                                  # имя -> (pos, nrm, uv, ji, jw, idx) на общем скелете
 
         def save_tex(name, img):
+            img = img.convert('RGB')
+            for (tex, x0, y0, x1, y1) in NECK_MARKS:
+                # метки шва на шее (красные штрихи у края «острова» головы): закрашиваем цветом кожи,
+                # иначе они видны на затылке героя в сценках
+                if tex == name and img.size == (512, 512):
+                    clean_marks(img, x0, y0, x1, y1)
             # 256 цветов с подобранной палитрой: вдвое меньше файл, на глаз разницы нет
-            img.convert('RGB').quantize(256, method=Image.MEDIANCUT, dither=Image.NONE).save(
+            img.quantize(256, method=Image.MEDIANCUT, dither=Image.NONE).save(
                 os.path.join(cdir, name + '.png'), optimize=True)
 
         def write_char(name, src, pos, nrm, uv, ji, jw, idx):
