@@ -918,8 +918,8 @@ def m_g2(m):
         yield 1.4
         thugs = []
         for k, wpn in enumerate((W_PISTOL, W_BAT, W_UZI, W_PISTOL)):
-            # «крыша» выбегает из-за угла: по тротуару с обеих сторон
-            d = (17.0 + k * 1.5) * (1 if k % 2 == 0 else -1)
+            # «крыша» бежит от углов квартала: по тротуару с обеих сторон
+            d = (34.0 + k * 2.0) * (1 if k % 2 == 0 else -1)
             e = m.enemy(side[0] + math.cos(yaw) * d, side[1] + math.sin(yaw) * d, yaw + (math.pi if d > 0 else 0.0),
                         gang_look('purple'), wpn, 100.0, 0.34, 40.0, gang='purple')
             e.attack(pl.ped)

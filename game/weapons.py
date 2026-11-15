@@ -359,6 +359,8 @@ class Weapons(object):
                 w.fx.sparks(mx + dx * t, my + dy * t, mz + dz * t, 3, nx, ny, nz)
                 if random.random() < 0.3:
                     target.hurt(wp.damage * 0.5 * k, ped, 'bullet')
+            elif kind == 'ped' and obj is not target and ped.gang is not None and obj.gang == ped.gang:
+                pass                          # своих не задевают: перекрёстный огонь не решает бой за игрока
             else:
                 self._apply_bullet(wp, t, kind, obj, nx, ny, nz, mx, my, mz, dx, dy, dz, ped, k)
         w.fx.tracer(mx, my, mz, mx + dx * t, my + dy * t, mz + dz * t, width=0.05)

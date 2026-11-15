@@ -641,3 +641,317 @@ def test_intro_interrupted_by_menu(game):
     assert not any(v.scripted for v in w.vehicles)
     w = harness.start_game(g, street=False)
     _after_intro(g, w, errors)
+
+
+# ----------------------------------------------------------------------
+# сюжет: цепочка заказчиков
+# ----------------------------------------------------------------------
+def test_story_chain_is_reachable():
+    """Сюжет проходим в любом порядке: пока пройдено не всё, какое-то задание доступно."""
+    ids = [m['id'] for m in M.MISSIONS]
+    assert len(ids) == len(set(ids)) == 18 and set(ids) == M.STORY_IDS and M.STORY_TOTAL == 18
+    assert set(m['contact'] for m in M.MISSIONS) == set(M.CONTACTS) and len(M.CONTACTS) == 5
+    by_contact = {}
+    for m in M.MISSIONS:
+        assert all(r in M.STORY_IDS for r in m['req']), m['id']
+        prev = by_contact.get(m['contact'])
+        if prev is not None:
+            assert prev in m['req'], 'задания одного заказчика идут по порядку: %s' % m['id']
+        by_contact[m['contact']] = m['id']
+    assert set(M.ANNOUNCE) <= M.STORY_IDS
+    first = [m['id'] for m in M.MISSIONS if not m['req']]
+    assert first == ['v1']                                    # в начале игры одна дорога — к Вано
+
+    def avail(done):
+        return [m['id'] for m in M.MISSIONS if m['id'] not in done and all(r in done for r in m['req'])]
+    # обход всех достижимых состояний: тупиков нет
+    rnd = random.Random(5)
+    for trial in range(300):
+        done = set()
+        while len(done) < 18:
+            a = avail(done)
+            assert a, 'тупик после %s' % sorted(done)
+            done.add(rnd.choice(a))
+    # финал — последним, и только когда закрыты все четыре остальные ветки
+    p4 = next(m for m in M.MISSIONS if m['id'] == 'p4')
+    need = set()
+    todo = list(p4['req'])
+    while todo:
+        r = todo.pop()
+        if r not in need:
+            need.add(r)
+            todo.extend(next(m for m in M.MISSIONS if m['id'] == r)['req'])
+    assert need == M.STORY_IDS - {'p4'}
+    # новые заказчики открываются не из гаража Вано, а по цепочке
+    req = {m['id']: set(m['req']) for m in M.MISSIONS}
+    assert req['z1'] == {'r1'} and 'z1' in req['g1'] and 'g1' in req['p1']
+
+
+def test_story_announces_next_contact(game, world):
+    """После задания игра подсказывает, кто открылся или у кого ещё есть работа."""
+    w = world
+    ms = w.missions
+    said = []
+    orig = w.hud.help
+    w.hud.help = lambda text, dur=6.0: said.append(text)
+    try:
+        expect = {'v1': 'Розе', 'r1': 'Захар', 'r2': 'Грома', 'g1': 'Башня', 'g2': 'чайную', 'r4': 'Проф'}
+        order = ['v1', 'r1', 'v2', 'z1', 'r2', 'g1', 'p1', 'z2', 'z3', 'g2', 'g3', 'p2', 'p3', 'v3', 'v4', 'r3',
+                 'r4', 'p4']
+        for mid in order:
+            spec = next(m for m in M.MISSIONS if m['id'] == mid)
+            assert ms.next_mission(spec['contact']) is spec, mid
+            ms.done.add(mid)
+            del said[:]
+            ms._announce(mid)
+            if mid in expect:
+                assert said and expect[mid] in said[0], (mid, said)
+            if said and said[0].startswith('Здесь пока всё'):
+                # названы только те, у кого работа действительно есть
+                for name, info in M.CONTACTS.items():
+                    assert (info['title'] in said[0]) == (ms.next_mission(name) is not None and
+                                                           name != spec['contact']), (mid, said[0])
+        assert ms.progress() == (18, 18)
+        assert not said                                      # после финала звать некуда
+    finally:
+        w.hud.help = orig
+
+
+def test_zakhar_leaves_town_after_raid(game, world):
+    """После «Облавы» Захара в сарае нет — и после загрузки сохранения тоже."""
+    w = world
+    ms = w.missions
+    assert w.interiors.resident('zakhar') is not None
+    ms.done |= {'v1', 'r1', 'z1', 'z2', 'z3', 'r2', 'g1', 'g2', 'g3'}
+    ms.sync_story()
+    assert w.interiors.resident('zakhar') is None
+    assert ms.next_mission('zakhar') is None
+    assert ms.save_game()
+    w = harness.start_game(game)
+    assert w.interiors.resident('zakhar') is not None        # новая игра — он снова на месте
+    game.to_main_menu()
+    game.continue_game()
+    w = game.world
+    assert isinstance(w.missions.done, set) and 'g3' in w.missions.done
+    assert w.interiors.resident('zakhar') is None
+    assert w.interiors.resident('grom') is not None
+
+
+def test_mission_car_marker_follows_the_car(game, world):
+    """Вышел из машины посреди задания — цель и метка ведут обратно к машине, сел — снова к точке."""
+    w = world
+    pl = w.player
+    ms = w.missions
+    harness.quiet(w, peds=True)
+    spec = next(m for m in M.MISSIONS if m['id'] == 'g2')
+    x, y = w.city.landmarks['grom']['door']
+    pl.teleport(x, y - 2.0)
+    assert ms.start(spec)
+    bot = Bot(game, verbose=False)
+    m = ms.active
+    for _ in range(900):
+        if pl.vehicle is not None and m.markers:
+            break
+        bot.step(DT)
+        game.step(DT)
+    for k in ('w', 's', 'a', 'd', 'space', 'f', 'enter'):
+        game.inp._up(k)
+    car = pl.vehicle
+    assert car is not None and car is m.vehicles[0] and 'точка 1' in m.objective and len(m.markers) == 1
+    car.vx = car.vy = 0.0
+    car.speed = 0.0
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.5)
+    assert 'Вернись' in m.objective and not m.markers          # метки точки нет, есть стрелка над машиной
+    assert any(a.obj is car for a in m.arrows)
+    dx, dy = car.door_pos(-1)
+    pl.ped.x, pl.ped.y = dx - 0.4, dy                           # к водительской двери — и F
+    harness.run(game, 0.2)
+    harness.press(game, 'f')
+    harness.run(game, 2.5)
+    assert pl.vehicle is car
+    harness.run(game, 0.4)
+    assert 'точка 1' in m.objective and len(m.markers) == 1
+    assert not any(a.obj is car for a in m.arrows)
+
+
+def test_crate_is_loaded_by_hand(game, world):
+    """Ящик-груз берут только пешком: из машины он не подбирается."""
+    w = world
+    pl = w.player
+    ms = w.missions
+    harness.quiet(w, peds=True)
+    x, y = pl.pos()
+    pk = ms.add_pickup('crate', x + 12.0, y - 6.0)
+    harness.run(game, 0.3)
+    assert not pk.removed and pk.kind == 'crate'
+    v = w.spawn_vehicle('pickup', pk.x, pk.y, 0.0)
+    pl.ped.x, pl.ped.y = v.door_pos(-1)
+    pl.enter_vehicle(v, silent=True)
+    harness.run(game, 0.5)
+    assert pl.vehicle is v and not pk.removed                 # за рулём ящик не взять, хоть он и под колёсами
+    pl.leave_vehicle(force=True)
+    pl.teleport(pk.x + 0.3, pk.y)
+    harness.run(game, 0.3)
+    assert pk.removed
+
+
+# ----------------------------------------------------------------------
+# помещения
+# ----------------------------------------------------------------------
+def test_every_door_leads_in_and_back_out(game, world):
+    """В каждое помещение входят пешком через дверь со стрелкой и выходят обратно к той же двери."""
+    w = world
+    pl = w.player
+    its = w.interiors
+    harness.quiet(w, peds=True)
+    assert [r.name for r in its.order] == ['safehouse', 'vano', 'rosa', 'prof', 'guns', 'guns2', 'police',
+                                           'hospital', 'bank', 'zakhar', 'grom']
+    for r in its.order:
+        x, y = r.out
+        pl.teleport(x, y - 3.0, math.pi / 2)
+        w.cam.yaw = math.pi / 2
+        harness.run(game, 0.3)
+        assert its.current is None and not pl.indoors
+        assert not r.arrow.np.isHidden()                       # жёлтая стрелка над дверью
+        t = 0.0
+        while its.current is not r and t < 5.0:
+            harness.run(game, 0.1, keys=('w',))
+            t += 0.1
+        assert its.current is r, r.name
+        harness.run(game, 0.8)
+        assert pl.indoors and not pl.freeze and w.citymesh.root.isHidden() and not r.node.isHidden()
+        px, py = pl.pos()
+        assert r.ox < px < r.ox + r.w and r.oy < py < r.oy + r.d, r.name
+        assert w.map_pos() == (r.out[0], r.out[1])             # на карте герой — у двери этого дома
+        people = [p for p in its.people if p.room == r.name and not p.removed]
+        assert len(people) == len(r.people), r.name
+        for p in people:
+            assert r.ox < p.x < r.ox + r.w and r.oy < p.y < r.oy + r.d and p.fixed
+        w.cam.yaw = -math.pi / 2                               # развернулись — и к выходу
+        t = 0.0
+        while its.current is not None and t < 6.0:
+            harness.run(game, 0.1, keys=('w',))
+            t += 0.1
+        assert its.current is None, r.name
+        harness.run(game, 0.8)
+        px, py = pl.pos()
+        assert math.hypot(px - r.out_pos[0], py - r.out_pos[1]) < 2.5, r.name
+        assert not pl.indoors and not pl.freeze and not w.citymesh.root.isHidden() and r.node.isHidden()
+
+
+def test_street_is_frozen_while_indoors(game, world):
+    """Пока герой в помещении, улица стоит (её не видно), а часы идут; вышел — всё на прежних местах и едет."""
+    w = world
+    its = w.interiors
+    harness.run(game, 1.5)
+    cars = [v for v in w.vehicles if v.mode == Vehicle.RAIL and v.npc and abs(v.speed) > 2.0]
+    assert cars
+    its.enter('safehouse', instant=True)
+    harness.run(game, 0.1)
+    pos = [(v.x, v.y) for v in cars]
+    hour = w.sky.hour
+    harness.run(game, 3.0)
+    assert [(v.x, v.y) for v in cars] == pos
+    assert w.sky.hour > hour
+    its.leave(instant=True)
+    harness.run(game, 2.5)
+    alive = [(v, p0) for v, p0 in zip(cars, pos) if not v.removed]
+    assert alive and any(math.hypot(v.x - p0[0], v.y - p0[1]) > 3.0 for v, p0 in alive)
+
+
+def test_no_weapons_indoors(game, world):
+    """В помещении оружие убрано и не стреляет; на улице оно снова в руках."""
+    from game.defs import W_FIST
+    w = world
+    pl = w.player
+    its = w.interiors
+    pl.give_weapon(W_PISTOL, 30)
+    assert pl.ped.weapon.id == W_PISTOL
+    its.enter('rosa', instant=True)
+    harness.run(game, 0.3)
+    assert pl.indoors and pl.ped.weapon.id == W_FIST
+    rosa = its.resident('rosa')
+    hp = rosa.health
+    harness.run(game, 1.2, keys=('mouse1',))
+    assert pl.ammo[W_PISTOL] == 30 and w.police.level == 0 and rosa.health == hp and not rosa.dead
+    harness.press(game, 'f')                                   # и машины тут нет: F ничего не делает
+    harness.run(game, 0.3)
+    assert pl.state == 'foot'
+    its.leave(instant=True)
+    harness.run(game, 0.3)
+    assert not pl.indoors and pl.ped.weapon.id == W_PISTOL
+    harness.run(game, 0.6, keys=('mouse1',))
+    assert pl.ammo[W_PISTOL] < 30
+
+
+def test_door_is_closed_for_wanted_and_busy(game, world):
+    """С розыском или посреди задания в дверь не войти; игра объясняет почему."""
+    w = world
+    pl = w.player
+    its = w.interiors
+    ms = w.missions
+    harness.quiet(w, peds=True)
+    r = its.rooms['rosa']
+    x, y = r.out
+
+    def walk_in(sec=2.0):
+        pl.teleport(x, y - 3.0, math.pi / 2)
+        w.cam.yaw = math.pi / 2
+        harness.run(game, 0.2)
+        t = 0.0
+        while its.current is None and t < sec:
+            harness.run(game, 0.1, keys=('w',))
+            t += 0.1
+        return its.current is r
+
+    w.police.locked = 1
+    w.police.set_level(1)
+    assert not walk_in()
+    assert 'полици' in w.hud.help_text.getText().lower() and w.hud.help_t > 0.0
+    w.police.locked = None
+    w.police.clear()
+    harness.run(game, 4.5)                                      # подсказка не повторяется чаще раза в 4 с
+    spec = next(m for m in M.MISSIONS if m['id'] == 'v1')
+    assert ms.start(spec)
+    for _ in range(12):                                         # брифинг у Вано — пролистать
+        harness.run(game, 0.5)
+        if not pl.freeze:
+            break
+        harness.press(game, 'enter')
+    harness.run(game, 1.0)
+    assert ms.active is not None and not pl.freeze and its.current is None
+    assert not walk_in()
+    assert 'закончи дело' in w.hud.help_text.getText()
+    ms._finish(False, '', True)
+    harness.run(game, 0.5)
+    assert walk_in(4.0)
+
+
+def test_hospital_patches_up_for_money(game, world):
+    """Регистратура в больнице: перевязка за $100, без денег и здоровых не лечат."""
+    w = world
+    pl = w.player
+    ms = w.missions
+    harness.quiet(w, peds=True)
+    mk = ms.heal_mk
+    room = w.interiors.rooms['hospital']
+    ax, ay = room.entry[0], room.entry[1]                       # у входа — в стороне от метки
+    assert not mk.inside(ax, ay)
+
+    def visit():
+        pl.teleport(ax, ay)
+        harness.run(game, 0.3)
+        pl.teleport(mk.x, mk.y)
+        harness.run(game, 0.3)
+
+    pl.ped.health = 35.0
+    visit()
+    assert w.interiors.current is room
+    assert pl.ped.health == 35.0 and pl.money == 0
+    pl.add_money(250)
+    visit()
+    assert pl.ped.health == pl.ped.max_health and pl.money == 150
+    harness.run(game, 1.5)
+    visit()
+    assert pl.money == 150
