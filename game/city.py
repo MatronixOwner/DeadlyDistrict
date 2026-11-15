@@ -11,6 +11,7 @@ import math
 from bisect import bisect_right
 
 from .mathutil import Rng, clamp
+from .terrain import Terrain, C_FOREST, C_ROCK, C_GRASS
 
 # ---------------------------------------------------------------------------
 # размеры
@@ -27,25 +28,54 @@ FLOOR_H = 3.2          # высота этажа
 GF_H = 4.0             # высота первого этажа
 WATER_Z = -0.7
 
-# зоны:  G трущобы, R спальный, I промзона/порт, O старый город,
-#        D деловой центр, P парк, B набережная
-ZONE_MAP = [            # сверху — север (j = 7)
-    'GGGRRRRIII',
-    'GGGRRRRIII',
-    'OOODDDRRII',
-    'OODDPPDDII',
-    'OODDPPDDII',
-    'OOODDDDDII',
-    'BBBBBBBBBI',
-    'BBBBBBBBBI',
+# ---------------------------------------------------------------------------
+# раскладка мира
+# ---------------------------------------------------------------------------
+# Мир — узор из «клеток» между линиями дорог.  Линии общие на весь мир (xs, ys), но дороги идут
+# только там, где к линии примыкает квартал, и там, где они проложены явно (трасса, мосты).
+# Клетка — либо квартал с зоной, либо пусто: море или дикая земля, это решает рельеф.
+#
+# зоны:  G трущобы, R спальный, I промзона/порт, O старый город, D деловой центр, P парк,
+#        B набережная — остров, сам Порт-Глухов;
+#        V центр Заречья, S слобода (частные дома) — северный берег, за Большим мостом;
+#        H нефтебаза, A аэродром, L посёлок Маячный — восточный берег, за Портовым мостом.
+CELLS = [               # сверху — север (j = 13), слева — запад (i = 0)
+    '....SSS........',
+    '..SSSVVSS......',
+    '..SVVVVVS......',
+    '..SSVVVS.......',
+    '...SSVS........',
+    '...............',
+    '.GGRRRRII...AAA',
+    'GGGRRRRIII..AAA',
+    'OOODDDRRII.HH..',
+    'OODDPPDDII.HH..',
+    'OODDPPDDII..LL.',
+    'OOODDDDDII.....',
+    'BBBBBBBBB......',
+    '.BBBBBBB.......',
 ]
-BLOCK_W = [72, 72, 72, 86, 72, 72, 86, 72, 86, 86]            # i = 0..9 (запад -> восток)
-BLOCK_H = [64, 72, 72, 80, 80, 72, 72, 72]                    # j = 0..7 (юг -> север)
-ROAD_X_AVE = [True, False, False, True, False, False, True, False, True, False, True]
-ROAD_Y_AVE = [True, False, True, False, False, True, False, False, True]
-PARK_I0, PARK_I1, PARK_J0, PARK_J1 = 4, 5, 3, 4               # парк занимает 2x2 квартала
-
-MARGIN_W, MARGIN_E, MARGIN_S, MARGIN_N = 28.0, 52.0, 56.0, 28.0
+X0, Y0 = -459.0, -350.0                     # юго-западный угол сетки (край самой западной и самой южной дороги)
+BLOCK_W = [72, 72, 72, 86, 72, 72, 86, 72, 86, 86, 250, 84, 96, 84, 110]     # i = 0..14 (запад -> восток)
+BLOCK_H = [64, 72, 72, 80, 80, 72, 72, 72, 290, 70, 80, 72, 84, 70]          # j = 0..13 (юг -> север)
+ROAD_X_AVE = [True, False, False, True, False, False, True, False, True, False, True,
+              False, True, False, False, False]
+ROAD_Y_AVE = [True, False, True, False, False, True, False, False, True,
+              True, False, True, False, False, False]
+# большие кварталы из нескольких клеток: (i0, j0, i1, j1)
+PARK_I0, PARK_I1, PARK_J0, PARK_J1 = 4, 5, 3, 4               # парк занимает 2x2 клетки
+SUPER = [(PARK_I0, PARK_J0, PARK_I1, PARK_J1), (12, 6, 14, 7)]
+# дороги вне кварталов: трасса вокруг залива и два моста
+#   ('h', i, j) — отрезок от узла (i, j) к (i + 1, j);  ('v', i, j) — от узла (i, j) к (i, j + 1)
+EXTRA_SEGS = [('h', 9, 11), ('h', 10, 11), ('h', 11, 11), ('v', 12, 10), ('v', 12, 9), ('v', 12, 8)]
+BRIDGES = {
+    ('v', 6, 8): dict(name='north', height=9.0, ramp=95.0, style='suspension'),
+    ('h', 10, 5): dict(name='east', height=7.0, ramp=80.0, style='girder'),
+}
+DOCK_W = 52.0           # ширина бетонных причалов к востоку от порта
+BEACH_W = 56.0          # ширина городского пляжа
+# на что похожа зона (жители, машины, звуки): новые зоны ведут себя как знакомые
+ZONE_STYLE = {'V': 'O', 'S': 'R', 'L': 'R', 'H': 'I', 'A': 'I'}
 
 ZONE_NAMES = {
     'G': 'Ржавый квартал',
@@ -55,10 +85,19 @@ ZONE_NAMES = {
     'D': 'Деловой центр',
     'P': 'Центральный парк',
     'B': 'Набережная',
+    'V': 'Заречье',
+    'S': 'Слобода',
+    'H': 'Нефтегавань',
+    'A': 'Аэродром',
+    'L': 'Маячный',
     'beach': 'Городской пляж',
     'docks': 'Причалы',
     'coast': 'Побережье',
     'sea': 'Залив',
+    'road': 'Трасса',
+    'wild': 'Предгорья',
+    'bridge_north': 'Большой мост',
+    'bridge_east': 'Портовый мост',
 }
 
 # особые здания:  (i, j) квартала -> (имя, подсказка)
@@ -143,8 +182,10 @@ class Building(object):
 
 
 class RoadNode(object):
-    __slots__ = ('i', 'j', 'x', 'y', 'hw', 'hh', 'exits', 'phase')
+    __slots__ = ('i', 'j', 'x', 'y', 'hw', 'hh', 'exits', 'phase', 'rural', 'through')
     # exits: dict  'e'/'w'/'n'/'s' -> (ni, nj)
+    # rural: перекрёсток за городом (без тротуаров и светофоров)
+    # through: дорога просто проходит насквозь (два выезда друг напротив друга)
 
 
 def _split(length, target, minimum=1):
@@ -152,21 +193,45 @@ def _split(length, target, minimum=1):
     return [length / n] * n
 
 
+def _axis(v, lines, widths):
+    """Где точка относительно линий дорог вдоль одной оси.
+
+    ('l', i) — на линии i (в полосе её дороги);  ('b', i) — между линиями i и i + 1;
+    (None, 0) — за пределами сетки."""
+    i = bisect_right(lines, v) - 1
+    if i < 0:
+        return ('l', 0) if v >= lines[0] - widths[0] * 0.5 else (None, 0)
+    if v <= lines[i] + widths[i] * 0.5:
+        return ('l', i)
+    if i + 1 < len(lines):
+        if v >= lines[i + 1] - widths[i + 1] * 0.5:
+            return ('l', i + 1)
+        return ('b', i)
+    return (None, 0)
+
+
 class City(object):
 
-    def __init__(self, seed=1337):
+    def __init__(self, seed=1337, terrain=None, root=None):
+        """terrain — готовый Terrain;  root — папка игры (рельеф читается из assets/terrain).
+        С пустым Terrain() город тоже строится: земля вокруг считается плоской — так его строит
+        tools/gen_terrain.py, которому как раз и нужно узнать раскладку."""
         self.seed = seed
         self.rng = Rng(seed)
+        if terrain is None:
+            if root is None:
+                from .settings import find_root
+                root = find_root()
+            terrain = Terrain(root)
+        self.terrain = terrain
 
-        # --- сетка дорог ------------------------------------------------
+        # --- сетка линий -------------------------------------------------
         self.nx = len(BLOCK_W)
         self.ny = len(BLOCK_H)
         self.wx = [AVE_W if a else ST_W for a in ROAD_X_AVE]      # ширины вертикальных дорог
         self.wy = [AVE_W if a else ST_W for a in ROAD_Y_AVE]
-        total_w = sum(BLOCK_W) + sum(self.wx)
-        total_h = sum(BLOCK_H) + sum(self.wy)
         self.xs = []
-        x = -total_w * 0.5
+        x = X0
         for i in range(self.nx + 1):
             x += self.wx[i] * 0.5
             self.xs.append(x)
@@ -174,7 +239,7 @@ class City(object):
             if i < self.nx:
                 x += BLOCK_W[i]
         self.ys = []
-        y = -total_h * 0.5
+        y = Y0
         for j in range(self.ny + 1):
             y += self.wy[j] * 0.5
             self.ys.append(y)
@@ -185,12 +250,15 @@ class City(object):
         self.grid_x1 = self.xs[-1] + self.wx[-1] * 0.5
         self.grid_y0 = self.ys[0] - self.wy[0] * 0.5
         self.grid_y1 = self.ys[-1] + self.wy[-1] * 0.5
-        # суша
-        self.land_x0 = self.grid_x0 - MARGIN_W
-        self.land_x1 = self.grid_x1 + MARGIN_E
-        self.land_y0 = self.grid_y0 - MARGIN_S
-        self.land_y1 = self.grid_y1 + MARGIN_N
-        self.extra_land = []          # пирсы и мост: (x0, y0, x1, y1, z)
+        # клетки: (i, j) -> зона
+        self.cells = {}
+        for row, line in enumerate(CELLS):
+            j = self.ny - 1 - row
+            for i, ch in enumerate(line):
+                if ch != '.':
+                    self.cells[(i, j)] = ch
+        # остров — прежний город: по нему считаются пляж и причалы
+        self.isle_i1, self.isle_j1 = 9, 7
 
         # --- контейнеры данных -----------------------------------------
         self.blocks = []
@@ -207,85 +275,141 @@ class City(object):
         self.pickup_spots = []        # (x, y, hint)
         self.ped_extra_nodes = []     # дополнительные узлы пешеходного графа (парк)
         self.special = {}             # прочее (мост, понд, ...)
+        self.pads = []                # ровные площадки вне кварталов: (x0, y0, x1, y1, z, зона)
+        self._pad_grid = {}
+        self.extra_land = []          # то же для карты: (x0, y0, x1, y1, z)
+        self.bridges = []             # отрезки-мосты (dict отрезка)
+        self.walk_strips = []         # внешние тротуары: (x0, y0, x1, y1)
+        self._chunk_ids = {}
         self.n_chunks = 0
 
         self._make_roads()
         self._make_blocks()
+        self._outer_sidewalks()
         for b in self.blocks:
             self._gen_block(b)
-        self._gen_outer()
+        self._gen_coast()
+        self._gen_country()
         self._gen_extras()
-        self.n_chunks = self._outer_chunk_base + 16
+        self.n_chunks = self._outer_chunk_base + len(self._chunk_ids)
+
+    def signature(self):
+        """Подпись раскладки: рельеф построен под конкретные дороги и кварталы."""
+        import hashlib
+        h = hashlib.md5()
+        h.update(repr((X0, Y0, BLOCK_W, BLOCK_H, ROAD_X_AVE, ROAD_Y_AVE, CELLS, SUPER, EXTRA_SEGS,
+                       sorted((k, sorted(v.items())) for k, v in BRIDGES.items()), DOCK_W, BEACH_W)).encode())
+        return h.hexdigest()[:16]
 
     # ------------------------------------------------------------------
     # дороги
     # ------------------------------------------------------------------
     def _seg_exists_h(self, i, j):
         """горизонтальный отрезок между узлами (i, j) и (i+1, j)"""
-        if not (0 <= i < self.nx and 0 <= j <= self.ny):
-            return False
-        if j == PARK_J1 and PARK_I0 <= i <= PARK_I1:
-            return False
-        return True
+        return ('h', i, j) in self.segs
 
     def _seg_exists_v(self, i, j):
         """вертикальный отрезок между узлами (i, j) и (i, j+1)"""
-        if not (0 <= i <= self.nx and 0 <= j < self.ny):
-            return False
-        if i == PARK_I1 and PARK_J0 <= j <= PARK_J1:
-            return False
-        return True
+        return ('v', i, j) in self.segs
 
     def _make_roads(self):
+        cells = self.cells
+        keys = set()
+        for (i, j) in cells:
+            keys.add(('h', i, j))
+            keys.add(('h', i, j + 1))
+            keys.add(('v', i, j))
+            keys.add(('v', i + 1, j))
+        for (i0, j0, i1, j1) in SUPER:                 # внутри большого квартала дорог нет
+            for i in range(i0, i1 + 1):
+                for j in range(j0 + 1, j1 + 1):
+                    keys.discard(('h', i, j))
+            for i in range(i0 + 1, i1 + 1):
+                for j in range(j0, j1 + 1):
+                    keys.discard(('v', i, j))
+        keys.update(EXTRA_SEGS)
+        keys.update(BRIDGES)
+        # отрезки дорог: ('h'|'v', i, j) -> dict
+        self.segs = {}
+        for key in sorted(keys):
+            kind, i, j = key
+            if kind == 'h':
+                sides = {'n': (i, j) in cells, 's': (i, j - 1) in cells}
+                seg = dict(kind='h', i=i, j=j, width=self.wy[j], ave=ROAD_Y_AVE[j],
+                           a=self.xs[i] + self.wx[i] * 0.5, b=self.xs[i + 1] - self.wx[i + 1] * 0.5,
+                           c=self.ys[j])
+            else:
+                sides = {'e': (i, j) in cells, 'w': (i - 1, j) in cells}
+                seg = dict(kind='v', i=i, j=j, width=self.wx[i], ave=ROAD_X_AVE[i],
+                           a=self.ys[j] + self.wy[j] * 0.5, b=self.ys[j + 1] - self.wy[j + 1] * 0.5,
+                           c=self.xs[i])
+            seg['key'] = key
+            seg['sides'] = sides
+            seg['bridge'] = BRIDGES.get(key)
+            seg['rural'] = not any(sides.values())      # за городом: ни тротуаров, ни «зебр»
+            self.segs[key] = seg
+            if seg['bridge']:
+                self.bridges.append(seg)
         self.nodes = {}
-        for i in range(self.nx + 1):
-            for j in range(self.ny + 1):
-                if i == PARK_I1 and j == PARK_J1:
-                    continue
+
+        def node(i, j):
+            n = self.nodes.get((i, j))
+            if n is None:
                 n = RoadNode()
                 n.i, n.j = i, j
                 n.x, n.y = self.xs[i], self.ys[j]
                 n.hw, n.hh = self.wx[i] * 0.5, self.wy[j] * 0.5
                 n.exits = {}
-                if self._seg_exists_h(i, j):
-                    n.exits['e'] = (i + 1, j)
-                if self._seg_exists_h(i - 1, j):
-                    n.exits['w'] = (i - 1, j)
-                if self._seg_exists_v(i, j):
-                    n.exits['n'] = (i, j + 1)
-                if self._seg_exists_v(i, j - 1):
-                    n.exits['s'] = (i, j - 1)
                 n.phase = ((i * 7 + j * 13) % 10) * 3.1
+                n.rural = True
+                n.through = False
                 self.nodes[(i, j)] = n
-        # отрезки дорог: ('h'|'v', i, j) -> dict
-        self.segs = {}
-        for i in range(self.nx):
-            for j in range(self.ny + 1):
-                if self._seg_exists_h(i, j):
-                    self.segs[('h', i, j)] = dict(
-                        kind='h', i=i, j=j, width=self.wy[j], ave=ROAD_Y_AVE[j],
-                        a=self.xs[i] + self.wx[i] * 0.5, b=self.xs[i + 1] - self.wx[i + 1] * 0.5,
-                        c=self.ys[j])
-        for i in range(self.nx + 1):
-            for j in range(self.ny):
-                if self._seg_exists_v(i, j):
-                    self.segs[('v', i, j)] = dict(
-                        kind='v', i=i, j=j, width=self.wx[i], ave=ROAD_X_AVE[i],
-                        a=self.ys[j] + self.wy[j] * 0.5, b=self.ys[j + 1] - self.wy[j + 1] * 0.5,
-                        c=self.xs[i])
+            return n
+        for (kind, i, j), seg in sorted(self.segs.items()):
+            if kind == 'h':
+                a, b = node(i, j), node(i + 1, j)
+                a.exits['e'] = (i + 1, j)
+                b.exits['w'] = (i, j)
+            else:
+                a, b = node(i, j), node(i, j + 1)
+                a.exits['n'] = (i, j + 1)
+                b.exits['s'] = (i, j)
+            if not seg['rural'] and not seg['bridge']:
+                a.rural = b.rural = False
+        for n in self.nodes.values():
+            ex = set(n.exits)
+            n.through = ex in ({'e', 'w'}, {'n', 's'})
+
+    def bridge_z(self, seg, t):
+        """Высота полотна моста на расстоянии t от начала отрезка."""
+        br = seg['bridge']
+        d = min(t, (seg['b'] - seg['a']) - t)
+        if d <= 0.0:
+            return 0.0
+        r = br['ramp']
+        if d >= r:
+            return br['height']
+        u = d / r
+        return br['height'] * u * u * (3.0 - 2.0 * u)
 
     def _make_blocks(self):
+        supers = {}
+        for sb in SUPER:
+            for ii in range(sb[0], sb[2] + 1):
+                for jj in range(sb[1], sb[3] + 1):
+                    supers[(ii, jj)] = sb
         for j in range(self.ny):
             for i in range(self.nx):
-                zone = ZONE_MAP[self.ny - 1 - j][i]
-                if zone == 'P' and not (i == PARK_I0 and j == PARK_J0):
+                zone = self.cells.get((i, j))
+                if zone is None:
+                    continue
+                sb = supers.get((i, j))
+                if sb is not None and (i, j) != (sb[0], sb[1]):
                     continue
                 b = Block()
                 b.id = len(self.blocks)
                 b.i, b.j = i, j
-                b.i1, b.j1 = i, j
-                if zone == 'P':
-                    b.i1, b.j1 = PARK_I1, PARK_J1
+                b.i1, b.j1 = (sb[2], sb[3]) if sb is not None else (i, j)
                 b.x0 = self.xs[b.i] + self.wx[b.i] * 0.5
                 b.x1 = self.xs[b.i1 + 1] - self.wx[b.i1 + 1] * 0.5
                 b.y0 = self.ys[b.j] + self.wy[b.j] * 0.5
@@ -297,11 +421,84 @@ class City(object):
                         self.block_grid[(ii, jj)] = b
         self._outer_chunk_base = len(self.blocks)
 
+    def _outer_sidewalks(self):
+        """Тротуары с той стороны улицы, где квартала нет (край города).
+
+        Каждая полоса — ещё и ровная площадка: по ней ходят на высоте бордюра."""
+        sw = SIDEWALK
+        strips = self.walk_strips
+        for seg in self.segs.values():
+            if seg['rural'] or seg['bridge']:
+                continue
+            hw = seg['width'] * 0.5
+            a, b, c = seg['a'], seg['b'], seg['c']
+            if seg['kind'] == 'h':
+                if not seg['sides']['n']:
+                    strips.append((a, c + hw, b, c + hw + sw))
+                if not seg['sides']['s']:
+                    strips.append((a, c - hw - sw, b, c - hw))
+            else:
+                if not seg['sides']['e']:
+                    strips.append((c + hw, a, c + hw + sw, b))
+                if not seg['sides']['w']:
+                    strips.append((c - hw - sw, a, c - hw, b))
+        for (i, j), n in self.nodes.items():
+            if n.rural:
+                continue
+            x, y, hw, hh = n.x, n.y, n.hw, n.hh
+            # стороны перекрёстка, с которых нет выезда и нет квартала
+            if 'n' not in n.exits and (i, j) not in self.block_grid and (i - 1, j) not in self.block_grid:
+                strips.append((x - hw, y + hh, x + hw, y + hh + sw))
+            if 's' not in n.exits and (i, j - 1) not in self.block_grid and (i - 1, j - 1) not in self.block_grid:
+                strips.append((x - hw, y - hh - sw, x + hw, y - hh))
+            if 'e' not in n.exits and (i, j) not in self.block_grid and (i, j - 1) not in self.block_grid:
+                strips.append((x + hw, y - hh, x + hw + sw, y + hh))
+            if 'w' not in n.exits and (i - 1, j) not in self.block_grid and (i - 1, j - 1) not in self.block_grid:
+                strips.append((x - hw - sw, y - hh, x - hw, y + hh))
+            # углы
+            for (ci, cj, sx, sy) in ((i, j, 1, 1), (i - 1, j, -1, 1), (i, j - 1, 1, -1), (i - 1, j - 1, -1, -1)):
+                if (ci, cj) in self.block_grid:
+                    continue
+                # за городской чертой угол нужен, только если к нему подходит хотя бы одна городская улица
+                ex_x = 'e' if sx > 0 else 'w'
+                ex_y = 'n' if sy > 0 else 's'
+                x0 = x + hw if sx > 0 else x - hw - sw
+                y0 = y + hh if sy > 0 else y - hh - sw
+                strips.append((x0, y0, x0 + sw, y0 + sw))
+        for (x0, y0, x1, y1) in strips:
+            self._pad(x0, y0, x1, y1, CURB, None)
+
+    # ------------------------------------------------------------------
+    # площадки
+    # ------------------------------------------------------------------
+    def _pad(self, x0, y0, x1, y1, z, zone=None, on_map=False):
+        """Ровная площадка вне кварталов (причал, пирс, внешний тротуар)."""
+        k = len(self.pads)
+        self.pads.append((x0, y0, x1, y1, z, zone))
+        for cx in range(int(x0 // 40.0), int(x1 // 40.0) + 1):
+            for cy in range(int(y0 // 40.0), int(y1 // 40.0) + 1):
+                self._pad_grid.setdefault((cx, cy), []).append(k)
+        if on_map:
+            self.extra_land.append((x0, y0, x1, y1, z))
+
+    def pad_at(self, x, y):
+        """Площадка под точкой: (x0, y0, x1, y1, z, зона) или None.  Из нескольких — самая высокая."""
+        lst = self._pad_grid.get((int(x // 40.0), int(y // 40.0)))
+        if not lst:
+            return None
+        best = None
+        pads = self.pads
+        for k in lst:
+            p = pads[k]
+            if p[0] <= x <= p[2] and p[1] <= y <= p[3] and (best is None or p[4] > best[4]):
+                best = p
+        return best
+
     # ------------------------------------------------------------------
     # запросы
     # ------------------------------------------------------------------
     def cell_at(self, x, y):
-        """Индексы квартала (i, j) для точки (могут быть вне сетки: -1 / nx)."""
+        """Индексы клетки (i, j) для точки (могут быть вне сетки: -1 / nx)."""
         i = bisect_right(self.xs, x) - 1
         j = bisect_right(self.ys, y) - 1
         return i, j
@@ -313,53 +510,115 @@ class City(object):
             return b
         return None
 
+    def where(self, x, y):
+        """Что в точке: ('block', Block), ('seg', отрезок), ('node', узел) или (None, None)."""
+        kx, i = _axis(x, self.xs, self.wx)
+        if kx is None:
+            return None, None
+        ky, j = _axis(y, self.ys, self.wy)
+        if ky is None:
+            return None, None
+        bg = self.block_grid
+        if kx == 'b':
+            if ky == 'b':
+                b = bg.get((i, j))
+                return ('block', b) if b is not None else (None, None)
+            seg = self.segs.get(('h', i, j))
+            if seg is not None:
+                return 'seg', seg
+            b = bg.get((i, j))                      # линия внутри большого квартала (парк, аэродром)
+            if b is not None and bg.get((i, j - 1)) is b:
+                return 'block', b
+            return None, None
+        if ky == 'b':
+            seg = self.segs.get(('v', i, j))
+            if seg is not None:
+                return 'seg', seg
+            b = bg.get((i, j))
+            if b is not None and bg.get((i - 1, j)) is b:
+                return 'block', b
+            return None, None
+        n = self.nodes.get((i, j))
+        if n is not None:
+            return 'node', n
+        b = bg.get((i, j))
+        if b is not None and bg.get((i - 1, j - 1)) is b:
+            return 'block', b
+        return None, None
+
     def on_road(self, x, y):
         """Точка на проезжей части?"""
-        if not (self.grid_x0 <= x <= self.grid_x1 and self.grid_y0 <= y <= self.grid_y1):
-            return False
-        return self.block_at(x, y) is None
+        return self.where(x, y)[0] in ('seg', 'node')
 
     def in_water(self, x, y):
-        if self.land_x0 <= x <= self.land_x1 and self.land_y0 <= y <= self.land_y1:
+        kind, obj = self.where(x, y)
+        if kind is not None:
             return False
-        for (x0, y0, x1, y1, z) in self.extra_land:
-            if x0 <= x <= x1 and y0 <= y <= y1:
-                return False
-        return True
+        if self.pad_at(x, y) is not None:
+            return False
+        return self.terrain.height(x, y) < WATER_Z
 
     def ground_z(self, x, y):
-        if self.grid_x0 <= x <= self.grid_x1 and self.grid_y0 <= y <= self.grid_y1:
-            if self.block_at(x, y) is None:
+        kind, obj = self.where(x, y)
+        if kind == 'block':
+            return CURB
+        if kind == 'node':
+            return 0.0
+        if kind == 'seg':
+            if obj['bridge'] is None:
                 return 0.0
-            return CURB
-        if self.land_x0 <= x <= self.land_x1 and self.land_y0 <= y <= self.land_y1:
-            # пляж плавно уходит в воду
-            if y < self.land_y0 + 10.0:
-                t = (y - self.land_y0) / 10.0
-                return CURB + (WATER_Z - 0.3 - CURB) * (1.0 - t)
-            return CURB
-        for (x0, y0, x1, y1, z) in self.extra_land:
-            if x0 <= x <= x1 and y0 <= y <= y1:
-                return z
-        return WATER_Z - 1.2
+            return self.bridge_z(obj, (x if obj['kind'] == 'h' else y) - obj['a'])
+        p = self.pad_at(x, y)
+        if p is not None:
+            return p[4]
+        return self.terrain.height(x, y)
 
     def zone_at(self, x, y):
-        b = self.block_at(x, y)
-        if b is not None:
-            return b.zone
-        if self.grid_x0 <= x <= self.grid_x1 and self.grid_y0 <= y <= self.grid_y1:
-            # на дороге: берём ближайший квартал
-            i, j = self.cell_at(x, y)
-            i = clamp(i, 0, self.nx - 1)
-            j = clamp(j, 0, self.ny - 1)
-            return ZONE_MAP[self.ny - 1 - j][i]
-        if self.in_water(x, y):
+        kind, obj = self.where(x, y)
+        if kind == 'block':
+            return obj.zone
+        if kind == 'seg':
+            if obj['bridge'] is not None:
+                return 'bridge_' + obj['bridge']['name']
+            i, j = obj['i'], obj['j']
+            near = ((i, j), (i, j - 1)) if obj['kind'] == 'h' else ((i, j), (i - 1, j))
+            for c in near:
+                z = self.cells.get(c)
+                if z is not None:
+                    return z
+            return 'road'
+        if kind == 'node':
+            i, j = obj.i, obj.j
+            for c in ((i, j), (i - 1, j), (i, j - 1), (i - 1, j - 1)):
+                z = self.cells.get(c)
+                if z is not None:
+                    return z
+            return 'road'
+        p = self.pad_at(x, y)
+        if p is not None and p[5]:
+            return p[5]
+        if self.terrain.height(x, y) < WATER_Z:
             return 'sea'
-        if y < self.grid_y0:
-            return 'beach'
-        if x > self.grid_x1:
-            return 'docks'
-        return 'coast'
+        # суша вне кварталов: чей это берег
+        ix1 = self.xs[self.isle_i1 + 1] + 80.0
+        iy1 = self.ys[self.isle_j1 + 1] + 80.0
+        if x < ix1 and y < iy1:
+            if y < self.ys[1]:
+                return 'beach'
+            return 'coast'
+        return 'wild'
+
+    def zone_style(self, zone):
+        """Знакомая зона, на которую эта похожа жителями и машинами (для новых районов)."""
+        if zone in ZONE_STYLE:
+            return ZONE_STYLE[zone]
+        if zone in ('road', 'wild') or zone.startswith('bridge'):
+            return 'R'
+        if zone in ('beach', 'coast', 'sea'):
+            return 'B'
+        if zone == 'docks':
+            return 'I'
+        return zone
 
     def zone_name(self, x, y):
         return ZONE_NAMES.get(self.zone_at(x, y), '')
@@ -387,20 +646,12 @@ class City(object):
         return best
 
     def outer_chunk(self, x, y):
-        """Номер «чанка» для объектов за пределами кварталов."""
-        if y < self.grid_y0:
-            side = 0
-            t = (x - self.land_x0) / (self.land_x1 - self.land_x0)
-        elif y > self.grid_y1:
-            side = 1
-            t = (x - self.land_x0) / (self.land_x1 - self.land_x0)
-        elif x < self.grid_x0:
-            side = 2
-            t = (y - self.land_y0) / (self.land_y1 - self.land_y0)
-        else:
-            side = 3
-            t = (y - self.land_y0) / (self.land_y1 - self.land_y0)
-        return self._outer_chunk_base + side * 4 + int(clamp(t, 0.0, 0.999) * 4)
+        """Номер «чанка» для объектов за пределами кварталов (плитка 160 x 160 м)."""
+        key = (int(x // 160.0), int(y // 160.0))
+        k = self._chunk_ids.get(key)
+        if k is None:
+            k = self._chunk_ids[key] = self._outer_chunk_base + len(self._chunk_ids)
+        return k
 
     # ------------------------------------------------------------------
     # помощники генерации
@@ -499,8 +750,16 @@ class City(object):
                               w=w, h=h, tex=tex))
 
     # ------------------------------------------------------------------
+    def _block_seed(self, b):
+        """Число, от которого зависит застройка квартала.  У кварталов острова оно такое же, каким было,
+        когда город состоял из одного острова 10 x 8: там всё выверено, и вид меняться не должен."""
+        if b.i <= self.isle_i1 and b.j <= self.isle_j1:
+            k = b.j * 10 + b.i
+            return k - (k > 35) - (k > 44) - (k > 45)       # три клетки парка своих номеров не имели
+        return 500 + b.j * 37 + b.i
+
     def _gen_block(self, b):
-        r = Rng(self.seed * 1000 + b.id * 17 + 5)
+        r = Rng(self.seed * 1000 + self._block_seed(b) * 17 + 5)
         R = b.interior()
         z = b.zone
         if z == 'P':
@@ -509,12 +768,16 @@ class City(object):
             self._gen_downtown(b, R, r)
         elif z == 'O':
             self._gen_old(b, R, r)
+        elif z == 'V':
+            self._gen_old(b, R, r, floors=(1, 2))       # Заречье — городок в два этажа
         elif z == 'G':
             self._gen_ghetto(b, R, r)
-        elif z == 'R':
+        elif z in ('R', 'S', 'L'):
             self._gen_resid(b, R, r)
-        elif z == 'I':
+        elif z in ('I', 'H'):
             self._gen_indust(b, R, r)
+        elif z == 'A':
+            self._gen_airfield(b, R, r)
         else:
             self._gen_beach(b, R, r)
         self._gen_street_furniture(b, r)
@@ -691,7 +954,7 @@ class City(object):
             rem -= w
         return out
 
-    def _gen_old(self, b, R, r):
+    def _gen_old(self, b, R, r, floors=(2, 5)):
         x0, y0, x1, y1 = R
         D = 15.0
         lm = LANDMARKS.get((b.i, b.j))
@@ -706,9 +969,9 @@ class City(object):
 
         def make(bx0, by0, bx1, by1, side, corner=''):
             fac = r.pick(styles)
-            floors = r.randint(2, 5)
+            nfl = r.randint(floors[0], floors[1])
             win = side + {'s': 'n', 'n': 's', 'w': 'e', 'e': 'w'}[side] + corner
-            bld = Building(bx0, by0, bx1, by1, GF_H + floors * FLOOR_H, fac, b.id, gf_tex=r.pick(shops),
+            bld = Building(bx0, by0, bx1, by1, GF_H + nfl * FLOOR_H, fac, b.id, gf_tex=r.pick(shops),
                            sides_win=win, sides_gf=side + corner,
                            blank_tex='brick', blank_tint=(0.72, 0.70, 0.68),
                            roof_tex=r.pick(['roof_tar', 'roof_gravel']))
@@ -979,13 +1242,13 @@ class City(object):
                     self.ground.append((dx0, y0, dx0 + dw, hy0 + hd, 'concrete', (4.0, 4.0), (0.86, 0.86, 0.86), b.id,
                                         CURB + 0.02, 0))
                     if r.chance(0.6):
-                        self._spot(dx0 + dw * 0.5, y0 + setback + 2.0, math.pi / 2, 'R', block=b.id)
+                        self._spot(dx0 + dw * 0.5, y0 + setback + 2.0, math.pi / 2, b.zone, block=b.id)
                     self._prop('mailbox', dx0 - 0.6 if drive_left else dx0 + dw + 0.6, y0 + 0.5, math.pi / 2, b.id)
                 else:
                     self.ground.append((dx0, hy0, dx0 + dw, y1, 'concrete', (4.0, 4.0), (0.86, 0.86, 0.86), b.id,
                                         CURB + 0.02, 0))
                     if r.chance(0.6):
-                        self._spot(dx0 + dw * 0.5, y1 - setback - 2.0, -math.pi / 2, 'R', block=b.id)
+                        self._spot(dx0 + dw * 0.5, y1 - setback - 2.0, -math.pi / 2, b.zone, block=b.id)
                     self._prop('mailbox', dx0 - 0.6 if drive_left else dx0 + dw + 0.6, y1 - 0.5, -math.pi / 2, b.id)
                 # деревья
                 for _ in range(r.randint(1, 2)):
@@ -1116,7 +1379,7 @@ class City(object):
         self._ground(x0, y0, x1, y1, 'concrete', b.id, tile=5.0, color=(0.78, 0.78, 0.78))
         w, h = x1 - x0, y1 - y0
         layout = r.weighted([('wh', 4), ('wh2', 3), ('cont', 3), ('tanks', 2)])
-        if lm == 'port':
+        if lm:
             layout = 'wh'
         if layout == 'wh':
             bw, bh = w * r.rangef(0.5, 0.62), h * r.rangef(0.55, 0.7)
@@ -1335,149 +1598,263 @@ class City(object):
                            road_yaw, b.id)
 
     # ------------------------------------------------------------------
-    # побережье, пляж, причалы, мост
+    # АЭРОДРОМ
     # ------------------------------------------------------------------
-    def _gen_outer(self):
+    def _gen_airfield(self, b, R, r):
+        x0, y0, x1, y1 = R
+        w, h = x1 - x0, y1 - y0
+        self._ground(x0, y0, x1, y1, 'grass', b.id, tile=6.0, color=(0.92, 0.95, 0.86))
+        # взлётная полоса вдоль южного края
+        ry = y0 + 30.0
+        rw = 24.0
+        rx0, rx1 = x0 + 12.0, x1 - 12.0
+        z1 = CURB + 0.02
+        self.ground.append((rx0, ry - rw / 2, rx1, ry + rw / 2, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1, 0))
+        white = (0.95, 0.95, 0.95)
+        t = rx0 + 26.0
+        while t < rx1 - 30.0:                        # осевая
+            self.ground.append((t, ry - 0.4, t + 9.0, ry + 0.4, 'white', (1.0, 1.0), white, b.id, z1 + 0.02, 0))
+            t += 18.0
+        for ex in (rx0 + 4.0, rx1 - 16.0):           # «зебра» порогов
+            for k in range(6):
+                yy = ry - rw / 2 + 2.2 + k * 3.6
+                self.ground.append((ex, yy, ex + 12.0, yy + 1.6, 'white', (1.0, 1.0), white, b.id, z1 + 0.02, 0))
+        for side in (-1, 1):                         # кромки
+            yy = ry + side * (rw / 2 - 0.6)
+            self.ground.append((rx0, yy - 0.2, rx1, yy + 0.2, 'white', (1.0, 1.0), white, b.id, z1 + 0.02, 0))
+        # перрон и рулёжка
+        ay0 = ry + rw / 2 + 22.0
+        ax0, ax1 = x0 + w * 0.22, x1 - w * 0.12
+        self.ground.append((ax0, ay0, ax1, y1 - 6.0, 'concrete', (5.0, 5.0), (0.8, 0.8, 0.8), b.id, z1, 0))
+        tx = x0 + w * 0.5
+        self.ground.append((tx - 7.0, ry + rw / 2, tx + 7.0, ay0, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1, 0))
+        # здание аэровокзала — лицом к северной улице
+        bw = 30.0
+        bx0 = x0 + w * 0.42
+        bld = Building(bx0, y1 - 20.0, bx0 + bw, y1 - 7.0, GF_H + FLOOR_H, 'fac_glass_b', b.id, gf_tex='gf_office',
+                       sides_gf='n', blank_tex='concrete', roof_tex='roof_gravel', name='airfield')
+        self.buildings.append(bld)
+        self._big_sign(bld, 'n', 'sign_airfield', w=12.0, h=2.4, z=CURB + bld.h - 1.6)
+        self._register_landmark('airfield', bld, 'n', b)
+        self.landmarks['airfield']['runway'] = (rx0 + 30.0, ry, rx1 - 30.0, ry)
+        self.landmarks['airfield']['apron'] = ((ax0 + ax1) * 0.5, ay0 + 12.0)
+        # диспетчерская вышка
+        vx, vy = bx0 + bw + 10.0, y1 - 14.0
+        self._box(vx - 2.6, vy - 2.6, CURB, vx + 2.6, vy + 2.6, CURB + 15.0, 'concrete', b.id, color=(0.86, 0.86, 0.84),
+                  uv_m=4.0)
+        self._box(vx - 4.0, vy - 4.0, CURB + 15.0, vx + 4.0, vy + 4.0, CURB + 18.2, 'fac_glass_b', b.id,
+                  color=(1.0, 1.0, 1.0), uv_m=3.5, solid=False, top_tex='roof_gravel')
+        # ангары
+        hx = ax0 + 4.0
+        for k in range(2):
+            self._warehouse(b, r, hx, y1 - 34.0, hx + 26.0, y1 - 8.0, 's')
+            hx += 31.0
+        # самолёты на перроне и один у полосы
+        for k in range(3):
+            self._prop('plane', ax0 + 22.0 + k * 34.0, ay0 + 12.0, math.pi / 2 + r.rangef(-0.25, 0.25), b.id,
+                       color=r.randint(0, 3))
+        self._prop('plane', rx0 + 40.0, ry + rw / 2 + 12.0, 0.2, b.id, color=1)
+        self._prop('windsock', x1 - 18.0, ry + rw / 2 + 8.0, 0.0, b.id)
+        # топливо, ящики, служебные машины
+        for k in range(2):
+            self.cyls.append(dict(x=ax1 - 9.0, y=ay0 + 9.0 + k * 13.0, z0=CURB, z1=CURB + 6.0, r=4.4, tex='corrugated',
+                                  color=(0.92, 0.92, 0.9), block=b.id, solid=True, n=12, cap=True))
+        self._prop('crate', ax1 - 20.0, ay0 + 4.0, 0.3, b.id)
+        self._prop('crate', ax1 - 21.6, ay0 + 4.4, 1.0, b.id)
+        self._spot(ax0 + 8.0, y1 - 40.0, 0.0, 'A', kind='van', block=b.id)
+        self._spot(ax1 - 22.0, y1 - 12.0, math.pi, 'A', kind='pickup', block=b.id)
+        # забор с воротами на север
+        self._fence_lot(b, r, x0, y0, x1, y1, 'sew', gaps=False, h=2.4, inset=0.3)
+        gx = bx0 - 14.0
+        self._wall(x0 + 0.3, y1 - 0.3, gx, y1 - 0.3, 2.4, 'chainlink', b.id, thick=0.12, kind='fence')
+        self._wall(gx + 9.0, y1 - 0.3, bx0, y1 - 0.3, 2.4, 'chainlink', b.id, thick=0.12, kind='fence')
+        self._wall(bx0 + bw, y1 - 0.3, x1 - 0.3, y1 - 0.3, 2.4, 'chainlink', b.id, thick=0.12, kind='fence')
+        self.ground.append((gx, y1 - 8.0, gx + 9.0, b.y1, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1, 0))
+        self.ground.append((gx, ay0 + 20.0, gx + 9.0, y1 - 8.0, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1, 0))
+        self.landmarks['airfield']['gate'] = (gx + 4.5, b.y1 + 2.0)
+        for k in range(8):
+            self._prop('lamp', rx0 + 20.0 + k * ((rx1 - rx0 - 40.0) / 7.0), ry + rw / 2 + 3.0, -math.pi / 2, b.id, park=True)
+        self.packages.append((x0 + 6.0, y0 + 6.0))
+        self.pickup_spots.append((ax1 - 4.0, y1 - 10.0, 'lot'))
+
+    # ------------------------------------------------------------------
+    # побережье: пляж, причалы
+    # ------------------------------------------------------------------
+    def _dry(self, x, y, margin=0.3):
+        """Сухое место вне дорог и кварталов (для зонтиков, деревьев и прочего)."""
+        if self.where(x, y)[0] is not None or self.pad_at(x, y) is not None:
+            return False
+        return self.terrain.height(x, y) > WATER_Z + margin
+
+    def _gen_coast(self):
         r = Rng(self.seed * 77 + 3)
-        gx0, gx1, gy0, gy1 = self.grid_x0, self.grid_x1, self.grid_y0, self.grid_y1
-        lx0, lx1, ly0, ly1 = self.land_x0, self.land_x1, self.land_y0, self.land_y1
         oc = self.outer_chunk
         sw = SIDEWALK
+        xs, ys = self.xs, self.ys
 
-        def strip(x0, y0, x1, y1, tex, tile=6.0, color=(1, 1, 1), n=4, horiz=True):
-            """Полоса земли, порезанная на куски (для отсечения по видимости)."""
-            for k in range(n):
-                if horiz:
-                    a = x0 + (x1 - x0) * k / n
-                    c = x0 + (x1 - x0) * (k + 1) / n
-                    self._ground(a, y0, c, y1, tex, oc((a + c) * 0.5, (y0 + y1) * 0.5), tile=tile, color=color)
-                else:
-                    a = y0 + (y1 - y0) * k / n
-                    c = y0 + (y1 - y0) * (k + 1) / n
-                    self._ground(x0, a, x1, c, tex, oc((x0 + x1) * 0.5, (a + c) * 0.5), tile=tile, color=color)
-
-        # внешние тротуары вдоль кольцевой дороги
-        strip(gx0 - sw, gy0 - sw, gx1 + sw, gy0, 'sidewalk', 3.0)
-        strip(gx0 - sw, gy1, gx1 + sw, gy1 + sw, 'sidewalk', 3.0)
-        strip(gx0 - sw, gy0, gx0, gy1, 'sidewalk', 3.0, horiz=False)
-        strip(gx1, gy0, gx1 + sw, gy1, 'sidewalk', 3.0, horiz=False)
-        # юг: пляж
-        strip(lx0, ly0, lx1, gy0 - sw, 'sand', 7.0)
-        # север: трава
-        strip(lx0, gy1 + sw, lx1, ly1, 'grass', 6.0)
-        # запад: трава
-        strip(lx0, gy0 - sw, gx0 - sw, gy1 + sw, 'grass', 6.0, horiz=False)
-        # восток: бетон причалов
-        strip(gx1 + sw, gy0 - sw, lx1, gy1 + sw, 'concrete', 5.0, color=(0.8, 0.8, 0.8), horiz=False)
-
-        # фонари вдоль внешних тротуаров
-        for k in range(int((gx1 - gx0) // 30)):
-            x = gx0 + 15 + k * 30.0
-            self._prop('lamp', x, gy0 - 0.65, math.pi / 2, oc(x, gy0 - 5))
-            self._prop('lamp', x, gy1 + 0.65, -math.pi / 2, oc(x, gy1 + 5))
-        for k in range(int((gy1 - gy0) // 30)):
-            y = gy0 + 15 + k * 30.0
-            self._prop('lamp', gx0 - 0.65, y, 0.0, oc(gx0 - 5, y))
-            self._prop('lamp', gx1 + 0.65, y, math.pi, oc(gx1 + 5, y))
-
-        # ---- пляж: пальмы, зонтики, вышки, пирс
-        for k in range(46):
-            x = lx0 + 12 + k * ((lx1 - lx0 - 24) / 45.0) + r.rangef(-4, 4)
-            self._prop('palm', x, gy0 - sw - r.rangef(2.0, 7.0), 0.0, oc(x, gy0 - 10), seed=r.randint(0, 9999),
-                       size=r.rangef(0.9, 1.3))
+        # ---- городской пляж: к югу от набережной
+        gy0 = ys[0] - self.wy[0] * 0.5                 # южный край самой южной улицы
+        edge = gy0 - sw                                # за тротуаром — песок
+        bx0 = xs[1] - self.wx[1] * 0.5 - 24.0
+        bx1 = xs[8] + self.wx[8] * 0.5 + 24.0
+        ly0 = gy0 - BEACH_W                            # здесь песок уходит в воду
+        self.special['beach'] = dict(x0=bx0, y0=ly0, x1=bx1, y1=edge)
+        for k in range(40):
+            x = bx0 + 12 + k * ((bx1 - bx0 - 24) / 39.0) + r.rangef(-4, 4)
+            y = edge - r.rangef(2.0, 7.0)
+            if self._dry(x, y):
+                self._prop('palm', x, y, 0.0, oc(x, y), seed=r.randint(0, 9999), size=r.rangef(0.9, 1.3))
         for k in range(70):
-            x = r.rangef(lx0 + 10, lx1 - 60)
-            y = r.rangef(ly0 + 14, gy0 - sw - 10)
-            self._prop('umbrella', x, y, r.rangef(0, 6.28), oc(x, y), color=r.randint(0, 5))
+            x = r.rangef(bx0 + 10, bx1 - 10)
+            y = r.rangef(ly0 + 14, edge - 10)
+            if self._dry(x, y, 0.45):
+                self._prop('umbrella', x, y, r.rangef(0, 6.28), oc(x, y), color=r.randint(0, 5))
         for k in range(4):
-            x = lx0 + 120 + k * 230.0
-            self._prop('lifeguard', x, ly0 + 20.0, -math.pi / 2, oc(x, ly0 + 20))
-        pier_x = self.xs[4]
-        self.extra_land.append((pier_x - 4.0, ly0 - 62.0, pier_x + 4.0, ly0 + 12.0, CURB + 0.25))
-        self.special['pier'] = dict(x0=pier_x - 4.0, y0=ly0 - 62.0, x1=pier_x + 4.0, y1=ly0 + 12.0, z=CURB + 0.25,
+            x = bx0 + 90 + k * ((bx1 - bx0 - 180) / 3.0)
+            if self._dry(x, ly0 + 20.0):
+                self._prop('lifeguard', x, ly0 + 20.0, -math.pi / 2, oc(x, ly0 + 20))
+        pier_x = xs[4]
+        pier = (pier_x - 4.0, ly0 - 62.0, pier_x + 4.0, ly0 + 12.0)
+        self._pad(pier[0], pier[1], pier[2], pier[3], CURB + 0.25, 'beach', on_map=True)
+        self.special['pier'] = dict(x0=pier[0], y0=pier[1], x1=pier[2], y1=pier[3], z=CURB + 0.25,
                                     chunk=oc(pier_x, ly0))
         self.packages.append((pier_x, ly0 - 58.0))
         self.pickup_spots.append((pier_x + 2.0, ly0 - 40.0, 'pier'))
-        for k in range(8):
-            self.pickup_spots.append((lx0 + 60 + k * 110.0, ly0 + 26.0, 'beach'))
+        for k in range(7):
+            self.pickup_spots.append((bx0 + 60 + k * 110.0, ly0 + 26.0, 'beach'))
+        # фонари вдоль набережной
+        k = 0
+        while bx0 + 30 + k * 30.0 < bx1 - 30:
+            x = bx0 + 30 + k * 30.0
+            self._prop('lamp', x, gy0 - 0.65, math.pi / 2, oc(x, gy0 - 5))
+            k += 1
 
-        # ---- запад и север: деревья, камни
-        for k in range(60):
-            y = r.rangef(gy0, gy1)
-            x = r.rangef(lx0 + 3, gx0 - sw - 3)
-            self._prop('tree' if r.chance(0.8) else 'rock', x, y, r.rangef(0, 6.28), oc(x, y),
-                       seed=r.randint(0, 9999), size=r.rangef(0.9, 1.5))
-        for k in range(70):
-            x = r.rangef(lx0 + 3, lx1 - 60)
-            y = r.rangef(gy1 + sw + 3, ly1 - 3)
-            if abs(x - self.xs[6]) < 14:
-                continue
-            self._prop('tree' if r.chance(0.8) else 'rock', x, y, r.rangef(0, 6.28), oc(x, y),
-                       seed=r.randint(0, 9999), size=r.rangef(0.9, 1.5))
-        self.packages.append((lx0 + 5.0, ly1 - 5.0))
-        self.packages.append((lx0 + 6.0, gy0 + 120.0))
-
-        # ---- парапет вдоль берега (запад, север, восток)
+        # ---- причалы: к востоку от порта
+        gx1 = xs[self.isle_i1 + 1] + self.wx[self.isle_i1 + 1] * 0.5     # восточный край кольцевой дороги
+        dy0 = ys[2] - self.wy[2] * 0.5
+        dy1 = ys[7] + self.wy[7] * 0.5
+        dx0, dx1 = gx1 + sw, gx1 + DOCK_W
+        self._pad(dx0, dy0, dx1, dy1, CURB, 'docks', on_map=True)
+        self.special['docks'] = dict(x0=dx0, y0=dy0, x1=dx1, y1=dy1)
+        n = 6
+        for k in range(n):
+            ya = dy0 + (dy1 - dy0) * k / n
+            yb = dy0 + (dy1 - dy0) * (k + 1) / n
+            self._ground(dx0, ya, dx1, yb, 'concrete', oc(dx0 + 20, (ya + yb) * 0.5), tile=5.0, color=(0.8, 0.8, 0.8))
+        bridge_y = ys[5]                               # Портовый мост проходит над причалами
+        piers = [(ys[2] + ys[3]) * 0.5, ys[4], (ys[6] + ys[7]) * 0.5]
         wall_c = (0.74, 0.74, 0.72)
-        bx = self.xs[6]                    # мост на проспекте i = 6
-        bw = AVE_W * 0.5 + 1.0
-        self._wall_run(lx0 + 0.3, gy0 - sw, lx0 + 0.3, ly1 - 0.3, 0.9, wall_c)
-        self._wall_run(lx0 + 0.3, ly1 - 0.3, bx - bw, ly1 - 0.3, 0.9, wall_c)
-        self._wall_run(bx + bw, ly1 - 0.3, lx1 - 0.3, ly1 - 0.3, 0.9, wall_c)
-        # восток: парапет с разрывами у пирсов
-        piers = []
-        for k in range(3):
-            py = gy0 + 110 + k * 190.0
-            piers.append(py)
-        prev = ly0 + 40.0
+        prev = dy0
         for py in piers:
-            self._wall_run(lx1 - 0.3, prev, lx1 - 0.3, py - 9.0, 0.9, wall_c)
+            self._wall_run(dx1 - 0.3, prev, dx1 - 0.3, py - 9.0, 0.9, wall_c)
             prev = py + 9.0
-        self._wall_run(lx1 - 0.3, prev, lx1 - 0.3, ly1 - 0.3, 0.9, wall_c)
+        self._wall_run(dx1 - 0.3, prev, dx1 - 0.3, dy1, 0.9, wall_c)
+        self._wall_run(dx0, dy0 + 0.3, dx1 - 0.3, dy0 + 0.3, 0.9, wall_c)
+        self._wall_run(dx0, dy1 - 0.3, dx1 - 0.3, dy1 - 0.3, 0.9, wall_c)
         self.special['piers'] = []
         for py in piers:
-            pr = (lx1, py - 9.0, lx1 + 46.0, py + 9.0)
-            self.extra_land.append((pr[0], pr[1], pr[2], pr[3], CURB))
-            self.special['piers'].append(dict(x0=pr[0], y0=pr[1], x1=pr[2], y1=pr[3], chunk=oc(lx1, py)))
-            ch = oc(lx1 - 5, py)
-            # кнехты и ящики
-            for kx in range(4):
-                self._prop('bollard', lx1 + 6 + kx * 11.0, py - 8.2, 0.0, ch)
-                self._prop('bollard', lx1 + 6 + kx * 11.0, py + 8.2, 0.0, ch)
-            self._prop('crate', lx1 + 30.0, py + 3.0, 0.4, ch)
-            self._prop('crate', lx1 + 31.6, py + 3.4, 1.0, ch)
-        self.packages.append((lx1 + 43.0, piers[1]))
-        self.pickup_spots.append((lx1 + 40.0, piers[0], 'pier'))
-        self.pickup_spots.append((lx1 + 40.0, piers[2], 'pier'))
-
-        # ---- причалы: краны, контейнеры, сухогруз
+            pr = (dx1, py - 9.0, dx1 + 46.0, py + 9.0)
+            self._pad(pr[0], pr[1], pr[2], pr[3], CURB, 'docks', on_map=True)
+            ch = oc(dx1 + 20, py)
+            self.special['piers'].append(dict(x0=pr[0], y0=pr[1], x1=pr[2], y1=pr[3], chunk=ch))
+            for kx in range(4):                         # кнехты и ящики
+                self._prop('bollard', dx1 + 6 + kx * 11.0, py - 8.2, 0.0, ch)
+                self._prop('bollard', dx1 + 6 + kx * 11.0, py + 8.2, 0.0, ch)
+            self._prop('crate', dx1 + 30.0, py + 3.0, 0.4, ch)
+            self._prop('crate', dx1 + 31.6, py + 3.4, 1.0, ch)
+        self.packages.append((dx1 + 43.0, piers[1]))
+        self.pickup_spots.append((dx1 + 40.0, piers[0], 'pier'))
+        self.pickup_spots.append((dx1 + 40.0, piers[2], 'pier'))
+        # краны и контейнеры между пирсами; под мостом — проезд
         fake = Block()
-        fake.id = oc(gx1 + 20, 0.0)
-        for k in range(2):
-            cy = (piers[k] + piers[k + 1]) * 0.5
-            fake.id = oc(gx1 + 20, cy)
-            self._prop('crane', lx1 - 9.0, cy - 30.0, math.pi, fake.id)
-            self._containers(fake, r, gx1 + sw + 8.0, cy - 56.0, lx1 - 18.0, cy + 60.0, along_x=False, density=0.6)
+        yards = [(piers[0] + 14.0, piers[1] - 12.0), (piers[1] + 30.0, bridge_y - 14.0),
+                 (bridge_y + 14.0, piers[2] - 12.0)]
+        for (ya, yb) in yards:
+            if yb - ya < 20.0:
+                continue
+            cy = (ya + yb) * 0.5
+            fake.id = oc(dx0 + 20, cy)
+            self._prop('crane', dx1 - 9.0, ya + 8.0, math.pi, fake.id)
+            self._containers(fake, r, dx0 + 8.0, ya + 2.0, dx1 - 18.0, yb - 2.0, along_x=False, density=0.6)
         # сухогруз у среднего пирса
         sy = piers[1] + 9.0 + 2.0
-        self.special['ship'] = dict(x0=lx1 + 5.0, y0=sy, x1=lx1 + 75.0, y1=sy + 16.0, chunk=oc(lx1, sy + 8))
-        self.boxes.append(dict(x0=lx1 + 5.0, y0=sy, z0=WATER_Z, x1=lx1 + 75.0, y1=sy + 16.0, z1=5.0, tex=None,
-                               block=oc(lx1, sy + 8), color=(0, 0, 0), uv_m=3.0, solid=True, top_tex=None,
+        self.special['ship'] = dict(x0=dx1 + 5.0, y0=sy, x1=dx1 + 75.0, y1=sy + 16.0, chunk=oc(dx1 + 40, sy + 8))
+        self.boxes.append(dict(x0=dx1 + 5.0, y0=sy, z0=WATER_Z, x1=dx1 + 75.0, y1=sy + 16.0, z1=5.0, tex=None,
+                               block=oc(dx1 + 40, sy + 8), color=(0, 0, 0), uv_m=3.0, solid=True, top_tex=None,
                                top_color=None, faces='', stack_h=6.0))
-        # южная часть причалов: стоянка грузовиков
-        fake.id = oc(gx1 + 20, gy0 + 40)
+        # стоянка грузовиков у южного края
+        fake.id = oc(dx0 + 20, dy0 + 20)
         for k in range(5):
-            self._spot(gx1 + sw + 10.0 + k * 5.0, gy0 + 30.0, math.pi / 2, 'I',
+            self._spot(dx0 + 10.0 + k * 5.0, dy0 + 12.0, math.pi / 2, 'I',
                        kind=r.pick(['truck', 'van', 'pickup', 'truck']), block=fake.id)
+        self.packages.append((dx0 + 2.0, dy1 - 3.0))
 
-        # ---- мост (закрыт)
-        self.extra_land.append((bx - AVE_W * 0.5 - 1.5, ly1, bx + AVE_W * 0.5 + 1.5, ly1 + 320.0, 0.0))
-        # подъезд к мосту: от кольцевой дороги до берега
-        self.special['bridge'] = dict(x=bx, y0=gy1, y1=ly1 + 320.0, w=AVE_W, chunk=oc(bx, ly1))
-        self._wall(bx - AVE_W * 0.5 - 1.0, ly1 + 6.0, bx + AVE_W * 0.5 + 1.0, ly1 + 6.0, 1.3, 'concrete',
-                   oc(bx, ly1), color=(0.95, 0.55, 0.15), thick=0.9, kind='barrier', z0=0.0)
-        self.special.setdefault('free_signs', []).append(
-            dict(x=bx, y=ly1 + 5.4, z=2.6, w=9.0, h=2.25, tex='sign_closed', side='s', block=oc(bx, ly1), post=True))
+    # ------------------------------------------------------------------
+    # загород: лес, камни, трасса
+    # ------------------------------------------------------------------
+    def _gen_country(self):
+        T = self.terrain
+        oc = self.outer_chunk
+        r = Rng(self.seed * 91 + 11)
+        if T.ok:
+            step = T.step
+            nx, ny = T.nx, T.ny
+            cover = T.cover
+            for iy in range(1, ny - 1):
+                for ix in range(1, nx - 1):
+                    c = cover[iy * nx + ix]
+                    if c == C_FOREST:
+                        n = 1 if r.chance(0.30) else 0
+                        kind = 'tree'
+                    elif c == C_ROCK:
+                        n = 1 if r.chance(0.10) else 0
+                        kind = 'rock'
+                    elif c == C_GRASS:
+                        n = 1 if r.chance(0.022) else 0
+                        kind = 'tree' if r.chance(0.75) else 'rock'
+                    else:
+                        continue
+                    for _ in range(n):
+                        x = T.x0 + (ix + r.rangef(-0.45, 0.45)) * step
+                        y = T.y0 + (iy + r.rangef(-0.45, 0.45)) * step
+                        if not self._dry(x, y, 0.5) or self._near_road(x, y, 7.0):
+                            continue
+                        self._prop(kind, x, y, r.rangef(0, 6.28), oc(x, y), seed=r.randint(0, 9999),
+                                   size=r.rangef(1.2, 2.1) if kind == 'tree' else r.rangef(0.8, 1.9))
+        # трасса: столбики-отражатели и щиты
+        k = 0
+        for key in sorted(self.segs):
+            seg = self.segs[key]
+            if not seg['rural']:
+                continue
+            a, b, c = seg['a'], seg['b'], seg['c']
+            hw = seg['width'] * 0.5
+            t = a + 20.0
+            while t < b - 10.0:
+                for sgn in (-1, 1):
+                    if seg['kind'] == 'h':
+                        x, y = t, c + sgn * (hw + 1.2)
+                    else:
+                        x, y = c + sgn * (hw + 1.2), t
+                    self._prop('roadpost', x, y, 0.0, oc(x, y))
+                t += 40.0
+            k += 1
+            mid = (a + b) * 0.5
+            if k % 2 == 1 and b - a > 70.0:
+                if seg['kind'] == 'h':
+                    x, y, side = mid, c + hw + 5.0, 's'
+                else:
+                    x, y, side = c + hw + 5.0, mid, 'w'
+                self.special.setdefault('free_signs', []).append(
+                    dict(x=x, y=y, z=5.4, w=9.0, h=4.5, tex=r.pick(BILLBOARDS), side=side, block=oc(x, y), post=True,
+                         lit=False))
+        self.packages.append((self.xs[12] + 14.0, self.ys[11] + 16.0))
+
+    def _near_road(self, x, y, d):
+        """Ближе d метров к дороге или кварталу?"""
+        w = self.where
+        return (w(x + d, y)[0] is not None or w(x - d, y)[0] is not None or
+                w(x, y + d)[0] is not None or w(x, y - d)[0] is not None)
 
     def _wall_run(self, x0, y0, x1, y1, h, color, seg=60.0):
         """Длинная стена, порезанная на куски по чанкам."""
@@ -1496,8 +1873,8 @@ class City(object):
         """Светофоры, особые точки."""
         # светофорные столбы: для каждого въезда на перекрёсток
         self.signals = []        # dict(node=(i,j), dir=..., x, y, yaw)
-        for (i, j), n in self.nodes.items():
-            if len(n.exits) < 3:
+        for (i, j), n in sorted(self.nodes.items()):
+            if len(n.exits) < 3 or n.rural:
                 continue
             for d in n.exits:
                 # d — сторона, С которой машины въезжают (они едут в противоположную сторону)

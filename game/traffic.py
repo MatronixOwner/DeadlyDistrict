@@ -183,7 +183,7 @@ class Traffic(object):
             if r.random() > 0.85:
                 return None
             return k if k in SPECS else 'sedan'
-        pool = ZONE_PARKED.get(spot.get('zone'), PARK_KINDS)
+        pool = ZONE_PARKED.get(self.w.city.zone_style(spot.get('zone') or 'D'), PARK_KINDS)
         return pool[int(r.random() * len(pool))]
 
     def _update_parked(self, px, py, initial):

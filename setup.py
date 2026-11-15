@@ -39,6 +39,7 @@ setup(
                 'assets/models/veh/*.bam',
                 'assets/models/veh/*.png',          # слои краски и деталей машин
                 'assets/models/weapons/*.bam',
+                'assets/terrain/*',                 # рельеф: высоты и готовая геометрия
             ],
             'include_modules': {'*': ['game.*']},
             'icons': {

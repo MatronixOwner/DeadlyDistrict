@@ -35,13 +35,12 @@ def set_lens_range(base, far):
     Программный рендерер (запасной вариант для ПК без OpenGL) неточно отсекает геометрию у дальней
     плоскости: далёкие предметы «просвечивают» сквозь стены.  Для него плоскость отодвигается, а всё
     дальнее и так скрыто туманом."""
-    k = 1.0
     try:
         if base.pipe is not None and base.pipe.getInterfaceName() == 'TinyPanda':
-            k = 5.0
+            far = max(far * 5.0, 4600.0)            # дальше любого края мира
     except Exception:
         pass
-    base.camLens.setNearFar(0.35, far * k)
+    base.camLens.setNearFar(0.35, far)
 
 
 class Sky(object):

@@ -124,7 +124,7 @@ class Crowd(object):
                     continue
                 if d < 62.0 and w.visible(x, y, 1.0):
                     continue
-            zone = w.city.zone_at(x, y)
+            zone = w.city.zone_style(w.city.zone_at(x, y))
             if zone == 'P':
                 zone = 'R'
             if zone not in 'DOGRIB':

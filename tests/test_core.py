@@ -40,16 +40,25 @@ def test_road_network_connected():
     nodes = list(c.nodes.keys())
     for b in nodes[::7]:
         assert rn.route(nodes[0], b), b
-    # граф тротуаров связен
+    # граф тротуаров связен внутри каждого берега: остров, Заречье и восточный берег
+    # (по мостам и трассе пешком не ходят)
     seen = set()
-    stack = [rn.ped_nodes[0]]
-    while stack:
-        n = stack.pop()
-        if n.id in seen:
+    parts = []
+    for start in rn.ped_nodes:
+        if start.id in seen:
             continue
-        seen.add(n.id)
-        stack.extend(e[0] for e in n.edges)
-    assert len(seen) == len(rn.ped_nodes)
+        part = set()
+        stack = [start]
+        while stack:
+            n = stack.pop()
+            if n.id in part:
+                continue
+            part.add(n.id)
+            stack.extend(e[0] for e in n.edges)
+        seen |= part
+        parts.append(part)
+    assert sorted(len(p) for p in parts)[0] >= 20, [len(p) for p in parts]
+    assert len(parts) == 3, [len(p) for p in parts]
 
 
 def test_lanes_drive_on_the_right():

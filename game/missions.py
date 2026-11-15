@@ -750,7 +750,7 @@ def m_taxi(m):
     while True:
         m.counter('Пассажиров: %d' % fares)
         x, y = m.ms.place_near(pl.pos(), 90.0, 240.0, seed=random.randrange(1 << 20))
-        zone = c.zone_at(x, y)
+        zone = c.zone_style(c.zone_at(x, y))
         fare = m.npc(x, y, 0.0, random_look(random, zone if zone in 'DOGRIB' and len(zone) == 1 else 'D'))
         fare.keep = True
         b = m.blip(obj=fare, tex='blip_taxi')

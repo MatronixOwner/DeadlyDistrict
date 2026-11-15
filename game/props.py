@@ -424,14 +424,70 @@ def rock(mb, night, p, rnd):
     return ('c', 0.85 * s, 0.9 * s, F_SOLID)
 
 
+PLANE_COLORS = ((0.92, 0.92, 0.94), (0.86, 0.2, 0.16), (0.2, 0.36, 0.7), (0.95, 0.78, 0.2))
+
+
+def plane(mb, night, p, rnd):
+    """Лёгкий самолёт на стоянке: нос — в сторону +X."""
+    body = (0.93, 0.93, 0.95, 1.0)
+    cr, cg, cb = PLANE_COLORS[p.get('color', 0) % len(PLANE_COLORS)]
+    stripe = (cr, cg, cb, 1.0)
+    dark = (0.12, 0.13, 0.15, 1.0)
+    # фюзеляж: три секции, сужается к хвосту
+    mb.box(None, -1.2, -0.62, 0.9, 2.2, 0.62, 2.1, body)
+    mb.box(None, 2.2, -0.5, 1.0, 3.3, 0.5, 1.9, stripe)                 # капот
+    mb.box(None, -4.6, -0.36, 1.25, -1.2, 0.36, 2.0, body)
+    mb.box(None, -1.2, -0.63, 1.38, 2.2, 0.63, 1.52, stripe)             # полоса по борту
+    # кабина
+    mb.box(None, -0.4, -0.56, 2.1, 1.5, 0.56, 2.66, (0.5, 0.68, 0.8, 1.0), top_color=body)
+    # крыло сверху и стойки шасси
+    mb.box(None, 0.0, -5.4, 2.66, 1.5, 5.4, 2.82, body, top_color=body)
+    mb.box(None, 0.1, -5.4, 2.60, 1.4, -4.6, 2.67, stripe)
+    mb.box(None, 0.1, 4.6, 2.60, 1.4, 5.4, 2.67, stripe)
+    for y in (-1.25, 1.25):
+        mb.box(None, 0.55, y - 0.05, 0.42, 0.75, y + 0.05, 1.0, dark)
+        mb.cylinder_x(None, 0.3, 0.3 + 0.0001, y, 0.3, 0.0001, 4, dark)
+        mb.box(None, 0.38, y - 0.12, 0.0, 0.92, y + 0.12, 0.56, dark)
+    mb.box(None, 2.5, -0.1, 0.0, 2.9, 0.1, 0.9, dark)                    # носовая стойка
+    # хвост
+    mb.box(None, -4.7, -1.9, 1.7, -3.7, 1.9, 1.82, body)
+    mb.box(None, -4.7, -0.07, 1.9, -3.5, 0.07, 3.3, stripe)
+    # винт
+    mb.box(None, 3.3, -0.12, 1.33, 3.5, 0.12, 1.57, dark)
+    mb.box(None, 3.42, -0.06, 0.55, 3.48, 0.06, 2.35, dark)
+    glow(night, 0.75, -5.4, 2.74, 1.2, (1.0, 0.15, 0.1, 1.0))
+    glow(night, 0.75, 5.4, 2.74, 1.2, (0.15, 1.0, 0.3, 1.0))
+    return ('b', 3.9, 1.0, 2.8, F_SOLID | F_CAM)
+
+
+def windsock(mb, night, p, rnd):
+    mb.cylinder(None, 0, 0, 0, 6.0, 0.07, 5, METAL, cap_top=False)
+    for k in range(4):
+        x0, x1 = 0.1 + k * 0.6, 0.1 + (k + 1) * 0.6
+        r0, r1 = 0.42 - k * 0.07, 0.42 - (k + 1) * 0.07
+        col = (0.95, 0.4, 0.1, 1.0) if k % 2 == 0 else (0.95, 0.95, 0.95, 1.0)
+        mb.quad2(None, (x0, 0, 5.7 - r0), (x1, 0, 5.7 - r1 - 0.12 * (k + 1)), (x1, 0, 5.7 + r1 - 0.12 * (k + 1)),
+                 (x0, 0, 5.7 + r0), color=col)
+    return ('c', 0.12, 6.0, F_SOLID)
+
+
+def roadpost(mb, night, p, rnd):
+    """Сигнальный столбик у края трассы."""
+    mb.box(None, -0.06, -0.06, 0.0, 0.06, 0.06, 0.9, (0.92, 0.92, 0.92, 1.0))
+    mb.box(None, -0.065, -0.065, 0.62, 0.065, 0.065, 0.8, (0.1, 0.1, 0.1, 1.0))
+    mb.box(None, -0.07, -0.07, 0.68, 0.07, 0.07, 0.75, (0.9, 0.3, 0.1, 1.0))
+    return ('c', 0.09, 0.9, BREAK_SOFT)
+
+
 BUILDERS = {
     'lamp': lamp, 'tree': tree, 'palm': palm, 'bench': bench, 'bin': bin_, 'hydrant': hydrant,
     'newsbox': newsbox, 'mailbox': mailbox, 'cone': cone, 'busstop': busstop, 'dumpster': dumpster,
     'crate': crate, 'barrel': barrel, 'tires': tires, 'wreck': wreck, 'hoop': hoop, 'fountain': fountain,
     'statue': statue, 'gazebo': gazebo, 'pump': pump, 'umbrella': umbrella, 'lifeguard': lifeguard,
-    'crane': crane, 'bollard': bollard, 'rock': rock,
+    'crane': crane, 'bollard': bollard, 'rock': rock, 'plane': plane, 'windsock': windsock,
+    'roadpost': roadpost,
 }
 
 # объекты, которые можно снести машиной
 BREAKABLE = set(['lamp', 'bench', 'bin', 'hydrant', 'newsbox', 'mailbox', 'cone', 'crate', 'barrel', 'tires',
-                 'umbrella'])
+                 'umbrella', 'roadpost'])

@@ -7,9 +7,11 @@ from panda3d.core import NodePath, TextureStage, TransparencyAttrib
 
 from .meshbuilder import MeshBuilder, erase_vertices
 from . import props as P
+from . import props as P_
 from .facade import Facades
 from .city import (CURB, SIDEWALK, AVE_W, ST_W, CAP_LEN, BAY_W, FLOOR_H, GF_H, WATER_Z, ROAD_X_AVE, ROAD_Y_AVE)
 from .collision import (F_CAR, F_PED, F_SIGHT, F_BULLET, F_BREAK, F_CAM, F_SOLID, F_WALL)
+from .terrain import FLAT as TERRAIN_FLAT
 
 W4 = (1.0, 1.0, 1.0, 1.0)
 
@@ -50,8 +52,8 @@ class CityMesh(object):
         self.signal_nodes = {}      # (phase_idx, axis) -> {'r': np, 'y': np, 'g': np}
         self.chunk_nodes = {}
 
-        steps = [self._roads, self._ground, self._buildings, self._boxes, self._walls, self._props,
-                 self._special, self._signals, self._finish]
+        steps = [self._terrain, self._roads, self._bridges, self._ground, self._buildings, self._boxes,
+                 self._walls, self._props, self._special, self._signals, self._finish]
         for i, fn in enumerate(steps):
             fn()
             if progress:
@@ -77,10 +79,215 @@ class CityMesh(object):
         return m
 
     def _road_chunk(self, x, y):
+        return ('road', int(x // 230.0), int(y // 175.0))
+
+    # ------------------------------------------------------------------
+    # рельеф
+    # ------------------------------------------------------------------
+    def _terrain(self):
+        """Готовая геометрия рельефа (tools/gen_terrain.py) и края мира."""
+        from panda3d.core import Filename
+        import os
         c = self.city
-        rx = int(min(3, max(0, (x - c.grid_x0) / (c.grid_x1 - c.grid_x0) * 4)))
-        ry = int(min(3, max(0, (y - c.grid_y0) / (c.grid_y1 - c.grid_y0) * 4)))
-        return ('road', rx, ry)
+        t = c.terrain
+        self.terrain_root = None
+        if not t.ok:
+            return
+        path = os.path.join(self.assets.root, 'assets', 'terrain', 'terrain.bam')
+        try:
+            root = self.assets.loader.loadModel(Filename.fromOsSpecific(path))
+        except Exception:
+            root = None
+        if root is None or root.isEmpty():
+            return
+        root = root.copyTo(self.root)
+        root.setName('terrain')
+        for gnp in root.findAllMatches('**/+GeomNode'):
+            name = gnp.getName()
+            key = tuple(name.split('|')) if '|' in name else name
+            self.assets.apply_state(gnp, key)
+        self.terrain_root = root
+        # край мира: дальше рельефа нет — невидимая стена по границе сетки
+        m = 24.0
+        x0, y0, x1, y1 = t.x0 + m, t.y0 + m, t.x1 - m, t.y1 - m
+        st = self.static
+        flags = F_CAR | F_PED
+        st.add_box(x0 - 6.0, y0, x0, y1, 0.0, 99.0, flags, None)
+        st.add_box(x1, y0, x1 + 6.0, y1, 0.0, 99.0, flags, None)
+        st.add_box(x0, y0 - 6.0, x1, y0, 0.0, 99.0, flags, None)
+        st.add_box(x0, y1, x1, y1 + 6.0, 0.0, 99.0, flags, None)
+
+    # ------------------------------------------------------------------
+    # мосты
+    # ------------------------------------------------------------------
+    def _bridges(self):
+        c = self.city
+        T = c.terrain
+        steel_red = (0.55, 0.2, 0.16, 1.0)
+        steel_grey = (0.40, 0.44, 0.48, 1.0)
+        conc = (0.62, 0.62, 0.62, 1.0)
+        self.bridge_lamps = []
+        for seg in c.bridges:
+            br = seg['bridge']
+            a, b, cc = seg['a'], seg['b'], seg['c']
+            L = b - a
+            hw = seg['width'] * 0.5
+            if seg['kind'] == 'h':
+                ox, oy, dx, dy = a, cc, 1.0, 0.0
+            else:
+                ox, oy, dx, dy = cc, a, 0.0, 1.0
+            rx, ry = dy, -dx                           # вправо от направления
+
+            def P(t, u, z):
+                return (ox + dx * t + rx * u, oy + dy * t + ry * u, z)
+
+            def chunk(t):
+                x, y, _ = P(t, 0.0, 0.0)
+                return c.outer_chunk(x, y)
+
+            tex = 'road4' if seg['ave'] else 'road2'
+            n = max(8, int(round(L / 6.0)))
+            ew = 1.1                                   # ширина бортика
+            zs = [c.bridge_z(seg, L * k / n) for k in range(n + 1)]
+            water = []                                 # участки над водой (для опор)
+            for k in range(n):
+                t0, t1 = L * k / n, L * (k + 1) / n
+                z0, z1 = zs[k], zs[k + 1]
+                mb = self._mb(chunk((t0 + t1) * 0.5))
+                # полотно
+                mb.quad(tex, P(t0, -hw, z0), P(t0, hw, z0), P(t1, hw, z1), P(t1, -hw, z1),
+                        uvs=((0, t0 / 8.0), (1, t0 / 8.0), (1, t1 / 8.0), (0, t1 / 8.0)))
+                # низ и балки по краям
+                th = 1.1
+                mb.quad(None, P(t0, hw + ew, z0 - th), P(t0, -hw - ew, z0 - th), P(t1, -hw - ew, z1 - th),
+                        P(t1, hw + ew, z1 - th), color=(0.3, 0.3, 0.32, 1))
+                for sgn in (-1.0, 1.0):
+                    ui, uo = sgn * hw, sgn * (hw + ew)
+                    zt0, zt1 = z0 + 0.95, z1 + 0.95
+                    side = [P(t0, uo, z0 - th), P(t1, uo, z1 - th), P(t1, uo, zt1), P(t0, uo, zt0)]
+                    inner = [P(t1, ui, z1), P(t0, ui, z0), P(t0, ui, zt0), P(t1, ui, zt1)]
+                    top = [P(t0, ui, zt0), P(t0, uo, zt0), P(t1, uo, zt1), P(t1, ui, zt1)]
+                    if sgn < 0:
+                        side.reverse()
+                        inner.reverse()
+                        top.reverse()
+                    mb.quad('concrete', side[0], side[1], side[2], side[3], (t0 / 4.0, 0, t1 / 4.0, 0.5), conc)
+                    mb.quad('concrete', inner[0], inner[1], inner[2], inner[3], (t0 / 4.0, 0, t1 / 4.0, 0.25),
+                            (0.7, 0.7, 0.7, 1))
+                    mb.quad(None, top[0], top[1], top[2], top[3], color=(0.78, 0.78, 0.76, 1))
+                    # на суше под въездом — насыпь: стенка до земли
+                    g0 = T.height(*P(t0, uo, 0)[:2])
+                    g1 = T.height(*P(t1, uo, 0)[:2])
+                    if (g0 > WATER_Z or g1 > WATER_Z) and (z0 - th > g0 + 0.05 or z1 - th > g1 + 0.05):
+                        w0 = [P(t0, uo, min(g0, z0 - th) - 0.3), P(t1, uo, min(g1, z1 - th) - 0.3),
+                              P(t1, uo, z1 - th), P(t0, uo, z0 - th)]
+                        if sgn < 0:
+                            w0.reverse()
+                        mb.quad('concrete', w0[0], w0[1], w0[2], w0[3], (t0 / 4.0, 0, t1 / 4.0, 1.0), (0.56, 0.56, 0.56, 1))
+                gm = T.height(*P((t0 + t1) * 0.5, 0.0, 0.0)[:2])
+                water.append(gm < WATER_Z)
+            # торцы насыпи не нужны: полотно начинается от перекрёстка на уровне земли
+            # борта: не съехать и не сойти с моста
+            for sgn in (-1.0, 1.0):
+                p0 = P(0.0, sgn * (hw + 0.1), 0.0)
+                p1 = P(L, sgn * (hw + ew), 0.0)
+                self.static.add_box(min(p0[0], p1[0]), min(p0[1], p1[1]), max(p0[0], p1[0]), max(p0[1], p1[1]),
+                                    0.0, 30.0, F_CAR | F_PED, None)
+            # опоры над водой
+            first = next((k for k, wv in enumerate(water) if wv), None)
+            last = next((k for k in range(n - 1, -1, -1) if water[k]), None)
+            if first is None:
+                continue
+            tw0, tw1 = L * first / n, L * (last + 1) / n
+            span = tw1 - tw0
+            if br['style'] == 'suspension':
+                towers = [tw0 + span * 0.22, tw0 + span * 0.78]
+                TH = br['height'] + 46.0
+                for tt in towers:
+                    mb = self._mb(chunk(tt))
+                    night = self._night(chunk(tt))
+                    zt = c.bridge_z(seg, tt)
+                    for sgn in (-1.0, 1.0):
+                        u = sgn * (hw + ew + 1.2)
+                        self._pbox(mb, P, tt - 1.5, u - 1.2, tt + 1.5, u + 1.2, WATER_Z - 4.0, TH, steel_red)
+                        x, y, _ = P(tt, u, 0)
+                        P_.glow(night, x, y, TH + 1.0, 4.0, (1.0, 0.15, 0.1, 1.0))
+                    for zz in (TH - 6.0, zt + (TH - zt) * 0.5):
+                        self._pbox(mb, P, tt - 1.1, -hw - ew - 2.4, tt + 1.1, hw + ew + 2.4, zz, zz + 2.6, steel_red)
+                    self._pbox(mb, P, tt - 2.4, -hw - ew - 3.0, tt + 2.4, hw + ew + 3.0, WATER_Z - 4.0, WATER_Z + 1.2, conc)
+                # тросы: берег — пилон — пилон — берег
+                cable = (0.5, 0.18, 0.14, 1.0)
+                pts = [(max(4.0, tw0 - 46.0), None), (towers[0], TH), (towers[1], TH), (min(L - 4.0, tw1 + 46.0), None)]
+                for sgn in (-1.0, 1.0):
+                    u = sgn * (hw + ew + 1.2)
+                    for k in range(3):
+                        (ta, za), (tb, zb_) = pts[k], pts[k + 1]
+                        za = c.bridge_z(seg, ta) + 1.2 if za is None else za
+                        zb_ = c.bridge_z(seg, tb) + 1.2 if zb_ is None else zb_
+                        segs = 12
+                        prev = None
+                        for i in range(segs + 1):
+                            f = i / float(segs)
+                            tt = ta + (tb - ta) * f
+                            deck = c.bridge_z(seg, tt)
+                            if k == 1:
+                                zz = za - (4.0 * f * (1.0 - f)) * (za - deck - 5.0)
+                            else:
+                                lo, hi = (za, zb_) if za < zb_ else (zb_, za)
+                                g_ = f if za < zb_ else 1.0 - f
+                                zz = lo + (hi - lo) * g_ * g_
+                            mb = self._mb(chunk(tt))
+                            if prev is not None:
+                                a0, a1 = P(prev[0], u, prev[1] - 0.25), P(tt, u, zz - 0.25)
+                                a2, a3 = P(tt, u, zz + 0.25), P(prev[0], u, prev[1] + 0.25)
+                                mb.quad2(None, a0, a1, a2, a3, color=cable)
+                                if i < segs and zz > deck + 2.0:
+                                    h0, h1 = P(tt - 0.06, u, deck + 0.95), P(tt + 0.06, u, deck + 0.95)
+                                    h2, h3 = P(tt + 0.06, u, zz), P(tt - 0.06, u, zz)
+                                    mb.quad2(None, h0, h1, h2, h3, color=cable)
+                            prev = (tt, zz)
+            else:
+                # балочный мост: опоры через равные промежутки
+                k = max(2, int(round(span / 34.0)))
+                for i in range(k + 1):
+                    tt = tw0 + span * i / k
+                    zt = c.bridge_z(seg, tt)
+                    mb = self._mb(chunk(tt))
+                    self._pbox(mb, P, tt - 1.2, -hw + 1.0, tt + 1.2, hw - 1.0, WATER_Z - 4.0, zt - 1.1, conc)
+                    self._pbox(mb, P, tt - 1.8, -hw - ew, tt + 1.8, hw + ew, zt - 2.0, zt - 1.1, (0.55, 0.55, 0.56, 1))
+                # стальные перила поверх бортиков
+                for k2 in range(n):
+                    t0, t1 = L * k2 / n, L * (k2 + 1) / n
+                    z0, z1 = zs[k2] + 0.95, zs[k2 + 1] + 0.95
+                    mb = self._mb(chunk((t0 + t1) * 0.5))
+                    for sgn in (-1.0, 1.0):
+                        u = sgn * (hw + ew * 0.5)
+                        mb.quad2(None, P(t0, u, z0 + 0.5), P(t1, u, z1 + 0.5), P(t1, u, z1 + 0.62), P(t0, u, z0 + 0.62),
+                                 color=steel_grey)
+                        mb.quad2(None, P(t0 - 0.05, u, z0), P(t0 + 0.05, u, z0), P(t0 + 0.05, u, z0 + 0.6),
+                                 P(t0 - 0.05, u, z0 + 0.6), color=steel_grey)
+            # фонари вдоль всего моста
+            tt = 15.0
+            while tt < L - 10.0:
+                zt = c.bridge_z(seg, tt)
+                mb = self._mb(chunk(tt))
+                night = self._night(chunk(tt))
+                for sgn in (-1.0, 1.0):
+                    u = sgn * (hw + ew * 0.5)
+                    x, y, _ = P(tt, u, 0)
+                    mb.cylinder(None, x, y, zt + 0.95, zt + 6.2, 0.09, 5, P_.METAL, cap_top=False)
+                    xi, yi, _ = P(tt, sgn * (hw - 1.4), 0)
+                    mb.box(None, min(x, xi) - 0.05, min(y, yi) - 0.05, zt + 6.1, max(x, xi) + 0.05, max(y, yi) + 0.05,
+                           zt + 6.22, P_.METAL)
+                    P_.glow(night, xi, yi, zt + 6.0, 2.6)
+                    P_.pool(night, xi - 5.0, yi - 5.0, xi + 5.0, yi + 5.0, zt + 0.05, k=0.35)
+                tt += 28.0
+
+    @staticmethod
+    def _pbox(mb, P, t0, u0, t1, u1, z0, z1, color):
+        """Параллелепипед в системе моста (вдоль t, поперёк u)."""
+        a, b = P(t0, u0, 0.0), P(t1, u1, 0.0)
+        mb.box(None, min(a[0], b[0]), min(a[1], b[1]), z0, max(a[0], b[0]), max(a[1], b[1]), z1, color)
 
     # ------------------------------------------------------------------
     # дороги
@@ -100,7 +307,10 @@ class CityMesh(object):
 
     def _roads(self):
         c = self.city
-        for seg in c.segs.values():
+        for key in sorted(c.segs):
+            seg = c.segs[key]
+            if seg['bridge'] is not None:
+                continue                            # мост строится отдельно (см. _bridges)
             ave = seg['ave']
             hw = seg['width'] * 0.5
             a, b, cc = seg['a'], seg['b'], seg['c']
@@ -113,6 +323,22 @@ class CityMesh(object):
                 mb = self._mb(self._road_chunk(cc, (a + b) * 0.5))
             tex = 'road4' if ave else 'road2'
             cap = 'road4_cap' if ave else 'road2_cap'
+            if seg['rural']:
+                # трасса: разметка без «зебр», по краям — обочина
+                n = max(1, int(round(L / 8.0)))
+                self._road_quad(mb, tex, ox, oy, dx, dy, hw, 0.0, L, 0.0, float(n))
+                for sgn in (-1.0, 1.0):
+                    rx, ry = dy * sgn, -dx * sgn
+                    p0 = (ox + rx * hw, oy + ry * hw, 0.0)
+                    p1 = (ox + dx * L + rx * hw, oy + dy * L + ry * hw, 0.0)
+                    q0 = (p0[0] + rx * 3.0, p0[1] + ry * 3.0, -0.11)
+                    q1 = (p1[0] + rx * 3.0, p1[1] + ry * 3.0, -0.11)
+                    uv = ((0, 0), (L / 4.0, 0), (L / 4.0, 0.75), (0, 0.75))
+                    if sgn > 0:
+                        mb.quad('dirt', p0, q0, q1, p1, uvs=(uv[0], uv[3], uv[2], uv[1]), color=(0.78, 0.76, 0.72, 1))
+                    else:
+                        mb.quad('dirt', p0, p1, q1, q0, uvs=uv, color=(0.78, 0.76, 0.72, 1))
+                continue
             mid = L - 2 * CAP_LEN
             n = max(1, int(round(mid / 8.0)))
             # зебра у начала (текстура развёрнута) и у конца
@@ -128,11 +354,19 @@ class CityMesh(object):
                 r = 0.46
                 mb.quad(('manhole', 'decal'), (mx - r, my - r, 0.012), (mx + r, my - r, 0.012),
                         (mx + r, my + r, 0.012), (mx - r, my + r, 0.012), (0, 0, 1, 1), (0.9, 0.9, 0.9, 1.0))
-        for n in c.nodes.values():
+        for key in sorted(c.nodes):
+            n = c.nodes[key]
             mb = self._mb(self._road_chunk(n.x, n.y))
+            if n.through and n.rural:
+                # трасса идёт насквозь: разметка не прерывается
+                if 'e' in n.exits:
+                    tex = 'road4' if ROAD_Y_AVE[n.j] else 'road2'
+                    self._road_quad(mb, tex, n.x - n.hw, n.y, 1.0, 0.0, n.hh, 0.0, 2 * n.hw, 0.0, n.hw / 4.0)
+                else:
+                    tex = 'road4' if ROAD_X_AVE[n.i] else 'road2'
+                    self._road_quad(mb, tex, n.x, n.y - n.hh, 0.0, 1.0, n.hw, 0.0, 2 * n.hh, 0.0, n.hh / 4.0)
+                continue
             mb.flat('asphalt', n.x - n.hw, n.y - n.hh, n.x + n.hw, n.y + n.hh, 0.0, tile=(8.0, 8.0))
-            # закрыть «дыры» там, где от перекрёстка нет выезда (край города / парк)
-        # заплатки под кольцевой дорогой не нужны: перекрёстки покрывают углы
 
     # ------------------------------------------------------------------
     # земля
@@ -157,18 +391,6 @@ class CityMesh(object):
         for (x0, y0, x1, y1, tex, tile, color, block, z, rot) in c.ground:
             mb = self._mb(block)
             col = _c4(color)
-            if tex == 'sand' and abs(y0 - c.land_y0) < 0.01:
-                # пляж: последние 10 м уходят под воду
-                ys = y0 + 10.0
-                zl = WATER_Z - 0.3
-                u0, u1 = x0 / tile[0], x1 / tile[0]
-                mb.quad(tex, (x0, y0, zl), (x1, y0, zl), (x1, ys, z), (x0, ys, z),
-                        (u0, y0 / tile[1], u1, ys / tile[1]), col)
-                # и дальше под водой
-                mb.quad(tex, (x0, y0 - 30.0, zl - 1.5), (x1, y0 - 30.0, zl - 1.5), (x1, y0, zl), (x0, y0, zl),
-                        (u0, (y0 - 30.0) / tile[1], u1, y0 / tile[1]), _c4(color, 0.8))
-                mb.flat(tex, x0, ys, x1, y1, z, tile=tile, color=col)
-                continue
             if tex == 'parking':
                 # одно место = одна плитка, линия по краю
                 uvs = [(0, 0), (1, 0), (1, 1), (0, 1)]
@@ -180,21 +402,15 @@ class CityMesh(object):
                 mb.flat((tex, 'decal'), x0, y0, x1, y1, z, tile=tile, color=col)
             else:
                 mb.flat(tex, x0, y0, x1, y1, z, tile=tile, color=col)
-        # бордюр внешних тротуаров
-        gx0, gx1, gy0, gy1 = c.grid_x0, c.grid_x1, c.grid_y0, c.grid_y1
-        for k in range(4):
-            xa = gx0 + (gx1 - gx0) * k / 4.0
-            xb = gx0 + (gx1 - gx0) * (k + 1) / 4.0
-            self._mb(c.outer_chunk((xa + xb) / 2, gy0 - 5)).wall('concrete', xb, gy0, xa, gy0, 0.0, CURB,
-                                                                (0, 0, 50, 0.1), curb_c)
-            self._mb(c.outer_chunk((xa + xb) / 2, gy1 + 5)).wall('concrete', xa, gy1, xb, gy1, 0.0, CURB,
-                                                                (0, 0, 50, 0.1), curb_c)
-            ya = gy0 + (gy1 - gy0) * k / 4.0
-            yb = gy0 + (gy1 - gy0) * (k + 1) / 4.0
-            self._mb(c.outer_chunk(gx0 - 5, (ya + yb) / 2)).wall('concrete', gx0, ya, gx0, yb, 0.0, CURB,
-                                                                (0, 0, 50, 0.1), curb_c)
-            self._mb(c.outer_chunk(gx1 + 5, (ya + yb) / 2)).wall('concrete', gx1, yb, gx1, ya, 0.0, CURB,
-                                                                (0, 0, 50, 0.1), curb_c)
+        # тротуары с внешней стороны улиц (там, где город кончается) и их бордюры
+        zb = TERRAIN_FLAT - 0.06
+        for (x0, y0, x1, y1) in c.walk_strips:
+            mb = self._mb(c.outer_chunk((x0 + x1) * 0.5, (y0 + y1) * 0.5))
+            mb.flat('sidewalk', x0, y0, x1, y1, CURB, tile=(3.0, 3.0))
+            mb.wall('concrete', x0, y0, x1, y0, zb, CURB, (0, 0, (x1 - x0) / 2.0, 0.1), curb_c)
+            mb.wall('concrete', x1, y0, x1, y1, zb, CURB, (0, 0, (y1 - y0) / 2.0, 0.1), curb_c)
+            mb.wall('concrete', x1, y1, x0, y1, zb, CURB, (0, 0, (x1 - x0) / 2.0, 0.1), curb_c)
+            mb.wall('concrete', x0, y1, x0, y0, zb, CURB, (0, 0, (y1 - y0) / 2.0, 0.1), curb_c)
 
     # ------------------------------------------------------------------
     # здания
@@ -495,79 +711,18 @@ class CityMesh(object):
             # жёлтая кромка
             mb.flat((None, 'decal'), pr['x1'] - 0.5, pr['y0'], pr['x1'], pr['y1'], CURB + 0.03,
                     color=(0.85, 0.7, 0.1, 1))
-        # берег: стенки
-        lx0, lx1, ly0, ly1 = c.land_x0, c.land_x1, c.land_y0, c.land_y1
-        zb = WATER_Z - 2.5
-        seg = 4
-        for k in range(seg):
-            ya = ly0 + (ly1 - ly0) * k / seg
-            yb = ly0 + (ly1 - ly0) * (k + 1) / seg
-            self._mb(oc(lx0 + 1, (ya + yb) / 2)).wall('concrete', lx0, yb, lx0, ya, zb, CURB, (0, 0, 40, 1), stone)
-            self._mb(oc(lx1 - 1, (ya + yb) / 2)).wall('concrete', lx1, ya, lx1, yb, zb, CURB, (0, 0, 40, 1), stone)
-            xa = lx0 + (lx1 - lx0) * k / seg
-            xb = lx0 + (lx1 - lx0) * (k + 1) / seg
-            self._mb(oc((xa + xb) / 2, ly1 - 1)).wall('concrete', xb, ly1, xa, ly1, zb, CURB, (0, 0, 40, 1), stone)
-        # мост
-        br = sp.get('bridge')
-        if br:
-            mb = self._mb(br['chunk'])
-            night = self._night(br['chunk'])
-            bx, y0, y1, w = br['x'], br['y0'], br['y1'], br['w']
-            hw = w * 0.5
-            zd = CURB + 0.02
-            n = int((y1 - y0) / 8.0)
-            mb.quad(('road4', 'decal'), (bx - hw, y0, zd), (bx + hw, y0, zd), (bx + hw, c.land_y1, zd),
-                    (bx - hw, c.land_y1, zd), (0, 0, 1, (c.land_y1 - y0) / 8.0))
-            mb.quad('road4', (bx - hw, c.land_y1, zd), (bx + hw, c.land_y1, zd), (bx + hw, y1, zd),
-                    (bx - hw, y1, zd), (0, 0, 1, n))
-            steel = (0.55, 0.2, 0.16, 1.0)
-            for sx in (-1, 1):
-                ex = bx + sx * (hw + 0.75)
-                mb.box('concrete', ex - 0.75, c.land_y1, zd - 1.2, ex + 0.75, y1, zd + 0.2, (0.6, 0.6, 0.6, 1),
-                       uv_m=4.0, faces='xXyYZz')
-                mb.box(None, ex + sx * 0.5 - 0.08, c.land_y1, zd + 1.1, ex + sx * 0.5 + 0.08, y1, zd + 1.25, steel)
-                self.static.add_box(ex - 0.2 + sx * 0.5, c.land_y1, ex + 0.2 + sx * 0.5, y1, 0.0, 1.4,
-                                    F_CAR | F_PED, None)
-            mb.box('concrete', bx - hw, c.land_y1, zd - 1.2, bx + hw, y1, zd - 0.01, (0.5, 0.5, 0.5, 1), uv_m=4.0,
-                   faces='z')
-            # пилоны и тросы
-            span = y1 - c.land_y1
-            towers = [c.land_y1 + span * 0.2, c.land_y1 + span * 0.75]
-            TH = 58.0
-            for ty in towers:
-                for sx in (-1, 1):
-                    ex = bx + sx * (hw + 1.2)
-                    mb.box(None, ex - 1.1, ty - 1.4, WATER_Z - 2, ex + 1.1, ty + 1.4, TH, steel)
-                    P.glow(night, ex, ty, TH + 1.0, 4.0, (1.0, 0.15, 0.1, 1.0))
-                mb.box(None, bx - hw - 2.0, ty - 1.0, TH - 6.0, bx + hw + 2.0, ty + 1.0, TH - 3.0, steel)
-                mb.box(None, bx - hw - 2.0, ty - 1.0, TH * 0.55, bx + hw + 2.0, ty + 1.0, TH * 0.55 + 2.0, steel)
-            cable = (0.5, 0.18, 0.14, 1.0)
-            pts = [(c.land_y1 - 6.0, zd + 1.0), (towers[0], TH), (towers[1], TH), (y1, zd + 14.0)]
-            for sx in (-1, 1):
-                ex = bx + sx * (hw + 1.2)
-                for k in range(3):
-                    (ya, za), (yb, zb_) = pts[k], pts[k + 1]
-                    segs = 10
-                    prev = None
-                    for i in range(segs + 1):
-                        t = i / float(segs)
-                        yy = ya + (yb - ya) * t
-                        sag = (4.0 * t * (1.0 - t)) * (0.62 if k == 1 else 0.25) * min(za, zb_)
-                        zz = za + (zb_ - za) * t - sag
-                        zz = max(zz, zd + 3.0) if k == 1 else zz
-                        if prev is not None:
-                            mb.quad2(None, (ex, prev[0], prev[1] - 0.25), (ex, yy, zz - 0.25), (ex, yy, zz + 0.25),
-                                     (ex, prev[0], prev[1] + 0.25), color=cable)
-                            if i < segs and zz > zd + 2.0:
-                                mb.quad2(None, (ex, yy - 0.06, zd + 1.2), (ex, yy + 0.06, zd + 1.2),
-                                         (ex, yy + 0.06, zz), (ex, yy - 0.06, zz), color=cable)
-                        prev = (yy, zz)
-            # фонари на мосту
-            yy = c.land_y1 + 20.0
-            while yy < y1 - 10:
-                for sx in (-1, 1):
-                    P.glow(night, bx + sx * (hw + 0.6), yy, zd + 5.0, 2.4)
-                yy += 30.0
+        # причалы: стенка набережной до дна
+        dk = sp.get('docks')
+        if dk:
+            zb = WATER_Z - 3.0
+            x0, y0, x1, y1 = dk['x0'], dk['y0'], dk['x1'], dk['y1']
+            n = 6
+            for k in range(n):
+                ya = y0 + (y1 - y0) * k / n
+                yb = y0 + (y1 - y0) * (k + 1) / n
+                self._mb(oc(x1 - 1, (ya + yb) / 2)).wall('concrete', x1, ya, x1, yb, zb, CURB, (0, 0, 20, 1), stone)
+            self._mb(oc(x1 - 1, y0)).wall('concrete', x0, y0, x1, y0, zb, CURB, (0, 0, 12, 1), stone)
+            self._mb(oc(x1 - 1, y1)).wall('concrete', x1, y1, x0, y1, zb, CURB, (0, 0, 12, 1), stone)
         # корабль
         ship = sp.get('ship')
         if ship:
@@ -689,8 +844,15 @@ class CityMesh(object):
         # вода
         c = self.city
         mb = MeshBuilder()
-        S = 2600.0
-        mb.flat('water', -S, -S, S, S, WATER_Z, tile=(14.0, 14.0), color=(0.85, 0.95, 1.0, 1.0))
+        # море — плитками: огромный одиночный квадрат плохо режется по краям экрана
+        T = 14.0 * 30                                  # кратно шагу текстуры: швов не видно
+        wx, wy = (c.grid_x0 + c.grid_x1) * 0.5, (c.grid_y0 + c.grid_y1) * 0.5
+        n = 9
+        for ix in range(-n, n):
+            for iy in range(-n, n):
+                x0, y0 = wx + ix * T, wy + iy * T
+                mb.quad('water', (x0, y0, WATER_Z), (x0 + T, y0, WATER_Z), (x0 + T, y0 + T, WATER_Z),
+                        (x0, y0 + T, WATER_Z), (0.0, 0.0, 30.0, 30.0), (0.85, 0.95, 1.0, 1.0))
         self.water = mb.build('water', apply_state)
         self.water.reparentTo(self.root)
         self.water.setBin('background', 10)

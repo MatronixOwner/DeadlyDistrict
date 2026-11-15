@@ -846,6 +846,7 @@ SIGNS = [
     ('sign_closed', 'МОСТ ЗАКРЫТ', (250, 140, 30), (20, 20, 20), 'OswaldBold.ttf'),
     ('sign_gas', 'БЕНЗИН', (220, 30, 30), (250, 250, 250), 'RussoOne.ttf'),
     ('sign_port', 'ПОРТ', (30, 60, 100), (250, 250, 250), 'RussoOne.ttf'),
+    ('sign_airfield', 'АЭРОДРОМ', (236, 236, 232), (30, 70, 140), 'RussoOne.ttf'),
 ]
 
 

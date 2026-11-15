@@ -52,7 +52,7 @@ class World(object):
                 progress(frac, text)
 
         step(0.05, 'Строим город…')
-        self.city = City()
+        self.city = City(root=self.assets.root)
         self.roadnet = RoadNet(self.city)
         self.static = StaticWorld()
         step(0.15, 'Возводим кварталы…')
@@ -388,7 +388,7 @@ class World(object):
     # ------------------------------------------------------------------
     def make_driver(self, v):
         """Превратить «виртуального» водителя трафика в настоящего персонажа."""
-        zone = self.city.zone_at(v.x, v.y)
+        zone = self.city.zone_style(self.city.zone_at(v.x, v.y))
         if zone not in 'DOGRIB' or len(zone) != 1:
             zone = 'D'
         if v.kind in ('police', 'enforcer', 'fbi', 'army') or v.owner == 'police':

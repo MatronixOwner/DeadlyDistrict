@@ -81,7 +81,7 @@ class RoadNet(object):
 
     def _build_lanes(self):
         c = self.city
-        for key, seg in c.segs.items():
+        for key, seg in sorted(c.segs.items()):
             kind, i, j = key
             offs = LANE_AVE if seg['ave'] else LANE_ST
             a, b, cc = seg['a'], seg['b'], seg['c']
@@ -110,10 +110,12 @@ class RoadNet(object):
                         l.x0, l.y0, l.x1, l.y1 = cc - off, b, cc - off, a
                     l.length = b - a
                     l.speed = 13.5 if seg['ave'] else 10.0
+                    if seg['rural']:
+                        l.speed = 17.0 if seg['bridge'] is None else 15.0      # трасса и мосты — быстрее
                     n = c.nodes.get(node)
-                    l.signal = (n is not None and len(n.exits) >= 3)
+                    l.signal = (n is not None and len(n.exits) >= 3 and not n.rural)
                     l.axis = 0 if d in ('n', 's') else 1
-                    l.zone = c.zone_at((l.x0 + l.x1) * 0.5, (l.y0 + l.y1) * 0.5)
+                    l.zone = c.zone_style(c.zone_at((l.x0 + l.x1) * 0.5, (l.y0 + l.y1) * 0.5))
                     self.lanes.append(l)
                     self.lane_index[(kind, i, j, d, k)] = l
 
@@ -248,7 +250,7 @@ class RoadNet(object):
 
     def light(self, node, axis):
         n = self.city.nodes.get(node)
-        if n is None or len(n.exits) < 3:
+        if n is None or len(n.exits) < 3 or n.rural:
             return 'g'
         return self._state((self.time + n.phase) % CYCLE, axis)
 
@@ -368,7 +370,7 @@ class RoadNet(object):
             on_side(b, 'e', x1, y1)
         # переходы через дороги у перекрёстков
         outer = []
-        for key, seg in c.segs.items():
+        for key, seg in sorted(c.segs.items()):
             kind, i, j = key
             hw = seg['width'] * 0.5
             a, bb, cc = seg['a'], seg['b'], seg['c']
@@ -447,8 +449,8 @@ class RoadNet(object):
         """Места для припаркованных машин вдоль улиц (не проспектов)."""
         c = self.city
         r = Rng(c.seed * 31 + 7)
-        for key, seg in c.segs.items():
-            if seg['ave']:
+        for key, seg in sorted(c.segs.items()):
+            if seg['ave'] or seg['rural']:
                 continue
             kind, i, j = key
             a, b, cc = seg['a'], seg['b'], seg['c']
@@ -463,7 +465,7 @@ class RoadNet(object):
                     else:
                         x, y = cc + sgn * PARK_OFF, t
                         yaw = math.pi / 2 if sgn > 0 else -math.pi / 2
-                    zone = c.zone_at(x, y)
+                    zone = c.zone_style(c.zone_at(x, y))
                     if zone == 'P':
                         zone = 'D'
                     c.parking.append(dict(x=x, y=y, yaw=yaw, zone=zone, kind=None, block=-1))

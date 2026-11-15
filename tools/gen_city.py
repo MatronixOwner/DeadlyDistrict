@@ -249,6 +249,13 @@ def gen_ground():
     a *= (0.92 + 0.14 * n[..., None])
     save(a, 'sand')
 
+    # скалы на крутых склонах (рельеф за городом)
+    a = tiled(src('Ground/rocks_04.png'), 256, 256, 2, 2)
+    a = tone(a, mul=(0.80, 0.79, 0.77), sat=0.5, contrast=1.25)
+    n = smooth_noise(256, 256, 19, 5)
+    a *= (0.84 + 0.3 * n[..., None])
+    save(a, 'rock')
+
     a = tiled(src('Ground/gravel_02.png'), 256, 256, 4, 4)
     a = tone(a, mul=(1.5, 1.5, 1.52), sat=0.5)
     grime(a, 18, 0.2)
