@@ -61,6 +61,10 @@ class Spec(object):
         self.value = 400
         self.radio = True
         self.engine = 'car'
+        self.bike = False           # ездок сидит верхом и виден (мотоциклы, велосипед, квадроцикл)
+        self.lean = False           # наклоняется в повороты (двухколёсные)
+        self.kit = ()               # обвес с завода: детали, которые есть у машины всегда (см. tuning.KIT)
+        self.tune = None            # заводской тюнинг: словарь «деталь -> вариант»
         for k, v in kw.items():
             setattr(self, k, v)
         self.wheelbase = self.front_axle - self.rear_axle
@@ -120,16 +124,80 @@ _add(Spec('beater', 'Ржавчина', 4.4, 1.76, 1.5, paints=RUST_PAINTS, top=
 _add(Spec('lowrider', 'Барон', 4.3, 1.8, 2.0, hood=1.6, trunk=1.2, clear=0.14, top=42.0, accel=6.5,
           paints=[(0.42, 0.10, 0.44), (0.10, 0.42, 0.22), (0.60, 0.08, 0.20)], value=900, grip=6.8))
 
+# --- машины на тех же кузовах, но других пропорций, окраски и назначения
+_add(Spec('limo', 'Лимузин', 6.9, 1.9, 1.42, hood=1.7, trunk=1.0, top=40.0, accel=5.6, grip=5.8, value=3000,
+          mass=2300.0, seats=6, health=1300.0, steer=0.5,
+          paints=[(0.05, 0.05, 0.06), (0.92, 0.92, 0.90), (0.60, 0.08, 0.20)]))
+_add(Spec('racer', 'Болид', 4.5, 1.9, 1.16, hood=1.4, ws_rake=0.8, rw_rake=0.9, trunk=0.5, nose_drop=0.2,
+          belt=0.62, clear=0.12, top=66.0, accel=12.0, grip=11.0, brake=19.0, value=6000, mass=1050.0,
+          paints=[(0.92, 0.72, 0.10), (0.80, 0.10, 0.09), (0.12, 0.26, 0.62)], kit=('wing',)))
+_add(Spec('minibus', 'Маршрутка', 5.6, 2.0, 2.5, hood=0.7, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
+          mass=2500.0, top=31.0, accel=4.4, health=1400.0, value=600, wheel_r=0.34, seats=8,
+          paints=[(0.92, 0.72, 0.10), (0.90, 0.90, 0.88)], kit=('route',)))
+_add(Spec('firetruck', 'Пожарная', 7.6, 2.5, 3.1, hood=0.5, ws_rake=0.3, trunk=0.02, rw_rake=0.04, belt=1.2,
+          clear=0.42, wheel_r=0.46, wheel_w=0.3, mass=7500.0, top=34.0, accel=4.4, steer=0.5, health=3000.0,
+          front_axle=2.7, rear_axle=-2.4, seats=4, paints=[(0.80, 0.10, 0.09)], value=0, radio=False,
+          engine='truck', kit=('ladder',)))
+_add(Spec('cashvan', 'Инкассатор', 5.6, 2.1, 2.5, hood=0.75, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
+          cargo=0.62, mass=3600.0, top=34.0, accel=4.8, health=3400.0, value=0, wheel_r=0.36,
+          paints=[(0.10, 0.30, 0.20)], engine='truck', kit=('beacon',)))
+_add(Spec('icecream', 'Мороженое', 5.2, 1.95, 2.4, hood=0.7, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
+          cargo=0.6, mass=2300.0, top=27.0, accel=3.8, health=1200.0, value=400, wheel_r=0.34,
+          paints=[(0.96, 0.84, 0.88)], kit=('cone',)))
+_add(Spec('hotrod', 'Хот-род', 4.0, 1.86, 1.62, hood=1.6, trunk=1.2, clear=0.12, top=54.0, accel=9.6, grip=7.4,
+          paints=[(0.80, 0.10, 0.09), (0.05, 0.05, 0.06), (0.85, 0.42, 0.10)], value=3200, mass=1100.0,
+          kit=('blower', 'pipes')))
+_add(Spec('jeep', 'Вездеход', 4.5, 2.0, 2.02, belt=1.1, clear=0.50, wheel_r=0.44, trunk=0.02, rw_rake=0.3,
+          mass=2100.0, top=36.0, accel=6.0, grip=8.2, health=1600.0, value=1800,
+          paints=[(0.26, 0.31, 0.20), (0.44, 0.38, 0.26), (0.24, 0.28, 0.34)], kit=('bullbar', 'lightbar', 'spare')))
+_add(Spec('pizza', 'Доставка', 3.9, 1.65, 1.45, trunk=0.02, rw_rake=0.35, hood=0.9, top=33.0, accel=5.6,
+          mass=950.0, value=300, paints=[(0.80, 0.10, 0.09), (0.90, 0.90, 0.88)], kit=('box',)))
+_add(Spec('tuner', 'Дрифт', 3.9, 1.7, 1.38, trunk=0.02, rw_rake=0.35, hood=0.9, top=46.0, accel=8.6, grip=8.0,
+          mass=900.0, value=2400, clear=0.14,
+          paints=[(0.16, 0.56, 0.66), (0.42, 0.10, 0.44), (0.85, 0.42, 0.10), (0.10, 0.42, 0.22)],
+          tune={'spoiler': 3, 'rims': 3, 'susp': 1, 'neon': 0, 'exhaust': 1}))
+# --- мотоциклы, скутер, велосипед, квадроцикл (модели собирает bikes.py)
+_add(Spec('bike', 'Стрела', 2.05, 0.74, 1.16, bike=True, lean=True, seats=1, mass=230.0, top=64.0, accel=13.0,
+          grip=9.0, brake=18.0, health=420.0, wheel_r=0.31, front_axle=0.70, rear_axle=-0.70, radio=False,
+          value=2200, engine='bike', steer=0.50))
+_add(Spec('chopper', 'Ворон', 2.45, 0.80, 1.20, bike=True, lean=True, seats=1, mass=310.0, top=50.0, accel=9.0,
+          grip=7.6, brake=14.0, health=520.0, wheel_r=0.33, front_axle=0.86, rear_axle=-0.86, radio=False,
+          value=1900, engine='bike', steer=0.44,
+          paints=[(0.05, 0.05, 0.06), (0.60, 0.08, 0.20), (0.12, 0.26, 0.62), (0.36, 0.22, 0.14)]))
+_add(Spec('scooter', 'Оса', 1.80, 0.66, 1.12, bike=True, lean=True, seats=1, mass=120.0, top=27.0, accel=6.0,
+          grip=7.5, brake=12.0, health=300.0, wheel_r=0.22, front_axle=0.63, rear_axle=-0.63, radio=False,
+          value=350, engine='bike', steer=0.56))
+_add(Spec('dirt', 'Кузнечик', 2.10, 0.78, 1.26, bike=True, lean=True, seats=1, mass=150.0, top=44.0, accel=11.0,
+          grip=8.2, brake=15.0, health=380.0, wheel_r=0.34, front_axle=0.72, rear_axle=-0.72, radio=False,
+          value=1200, engine='bike', steer=0.54, clear=0.34))
+_add(Spec('bicycle', 'Велосипед', 1.78, 0.56, 1.10, bike=True, lean=True, seats=1, mass=40.0, top=11.5, accel=3.2,
+          grip=8.5, brake=9.0, health=140.0, wheel_r=0.34, front_axle=0.55, rear_axle=-0.55, radio=False,
+          value=60, engine='none', steer=0.6))
+_add(Spec('quad', 'Квадро', 2.30, 1.16, 1.14, bike=True, lean=False, seats=1, mass=280.0, top=34.0, accel=8.0,
+          grip=8.8, brake=14.0, health=560.0, wheel_r=0.29, front_axle=0.63, rear_axle=-0.63, radio=False,
+          value=900, engine='bike', steer=0.5, clear=0.26,
+          paints=[(0.80, 0.10, 0.09), (0.92, 0.72, 0.10), (0.10, 0.42, 0.22), (0.12, 0.26, 0.62)]))
+BIKES = tuple(k for k, s in SPECS.items() if s.bike)
+RIDER_HIP = 0.92            # высота таза сидящей фигуры над её «полом» (клип drive)
+RIDER_DY = 0.0              # сдвиг фигуры вдоль седла
+
 # какие машины встречаются в каком районе (тип, вес)
 ZONE_CARS = {
     'D': [('sedan', 5), ('taxi', 4), ('sports', 1.2), ('suv', 2), ('hatch', 2), ('bus', 0.8), ('van', 1),
-          ('muscle', 0.6)],
-    'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('beater', 1.5), ('bus', 0.6), ('pickup', 1)],
-    'G': [('beater', 6), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1)],
-    'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5)],
-    'I': [('truck', 4), ('van', 4), ('pickup', 3), ('beater', 2), ('sedan', 1)],
-    'B': [('sports', 2.5), ('sedan', 3), ('taxi', 3), ('muscle', 2), ('suv', 2), ('hatch', 2), ('bus', 0.5)],
-    'P': [('sedan', 4), ('taxi', 3), ('hatch', 2)],
+          ('muscle', 0.6), ('limo', 0.5), ('minibus', 0.9), ('bike', 0.7), ('scooter', 0.9), ('pizza', 0.6),
+          ('cashvan', 0.3), ('racer', 0.15), ('firetruck', 0.2)],
+    'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('beater', 1.5), ('bus', 0.6), ('pickup', 1),
+          ('minibus', 1.2), ('scooter', 1.4), ('bicycle', 1.0), ('pizza', 0.8), ('icecream', 0.3), ('chopper', 0.4)],
+    'G': [('beater', 6), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1), ('chopper', 1.6),
+          ('hotrod', 0.6), ('dirt', 0.8), ('bicycle', 0.8)],
+    'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5), ('jeep', 1.0),
+          ('bicycle', 1.4), ('scooter', 0.8), ('icecream', 0.5), ('minibus', 0.6), ('quad', 0.3)],
+    'I': [('truck', 4), ('van', 4), ('pickup', 3), ('beater', 2), ('sedan', 1), ('jeep', 0.8), ('dirt', 0.7),
+          ('cashvan', 0.3)],
+    'B': [('sports', 2.5), ('sedan', 3), ('taxi', 3), ('muscle', 2), ('suv', 2), ('hatch', 2), ('bus', 0.5),
+          ('limo', 0.8), ('bike', 1.4), ('chopper', 1.0), ('tuner', 1.2), ('racer', 0.4), ('hotrod', 0.6),
+          ('quad', 0.5), ('icecream', 0.6)],
+    'P': [('sedan', 4), ('taxi', 3), ('hatch', 2), ('bicycle', 1.5), ('scooter', 0.8)],
 }
 
 _body_cache = {}
@@ -366,6 +434,10 @@ def _light_points(kind, info):
     spec = SPECS[kind]
     hl, hw = spec.L * 0.5, spec.W * 0.5
     head = tail = siren = None
+    if spec.bike:
+        if kind == 'bicycle':
+            return [], [], [(0.0, 0.0, spec.H)]
+        return [(0.0, hl - 0.25, 0.86)], [(0.0, -hl + 0.1, 0.72)], [(0.0, 0.0, spec.H)]
     if info is not None:
         head = info.get('head') or None
         tail = info.get('tail') or None
@@ -568,6 +640,12 @@ class Vehicle(object):
         self.burn_t = 0.0
         self.paint = paint if paint is not None else random.randrange(len(spec.paints or PAINTS))
         self._build()
+        if spec.kit or spec.tune:
+            # заводской обвес и заводской тюнинг (у «Дрифта» ещё и неон случайного цвета)
+            t = dict(spec.tune or {})
+            if 'neon' in t and not t['neon']:
+                t['neon'] = random.randint(1, 5)
+            self.apply_tune(t)
 
     # ------------------------------------------------------------------
     def _paint_rgb(self):
@@ -581,6 +659,14 @@ class Vehicle(object):
     def _new_body(self, wreck=False):
         """Кузов: готовая модель, перекрашенная в цвет машины; если её нет — собранный из плоскостей."""
         w = self.world
+        if self.spec.bike:
+            from . import bikes
+            parts = bikes.build(w.assets, self.kind, (0.16, 0.14, 0.13) if wreck else self._paint_rgb())
+            self.bparts = parts
+            np_ = parts['body'].copyTo(self.tilt)
+            if wreck:
+                np_.setColorScale(0.35, 0.33, 0.32, 1.0)
+            return np_
         mdl = getattr(w, 'models', None)
         if self.minfo is not None:
             t = mdl.vehicle_body(self.kind, self.spec, self._paint_rgb(), wreck, self._paint_idx())
@@ -595,11 +681,30 @@ class Vehicle(object):
         self.tilt = self.node.attachNewNode('tilt')
         mdl = getattr(w, 'models', None)
         self.minfo = mdl.vehicle_info(self.kind, spec) if (mdl is not None and mdl.ok) else None
+        self.bparts = None
+        self.fork = None
+        self.steer_np = None
+        self.rider = None                # (узел, облик) нарисованного ездока у мотоцикла в потоке машин
         self.body = self._new_body()
         self.wheels = []
         self.wheel_r_vis = spec.wheel_r
         made = False
-        if self.minfo is not None and len(self.minfo['wheels']) == 4:
+        if spec.bike:
+            # вилка с передним колесом поворачивается вокруг своей оси; у квадроцикла поворачиваются сами колёса
+            bp = self.bparts
+            self.steer_np = self.tilt.attachNewNode('steer')
+            self.steer_np.setPos(0.0, bp['front_y'], 0.0)
+            self.fork = bp['fork'].copyTo(self.steer_np)
+            for (wx, wy, r, front) in bp['wheels']:
+                if front and len(bp['wheels']) == 2:
+                    piv = self.steer_np.attachNewNode('wp')
+                    piv.setPos(wx, 0.0, r)
+                else:
+                    piv = self.tilt.attachNewNode('wp')
+                    piv.setPos(wx, wy, r)
+                self.wheels.append((piv, bp['wheel'].copyTo(piv)))
+            made = True
+        if self.minfo is not None and len(self.minfo['wheels']) == 4 and not made:
             # колёса модели: переднее левое, переднее правое, заднее левое, заднее правое
             tr = mdl.vehicle_wheel(self.kind, spec, False)
             tl = mdl.vehicle_wheel(self.kind, spec, True)
@@ -641,11 +746,59 @@ class Vehicle(object):
         self.paint = idx
         self.body.removeNode()
         self.body = self._new_body()
-        if self.minfo is not None and len(self.minfo['wheels']) == 4:
+        if self.spec.bike:
+            self.fork.removeNode()
+            self.fork = self.bparts['fork'].copyTo(self.steer_np)
+        elif self.minfo is not None and len(self.minfo['wheels']) == 4:
             self._texture_wheels()
         if self.tune:
             from . import tuning
             tuning.apply(self)                       # детали в цвет кузова красятся заново
+
+    # ------------------------------------------------------------------
+    # ездок верхом (мотоциклы, велосипед, квадроцикл)
+    # ------------------------------------------------------------------
+    def seat_ped(self, ped):
+        """Посадить персонажа в седло: он виден и едет вместе с машиной."""
+        sy, sz = self.bparts['seat']
+        ped._ride_parent = ped.node.getParent()
+        ped.node.reparentTo(self.tilt)
+        ped.node.setPosHpr(0.0, sy + RIDER_DY, sz - RIDER_HIP, 0.0, 0.0, 0.0)
+        ped.node.show()
+        vis = ped.vis
+        if vis is not None:
+            vis.play('drive', True, 1.0, 0.0, True, 0.5)
+            vis.update(0.0)
+
+    def unseat_ped(self, ped):
+        par = getattr(ped, '_ride_parent', None)
+        if par is not None and not par.isEmpty():
+            ped.node.reparentTo(par)
+            ped.node.setHpr(0, 0, 0)
+        ped._ride_parent = None
+        if ped.vis is not None:
+            ped.vis.play('idle', True, 1.0, 0.0, True)
+
+    def add_rider(self, look):
+        """Нарисовать ездока на мотоцикле из потока машин (настоящим персонажем он станет, если его сбросят)."""
+        from .pedvisual import PedVisual
+        mdl = getattr(self.world, 'models', None)
+        if mdl is None or not mdl.chars_ok or self.rider is not None:
+            return
+        sy, sz = self.bparts['seat']
+        vis = PedVisual(mdl, self.tilt, look, 'civ')
+        vis.root.setPos(0.0, sy + RIDER_DY, sz - RIDER_HIP)
+        vis.play('drive', True, 1.0, 0.0, True, 0.5)
+        vis.update(0.0)
+        self.rider = vis
+        self.driver_look = look
+
+    def remove_rider(self):
+        vis = self.rider
+        if vis is not None:
+            self.rider = None
+            vis.remove()
+            vis.root.removeNode()
 
     def apply_tune(self, tune=None):
         """Поставить тюнинг (словарь «деталь -> вариант»; None — применить заново то, что уже стоит)."""
@@ -706,7 +859,15 @@ class Vehicle(object):
         if self.removed:
             return
         self.removed = True
+        self._free_riders()
         self.node.removeNode()
+
+    def _free_riders(self):
+        """Перед тем как убрать или сжечь машину: седок верхом не должен исчезнуть вместе с её узлом."""
+        self.remove_rider()
+        d = self.driver
+        if d is not None and getattr(d, '_ride_parent', None) is not None:
+            self.unseat_ped(d)
 
     # ------------------------------------------------------------------
     def forward(self):
@@ -1004,6 +1165,7 @@ class Vehicle(object):
         self.set_brake_light(False)
         self.body.removeNode()
         self.body = self._new_body(wreck=True)
+        self._free_riders()
         for piv, wn in self.wheels:
             piv.setColorScale(0.16, 0.15, 0.14, 1.0)         # обгоревшие колёса
         self.set_mode(Vehicle.PHYS)
@@ -1036,11 +1198,29 @@ class Vehicle(object):
         self.wheel_rot = (self.wheel_rot - v * dt / self.wheel_r_vis * DEG) % 360.0
         st = self.steer * DEG
         ws = self.wheels
-        ws[0][0].setH(st)
-        ws[1][0].setH(st)
         rot = self.wheel_rot
-        for i in range(4):
-            ws[i][1].setP(rot)
+        if spec.bike:
+            if len(ws) == 2:
+                self.steer_np.setH(st)
+            else:
+                self.steer_np.setH(st * 0.6)
+                ws[0][0].setH(st)
+                ws[1][0].setH(st)
+            for piv, wn in ws:
+                wn.setP(rot)
+            if spec.lean:
+                # мотоцикл ложится в поворот тем сильнее, чем быстрее едет
+                lean = clamp(v * math.tan(self.steer) * 2.6, -34.0, 34.0) if self.mode == Vehicle.PHYS else 0.0
+                self.roll = damp(self.roll, lean, 7.0, dt)
+                pt = clamp((self.in_brake * 2.0 - self.in_throttle * 2.5) * (1.0 if abs(v) > 1 else 0.0), -4.0, 3.0)
+                self.pitch = damp(self.pitch, pt if self.mode == Vehicle.PHYS else 0.0, 5.0, dt)
+                self.tilt.setHpr(0, self.pitch, self.roll)
+                return
+        else:
+            ws[0][0].setH(st)
+            ws[1][0].setH(st)
+            for i in range(4):
+                ws[i][1].setP(rot)
         if self.mode == Vehicle.PHYS:
             # крен в поворотах и «клевок» при торможении
             lat = clamp(-self.slip * 0.9 - v * math.tan(self.steer) * 0.35, -7.0, 7.0)

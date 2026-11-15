@@ -106,6 +106,7 @@ class World(object):
     def remove_vehicle(self, v):
         if v.removed:
             return
+        v.remove_rider()
         for p in list(v.passengers):
             if not p.is_player:
                 self.remove_ped(p)
@@ -443,6 +444,7 @@ class World(object):
         if drv is None:
             if not v.npc:
                 return None
+            v.remove_rider()
             drv = self.make_driver(v)
         else:
             drv.vehicle = None
@@ -554,7 +556,9 @@ class World(object):
                 self.fx.debris(x, y, 0.7, 3, (0.25, 0.25, 0.27), 4.0, 0.2)
         if v.is_player:
             self.fx.add_shake(min(0.5, imp * 0.03))
-            if imp > 13.0:
+            if v.spec.bike and imp > 9.0:
+                self.player.thrown_off(v, imp)          # мотоциклиста выбивает из седла
+            elif imp > 13.0:
                 self.player.ped.hurt((imp - 13.0) * 1.3, None, 'crash')
         if other is not None and other.is_player and v.owner == 'police' and imp > 4.0:
             self.police.crime('ram_cop', x, y)
@@ -764,8 +768,12 @@ class World(object):
             ev = 0.33 + 0.3 * abs(v.in_throttle) + 0.1 * min(1.0, sp / 20.0)
             if au.radio_playing():
                 ev *= 0.5                       # с включённым радио мотор тише, как в салоне
-            au.loop('engine', 'engine_truck' if v.spec.engine == 'truck' else 'engine', min(1.0, ev * v.snd_gain),
-                    self.engine_rate * v.snd_pitch * (1.12 if v.boost else 1.0))
+            eng = v.spec.engine
+            if eng == 'none':
+                au.loop('engine', None)
+            else:
+                au.loop('engine', {'truck': 'engine_truck', 'bike': 'engine_bike'}.get(eng, 'engine'),
+                        min(1.0, ev * v.snd_gain), self.engine_rate * v.snd_pitch * (1.12 if v.boost else 1.0))
             slip = abs(v.slip)
             if (slip > 3.0 or (v.in_handbrake and sp > 5.0)) and sp > 3.0:
                 au.loop('skid', 'skid', min(0.7, 0.25 + slip * 0.06), 0.9 + min(0.3, slip * 0.02))

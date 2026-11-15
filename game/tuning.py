@@ -143,6 +143,79 @@ def _profile(v):
     return p
 
 
+def _kit(v, mb, pr, dark, steel, body):
+    """Заводской обвес: то, чем машина отличается от соседки на том же кузове."""
+    spec = v.spec
+    hl, hw = spec.L * 0.5, spec.W * 0.5
+    roof, rear, front = pr['roof'], pr['rear'], pr['front']
+    for part in spec.kit:
+        if part == 'wing':
+            h = 0.44
+            for sx in (-hw * 0.5, hw * 0.5):
+                mb.box(None, sx - 0.03, -hl + 0.16, rear - 0.02, sx + 0.03, -hl + 0.26, rear + h, dark)
+            mb.box(None, -hw * 1.0, -hl + 0.02, rear + h, hw * 1.0, -hl + 0.40, rear + h + 0.04, dark)
+            for sx in (-hw, hw):
+                mb.box(None, sx - 0.02, -hl - 0.02, rear + h - 0.12, sx + 0.02, -hl + 0.44, rear + h + 0.12, body)
+        elif part == 'route':
+            # табличка маршрута над лобовым стеклом
+            mb.box(None, -hw * 0.5, hl * 0.42, roof, hw * 0.5, hl * 0.42 + 0.12, roof + 0.26, dark)
+            mb.quad(None, (-hw * 0.44, hl * 0.42 + 0.125, roof + 0.04), (hw * 0.44, hl * 0.42 + 0.125, roof + 0.04),
+                    (hw * 0.44, hl * 0.42 + 0.125, roof + 0.22), (-hw * 0.44, hl * 0.42 + 0.125, roof + 0.22),
+                    color=(0.98, 0.9, 0.5, 1))
+        elif part == 'ladder':
+            z = roof + 0.06
+            for sx in (-0.34, 0.34):
+                mb.box(None, sx - 0.03, -hl * 0.72, z, sx + 0.03, hl * 0.30, z + 0.07, steel)
+            k = -hl * 0.72
+            while k < hl * 0.30:
+                mb.box(None, -0.34, k, z + 0.02, 0.34, k + 0.04, z + 0.05, steel)
+                k += 0.42
+            mb.box(None, -hw * 0.7, -hl * 0.86, 1.0, hw * 0.7, -hl * 0.80, 1.5, steel)        # рукава на корме
+        elif part == 'beacon':
+            mb.box(None, -0.12, hl * 0.16, roof, 0.12, hl * 0.16 + 0.24, roof + 0.16, (0.95, 0.55, 0.08, 1))
+            mb.box(None, -hw * 0.9, -hl * 0.2, 0.9, -hw * 0.9 + 0.02, hl * 0.2, 1.1, (0.92, 0.80, 0.2, 1))
+            mb.box(None, hw * 0.9 - 0.02, -hl * 0.2, 0.9, hw * 0.9, hl * 0.2, 1.1, (0.92, 0.80, 0.2, 1))
+        elif part == 'cone':
+            # рожок мороженого на крыше
+            mb.cylinder(None, 0.0, -hl * 0.1, roof, roof + 0.62, 0.05, 7, (0.86, 0.66, 0.36, 1), r_top=0.26)
+            mb.cylinder(None, 0.0, -hl * 0.1, roof + 0.62, roof + 0.86, 0.27, 7, (0.98, 0.72, 0.80, 1), r_top=0.18)
+            mb.cylinder(None, 0.0, -hl * 0.1, roof + 0.86, roof + 1.02, 0.18, 7, (0.98, 0.96, 0.9, 1), r_top=0.03)
+        elif part == 'blower':
+            y = hl * 0.52
+            mb.box(None, -0.20, y - 0.30, front - 0.06, 0.20, y + 0.24, front + 0.22, steel)
+            mb.box(None, -0.16, y - 0.10, front + 0.22, 0.16, y + 0.30, front + 0.36, dark)
+        elif part == 'pipes':
+            for sx in (-hw - 0.02, hw + 0.02):
+                mb.box(None, sx - 0.05, -hl * 0.55, 0.26, sx + 0.05, hl * 0.30, 0.36, steel)
+        elif part == 'bullbar':
+            y = hl + 0.10
+            z0, z1 = max(0.34, spec.clear + 0.06), min(front, spec.clear + 0.80)
+            for sx in (-hw * 0.48, hw * 0.48):
+                mb.box(None, sx - 0.03, y - 0.03, z0, sx + 0.03, y + 0.03, z1, dark)
+                mb.box(None, sx - 0.03, hl - 0.05, z0 + 0.10, sx + 0.03, y, z0 + 0.16, dark)
+            for zz in (z0 + 0.08, (z0 + z1) * 0.5, z1 - 0.04):
+                mb.box(None, -hw * 0.62, y - 0.03, zz, hw * 0.62, y + 0.03, zz + 0.05, dark)
+        elif part == 'lightbar':
+            z = roof + 0.02
+            yb = spec.L * 0.16
+            mb.box(None, -hw * 0.6, yb - 0.03, z, hw * 0.6, yb + 0.03, z + 0.06, dark)
+            for k in range(4):
+                cx = -hw * 0.6 + (k + 0.5) * (hw * 1.2) / 4.0
+                mb.box(None, cx - 0.11, yb - 0.02, z + 0.06, cx + 0.11, yb + 0.10, z + 0.26, dark)
+                mb.quad(None, (cx - 0.09, yb + 0.105, z + 0.08), (cx + 0.09, yb + 0.105, z + 0.08),
+                        (cx + 0.09, yb + 0.105, z + 0.24), (cx - 0.09, yb + 0.105, z + 0.24), color=(1.0, 0.96, 0.8, 1))
+        elif part == 'spare':
+            # запаска на задней двери
+            mb.cylinder_x(None, -0.12, 0.12, 0.0, 0.0, 0.01, 4, dark)
+            zc = max(0.9, rear * 0.62)
+            mb.box(None, -0.36, -hl - 0.20, zc - 0.36, 0.36, -hl - 0.02, zc + 0.36, (0.06, 0.06, 0.07, 1))
+            mb.box(None, -0.18, -hl - 0.215, zc - 0.18, 0.18, -hl - 0.20, zc + 0.18, steel)
+        elif part == 'box':
+            mb.box(None, -0.36, -hl * 0.30, roof, 0.36, hl * 0.06, roof + 0.36, (0.92, 0.9, 0.86, 1))
+            mb.box(None, -0.365, -hl * 0.24, roof + 0.10, 0.365, hl * 0.0, roof + 0.26, (0.80, 0.12, 0.10, 1))
+    return bool(spec.kit)
+
+
 def _visuals(v):
     """Собрать заново внешние детали тюнинга."""
     old = getattr(v, 'tune_np', None)
@@ -227,6 +300,8 @@ def _visuals(v):
             for zz in (z0 + 0.08, (z0 + z1) * 0.5, z1 - 0.04):
                 mb.box(None, -hw * 0.62, y - 0.03, zz, hw * 0.62, y + 0.03, zz + 0.05, dark)
             used = True
+    if spec.kit and not bike:
+        used = _kit(v, mb, _profile(v), dark, steel, body) or used
     ex = t.get('exhaust', 0)
     if ex:
         z = max(0.16, spec.clear + 0.02)

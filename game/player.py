@@ -638,7 +638,11 @@ class Player(object):
         p.set_state('in_car')
         p.aiming = False
         p.speed = 0.0
-        p.node.hide()
+        if v.spec.bike:
+            v.remove_rider()
+            v.seat_ped(p)                           # на мотоцикле героя видно
+        else:
+            p.node.hide()
         self.vehicle = v
         self.last_vehicle = v
         self.state = 'car'
@@ -653,6 +657,20 @@ class Player(object):
         if not silent:
             w.audio.play('door', 0.8)
         w.on_player_enter_vehicle(v, stolen)
+
+    def thrown_off(self, v, imp):
+        """Сильный удар на мотоцикле: ездок вылетает из седла."""
+        if self.vehicle is not v or self.invincible:
+            return
+        vx, vy = v.vx, v.vy
+        if not self.leave_vehicle(force=True):
+            return
+        p = self.ped
+        p.hurt(min(55.0, 8.0 + (imp - 7.0) * 5.0), None, 'vehicle')
+        if not p.dead:
+            p.knock_down(2.2, vx * 0.55, vy * 0.55, 2.6 + imp * 0.12)
+        self.w.fx.add_shake(0.35)
+        self.w.hud.help('На мотоцикле удар о препятствие выбивает из седла. Тормози заранее.', 5.0)
 
     def leave_vehicle(self, force=False):
         """Выйти из машины.  Возвращает False, если двери заблокированы препятствиями."""
@@ -682,6 +700,8 @@ class Player(object):
         v.siren = False
         v.set_brake_light(False)
         p.vehicle = None
+        if v.spec.bike:
+            v.unseat_ped(p)
         p.x, p.y = spot
         p.z = w.city.ground_z(p.x, p.y)
         p.yaw = v.yaw

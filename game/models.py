@@ -39,6 +39,17 @@ VEHICLE_MODELS = {
     'army': ('stepvan', {}),
     'beater': ('wagon', {'overlay': 'wagon_rust'}),
     'lowrider': ('vintage', {}),
+    # новые машины на тех же кузовах: модель растягивается под свои габариты (см. vehicle_info)
+    'limo': ('caprice', {'wheel_k': 0.86}),
+    'racer': ('sleek', {}),
+    'minibus': ('stepvan', {}),
+    'firetruck': ('stepvan', {'siren': True, 'wheel_k': 1.1}),
+    'cashvan': ('stepvan', {}),
+    'icecream': ('stepvan', {}),
+    'hotrod': ('vintage', {'wheel_k': 1.12}),
+    'jeep': ('minivan', {'wheel_k': 1.3}),
+    'pizza': ('hatch', {}),
+    'tuner': ('hatch', {}),
 }
 
 WRECK = (0.20, 0.18, 0.16)
