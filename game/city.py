@@ -1746,10 +1746,18 @@ class City(object):
         bridge_y = ys[5]                               # Портовый мост проходит над причалами
         piers = [(ys[2] + ys[3]) * 0.5, ys[4], (ys[6] + ys[7]) * 0.5]
         wall_c = (0.74, 0.74, 0.72)
+        # парапет вдоль воды: с проёмами у пирсов и там, где над причалами идёт мост
+        gaps = [(py - 9.0, py + 9.0) for py in piers]
+        for seg in self.bridges:
+            if seg['kind'] == 'h' and seg['a'] < dx1 < seg['b']:
+                hw = seg['width'] * 0.5 + 1.1
+                gaps.append((seg['c'] - hw, seg['c'] + hw))
+        gaps.sort()
         prev = dy0
-        for py in piers:
-            self._wall_run(dx1 - 0.3, prev, dx1 - 0.3, py - 9.0, 0.9, wall_c)
-            prev = py + 9.0
+        for g0, g1 in gaps:
+            if g0 > prev + 0.5:
+                self._wall_run(dx1 - 0.3, prev, dx1 - 0.3, g0, 0.9, wall_c)
+            prev = max(prev, g1)
         self._wall_run(dx1 - 0.3, prev, dx1 - 0.3, dy1, 0.9, wall_c)
         self._wall_run(dx0, dy0 + 0.3, dx1 - 0.3, dy0 + 0.3, 0.9, wall_c)
         self._wall_run(dx0, dy1 - 0.3, dx1 - 0.3, dy1 - 0.3, 0.9, wall_c)

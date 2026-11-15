@@ -955,3 +955,73 @@ def test_hospital_patches_up_for_money(game, world):
     harness.run(game, 1.5)
     visit()
     assert pl.money == 150
+
+
+# ----------------------------------------------------------------------
+# дороги и мосты: проехать должен игрок, а не только трафик «на рельсах»
+# ----------------------------------------------------------------------
+def test_nothing_stands_on_the_roadway(game, world):
+    """Ни одна стена, забор или столб не перегораживает полосу: вся дорожная сеть, шаг 2 м."""
+    from game.collision import F_CAR
+    w = world
+    st = w.static
+    blocked = []
+    n = 0
+    for lane in w.roadnet.lanes:
+        k = 0
+        while k * 2.0 <= lane.length:
+            x, y, yaw = lane.pos(min(lane.length, k * 2.0))
+            n += 1
+            if st.overlap_circle(x, y, 1.0, F_CAR):
+                blocked.append((round(x, 1), round(y, 1)))
+            k += 1
+    assert n > 20000
+    assert not blocked, blocked[:8]
+
+
+@pytest.mark.parametrize('name,back', [('east', False), ('east', True), ('north', False), ('north', True)])
+def test_bridges_are_drivable(game, world, name, back):
+    """Оба моста проезжаются за рулём от берега до берега в обе стороны (физика игрока, а не «рельсы»)."""
+    w = world
+    pl = w.player
+    c = w.city
+    harness.quiet(w, peds=True)
+    seg = next(s for s in c.bridges if s['bridge']['name'] == name)
+    a, b, cc = seg['a'], seg['b'], seg['c']
+    mid = (a + b) * 0.5
+    px, py = (mid, cc) if seg['kind'] == 'h' else (cc, mid)
+    lanes = [l for l in w.roadnet.lanes_near(px, py, 0.0, 40.0)
+             if l.turn is None and abs(l.length - (b - a)) < 1.0]
+    assert len(lanes) >= 2
+    # полоса нужного направления
+    def forward(l):
+        return (l.x1 - l.x0) + (l.y1 - l.y0) > 0
+    lane = next(l for l in lanes if forward(l) != back)
+    L = lane.length
+    ux, uy = (lane.x1 - lane.x0) / L, (lane.y1 - lane.y0) / L
+    x0, y0 = lane.x0 - ux * 30.0, lane.y0 - uy * 30.0            # разгон с берега
+    total = L + 60.0
+    yaw = math.atan2(uy, ux)
+    for v in list(w.vehicles):                                   # дорога свободна
+        if not v.keep:
+            w.remove_vehicle(v)
+    car = w.spawn_vehicle('sedan', x0, y0, yaw)
+    pl.teleport(x0, y0)
+    pl.enter_vehicle(car, silent=True)
+    t = 0.0
+    zmax = 0.0
+    s = 0.0
+    while t < 60.0:
+        s = (car.x - x0) * ux + (car.y - y0) * uy
+        if s >= total - 4.0:
+            break
+        off = -(car.x - x0) * uy + (car.y - y0) * ux
+        d = (yaw - car.yaw + math.pi) % (2 * math.pi) - math.pi
+        steer = -off * 0.10 + d * 1.2
+        keys = ('w', 'a') if steer > 0.04 else (('w', 'd') if steer < -0.04 else ('w',))
+        harness.run(game, 0.25, keys=keys)
+        t += 0.25
+        zmax = max(zmax, car.z)
+    assert s >= total - 4.0, 'застрял на %.0f м из %.0f (мост %s)' % (s, total, name)
+    assert zmax > seg['bridge']['height'] - 0.5                  # действительно поднялись на мост
+    assert car.health > 900 and pl.vehicle is car
