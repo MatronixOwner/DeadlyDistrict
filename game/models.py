@@ -11,7 +11,8 @@ import os
 
 from panda3d.core import Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture
 
-from .defs import (W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV)
+from .defs import (W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV, W_SILENCED,
+                   W_M4, W_DOUBLE, W_SNIPER, W_KNIFE)
 
 # ---------------------------------------------------------------------------
 # машины: тип из vehicle.SPECS -> (модель, особенности)
@@ -66,10 +67,15 @@ HERO = 'hero'               # этот облик — только у главн
 # оружие: идентификатор -> (файл, доворот в руке: курс, тангаж, крен)
 WEAPON_MODELS = {
     W_BAT: ('bat', (0.0, 90.0, 0.0)),
+    W_KNIFE: ('knife', (0.0, 90.0, 0.0)),
     W_PISTOL: ('pistol', (0.0, 0.0, 0.0)),
+    W_SILENCED: ('silenced', (0.0, 0.0, 0.0)),
     W_UZI: ('uzi', (0.0, 0.0, 0.0)),
     W_SHOTGUN: ('shotgun', (0.0, 0.0, 0.0)),
+    W_DOUBLE: ('double', (0.0, 0.0, 0.0)),
     W_AK: ('ak', (0.0, 0.0, 0.0)),
+    W_M4: ('m4', (0.0, 0.0, 0.0)),
+    W_SNIPER: ('sniper', (0.0, 0.0, 0.0)),
     W_ROCKET: ('rocket', (0.0, 0.0, 0.0)),
     W_GRENADE: ('grenade', (0.0, 0.0, 0.0)),
     W_MOLOTOV: ('molotov', (0.0, 0.0, 0.0)),
@@ -306,6 +312,18 @@ class Models(object):
             m = src.copyTo(np_)
             m.setHpr(*hpr)
             np_.flattenStrong()
+            # Своя текстура оружия должна перекрыть текстуру персонажа, в чьей руке оно окажется;
+            # у моделей без текстуры (бита, гранаты) чужую текстуру просто отключаем.
+            tex = None
+            for t in np_.findAllTextures():
+                tex = t
+                break
+            if tex is not None:
+                self.assets.setup_filter(tex)
+                np_.setTexture(tex, 3)
+            else:
+                np_.setTextureOff(3)
+            np_.setColorScaleOff(3)
             self._weapons[wid] = np_
         return np_
 

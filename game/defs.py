@@ -5,12 +5,14 @@ import random
 # ---------------------------------------------------------------------------
 # оружие
 # ---------------------------------------------------------------------------
-W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV = range(9)
+# Номера оружия попадают в сохранения, поэтому новые виды добавляются только в конец.
+(W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV,
+ W_SILENCED, W_M4, W_DOUBLE, W_SNIPER, W_KNIFE) = range(14)
 
 
 class WeaponDef(object):
     def __init__(self, wid, name, icon, kind, damage, rate, rng, spread=0.0, auto=False, pellets=1,
-                 sound=None, long=False, price=0, pack=0, car_k=1.5):
+                 sound=None, long=False, price=0, pack=0, car_k=1.5, slot=1, silent=False, zoom=0.0):
         self.id = wid
         self.name = name
         self.icon = icon
@@ -22,28 +24,55 @@ class WeaponDef(object):
         self.auto = auto
         self.pellets = pellets
         self.sound = sound
-        self.long = long            # длинный ствол (модель в руке)
+        self.long = long            # длинный ствол: держат двумя руками
         self.price = price          # цена в магазине
         self.pack = pack            # патронов в пачке / в подбираемом оружии
         self.car_k = car_k          # множитель урона по технике
+        self.slot = slot            # клавиша 1–8: оружие одного класса лежит в одной ячейке
+        self.silent = silent        # выстрела не слышно: прохожие не пугаются, полиция не сбегается
+        self.zoom = zoom            # оптика: во сколько раз приближает прицел (0 — нет)
 
 
 WEAPONS = [
-    WeaponDef(W_FIST, 'Кулаки', 'w_fist', 'melee', 12, 0.42, 1.35, sound='punch'),
-    WeaponDef(W_BAT, 'Бита', 'w_bat', 'melee', 30, 0.55, 1.75, sound='punch', long=True, price=80, pack=1),
+    WeaponDef(W_FIST, 'Кулаки', 'w_fist', 'melee', 12, 0.42, 1.35, sound='punch', slot=1, silent=True),
+    WeaponDef(W_BAT, 'Бита', 'w_bat', 'melee', 30, 0.55, 1.75, sound='punch', long=True, price=80, pack=1,
+              slot=1, silent=True),
     WeaponDef(W_PISTOL, 'Пистолет', 'w_pistol', 'gun', 25, 0.30, 60.0, 0.012, sound='pistol', price=250,
-              pack=34),
-    WeaponDef(W_UZI, 'Узи', 'w_uzi', 'gun', 15, 0.085, 55.0, 0.034, auto=True, sound='uzi', price=800, pack=90),
+              pack=34, slot=2),
+    WeaponDef(W_UZI, 'Пистолет-пулемёт', 'w_uzi', 'gun', 15, 0.085, 55.0, 0.034, auto=True, sound='uzi', price=800,
+              pack=90, slot=3),
     WeaponDef(W_SHOTGUN, 'Дробовик', 'w_shotgun', 'gun', 13, 0.95, 32.0, 0.075, pellets=9, sound='shotgun',
-              long=True, price=1200, pack=16),
+              long=True, price=1200, pack=16, slot=4),
     WeaponDef(W_AK, 'Автомат', 'w_ak', 'gun', 30, 0.11, 90.0, 0.018, auto=True, sound='ak', long=True,
-              price=2500, pack=90),
+              price=2500, pack=90, slot=5),
     WeaponDef(W_ROCKET, 'Гранатомёт', 'w_rocket', 'rocket', 250, 1.5, 120.0, sound='rocket', long=True,
-              price=6000, pack=5),
-    WeaponDef(W_GRENADE, 'Гранаты', 'w_grenade', 'thrown', 220, 1.0, 30.0, sound='throw', price=1500, pack=6),
+              price=6000, pack=5, slot=7),
+    WeaponDef(W_GRENADE, 'Гранаты', 'w_grenade', 'thrown', 220, 1.0, 30.0, sound='throw', price=1500, pack=6,
+              slot=8),
     WeaponDef(W_MOLOTOV, 'Коктейль Молотова', 'w_molotov', 'thrown', 60, 1.0, 26.0, sound='throw', price=900,
-              pack=6),
+              pack=6, slot=8),
+    WeaponDef(W_SILENCED, 'Пистолет с глушителем', 'w_silenced', 'gun', 27, 0.34, 55.0, 0.010, sound='silenced',
+              price=700, pack=34, slot=2, silent=True),
+    WeaponDef(W_M4, 'Карабин М4', 'w_m4', 'gun', 27, 0.095, 100.0, 0.013, auto=True, sound='ak', long=True,
+              price=3400, pack=90, slot=5),
+    WeaponDef(W_DOUBLE, 'Двустволка', 'w_double', 'gun', 15, 0.55, 26.0, 0.11, pellets=13, sound='shotgun',
+              long=True, price=900, pack=12, slot=4),
+    WeaponDef(W_SNIPER, 'Снайперская винтовка', 'w_sniper', 'gun', 140, 1.25, 260.0, 0.0012, sound='sniper',
+              long=True, price=5200, pack=12, car_k=2.2, slot=6, zoom=4.0),
+    WeaponDef(W_KNIFE, 'Нож', 'w_knife', 'melee', 46, 0.40, 1.45, sound='punch', price=120, pack=1, slot=1,
+              silent=True),
 ]
+
+# в каком порядке оружие листается колесом мыши и клавишами Q / E
+WEAPON_ORDER = [W_FIST, W_KNIFE, W_BAT, W_PISTOL, W_SILENCED, W_UZI, W_SHOTGUN, W_DOUBLE, W_AK, W_M4, W_SNIPER,
+                W_ROCKET, W_GRENADE, W_MOLOTOV]
+_ORDER_POS = dict((wid, i) for i, wid in enumerate(WEAPON_ORDER))
+
+
+def weapon_sort(ids):
+    """Оружие игрока в порядке листания."""
+    return sorted(ids, key=lambda wid: _ORDER_POS.get(wid, 99))
+
 
 # ---------------------------------------------------------------------------
 # внешность

@@ -622,8 +622,18 @@ class World(object):
             if self.missions is not None:
                 self.missions.notify('vehicle_shot', v)
 
-    def on_gunfire(self, ped, x, y, loud=False):
+    def on_gunfire(self, ped, x, y, loud=False, silent=False):
+        """Выстрел.  silent — с глушителем: его слышат только те, кто стоит рядом, полиция не узнаёт."""
+        if silent:
+            self.crowd.panic(x, y, 7.0, ped)
+            if ped.is_player:
+                self.stats['shots'] += 1
+            if self.missions is not None:
+                self.missions.notify('gunfire', (x, y, 9.0, ped))
+            return
         self.crowd.panic(x, y, 60.0 if loud else 36.0, ped)
+        if self.missions is not None:
+            self.missions.notify('gunfire', (x, y, 60.0 if loud else 45.0, ped))
         if ped.is_player:
             self.stats['shots'] += 1
             self.police.crime('gunfire', x, y)
@@ -645,11 +655,14 @@ class World(object):
         elif ped.kind in ('civ', 'gang'):
             self.police.crime('assault', ped.x, ped.y)
         if ped.gang is not None:
-            # свои своих не бросают
+            # свои своих не бросают; бесшумный удар или выстрел замечают только те, кто совсем рядом
+            quiet = cause in ('bullet', 'melee') and getattr(attacker, 'weapon', None) is not None and \
+                attacker.weapon.silent
+            r = 8.0 if quiet else 30.0
             for o in self.peds:
                 if o.gang == ped.gang and o is not ped and not o.dead and o.target is None and \
                         o.state in ('walk', 'wait', 'idle', 'guard', 'stand'):
-                    if abs(o.x - ped.x) < 30.0 and abs(o.y - ped.y) < 30.0:
+                    if abs(o.x - ped.x) < r and abs(o.y - ped.y) < r:
                         o.attack(attacker)
         if self.missions is not None:
             self.missions.notify('ped_hurt', ped)

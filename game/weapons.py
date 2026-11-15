@@ -237,7 +237,7 @@ class Weapons(object):
             p.punch_t = 0.3
             return
         w.audio.play(wp.sound, 0.85, 0.96 + random.random() * 0.08)
-        w.fx.muzzle(mx, my, mz, 0.55 if wp.pellets == 1 else 0.9)
+        w.fx.muzzle(mx, my, mz, 0.2 if wp.silent else (0.55 if wp.pellets == 1 else 0.9))
         # конус разброса вокруг оси прицела
         ux, uy, uz = -dy, dx, 0.0
         ul = math.hypot(ux, uy) or 1.0
@@ -257,7 +257,7 @@ class Weapons(object):
             else:
                 hx, hy, hz = ox + bx * t, oy + by * t, oz + bz * t
             w.fx.tracer(mx, my, mz, hx, hy, hz, width=0.06 if wp.pellets == 1 else 0.04)
-        w.on_gunfire(p, mx, my)
+        w.on_gunfire(p, mx, my, silent=wp.silent)
 
     def player_melee(self, wp):
         w = self.w
@@ -322,8 +322,8 @@ class Weapons(object):
         w = self.w
         fx_, fy_ = math.cos(ped.yaw), math.sin(ped.yaw)
         mx, my, mz = ped.x + fx_ * 0.55, ped.y + fy_ * 0.55, ped.z + 1.38
-        w.audio.play_at(wp.sound, mx, my, 0.7, 0.94 + random.random() * 0.1, 100.0)
-        w.fx.muzzle(mx, my, mz, 0.5)
+        w.audio.play_at(wp.sound, mx, my, 0.7, 0.94 + random.random() * 0.1, 30.0 if wp.silent else 100.0)
+        w.fx.muzzle(mx, my, mz, 0.2 if wp.silent else 0.5)
         tv = target.vehicle
         tz = (tv.z + tv.spec.belt) if tv is not None else target.z + 1.1
         if tv is not None:
@@ -364,7 +364,7 @@ class Weapons(object):
             else:
                 self._apply_bullet(wp, t, kind, obj, nx, ny, nz, mx, my, mz, dx, dy, dz, ped, k)
         w.fx.tracer(mx, my, mz, mx + dx * t, my + dy * t, mz + dz * t, width=0.05)
-        w.on_gunfire(ped, mx, my)
+        w.on_gunfire(ped, mx, my, silent=wp.silent)
 
     # ------------------------------------------------------------------
     # снаряды

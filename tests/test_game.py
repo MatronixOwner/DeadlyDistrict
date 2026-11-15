@@ -282,7 +282,10 @@ def test_gun_shop_marker(game, world):
     pl.teleport(mk.x, mk.y)
     harness.run(game, 0.3)
     assert game.state == 'shop'
-    harness.press(game, 'arrow_down')                        # пистолет
+    from game.defs import WEAPONS, WEAPON_ORDER
+    goods = [wid for wid in WEAPON_ORDER if WEAPONS[wid].price > 0]
+    for _ in range(goods.index(W_PISTOL)):                   # до пистолета
+        harness.press(game, 'arrow_down')
     harness.press(game, 'enter')
     assert W_PISTOL in pl.ammo and pl.money == 750
     harness.press(game, 'escape')

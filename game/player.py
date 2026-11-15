@@ -5,7 +5,7 @@ import random
 
 from .ped import Ped
 from .vehicle import Vehicle
-from .defs import WEAPONS, W_FIST, W_BAT, W_PISTOL, W_UZI, player_look
+from .defs import WEAPONS, W_FIST, W_BAT, W_PISTOL, W_UZI, W_SILENCED, weapon_sort, player_look
 from .mathutil import clamp, approach, angle_diff, turn_towards, damp, damp_angle, wrap_angle, yaw_to_h, DEG
 from .collision import F_PED, F_CAM, F_CAR
 from .city import WATER_Z
@@ -35,6 +35,7 @@ class Camera(object):
         self.override = None              # (x, y, z, tx, ty, tz) — «кинокамера»
         self.look_back = False
         self.hid_player = False           # персонаж скрыт, потому что камера вплотную
+        self.scope = False                # смотрим в оптический прицел
 
     def snap(self):
         self.cut = True
@@ -60,7 +61,7 @@ class Camera(object):
         w = self.w
         pl = w.player
         st = w.settings
-        sens = 0.0026 * float(st.get('mouse_sens'))
+        sens = 0.0026 * float(st.get('mouse_sens')) * min(1.0, self.fov / 68.0)   # в прицеле мышь тише
         if mdx or mdy:
             self.yaw = wrap_angle(self.yaw - mdx * sens)
             inv = -1.0 if st.get('invert_y') else 1.0
@@ -82,6 +83,7 @@ class Camera(object):
             return
         v = pl.vehicle
         fov = 68.0
+        scope = False
         if v is not None:
             spec = v.spec
             tx, ty = v.x, v.y
@@ -108,7 +110,17 @@ class Camera(object):
                 dist = 2.3
                 fov = 56.0
             side = 0.55 if aim or pl.weapon.kind != 'melee' else 0.25
+            if aim and pl.weapon.zoom > 0.0 and pl.state == 'foot':
+                # оптика: смотрим от глаз, герой не в кадре
+                scope = True
+                dist = 0.0
+                side = 0.0
+                fov = 68.0 / pl.weapon.zoom
+                tz = p.z + 1.62
             yaw = self.yaw
+        if scope != self.scope:
+            self.scope = scope
+            self.cut = True                          # в прицел и обратно — без плавного наезда
         if self.cut:
             self.tx, self.ty, self.tz = tx, ty, tz
             self.dist = dist
@@ -128,7 +140,7 @@ class Camera(object):
         oz = self.tz
         # не даём камере уйти в стену или под землю
         want = dist
-        hit = w.static.raycast(ox, oy, oz, -dx, -dy, -dz, dist + 0.4, F_CAM)
+        hit = None if scope else w.static.raycast(ox, oy, oz, -dx, -dy, -dz, dist + 0.4, F_CAM)
         if hit is not None:
             want = max(0.7, hit[0] - 0.35)
         if want < self.dist or self.cut:
@@ -138,8 +150,8 @@ class Camera(object):
         d = self.dist
         cx, cy, cz = ox - dx * d, oy - dy * d, oz - dz * d
         if v is None:
-            # камеру прижало к стене: персонаж закрыл бы весь экран — прячем его
-            hide = d < 1.05 and pl.state == 'foot'
+            # камеру прижало к стене (или смотрим в прицел): персонаж закрыл бы весь экран — прячем его
+            hide = (d < 1.05 or scope) and pl.state == 'foot'
             if hide != self.hid_player:
                 self.hid_player = hide
                 if hide:
@@ -319,11 +331,25 @@ class Player(object):
         self.w.hud.weapon_changed()
 
     def cycle(self, d):
-        ids = sorted(self.ammo.keys())
+        ids = weapon_sort(self.ammo.keys())
         if len(ids) < 2:
             return
         i = ids.index(self.weapon_id) if self.weapon_id in ids else 0
         self.select(ids[(i + d) % len(ids)])
+        self.w.audio.play('click', 0.6)
+
+    def select_slot(self, slot):
+        """Клавиши 1–8: оружие своего класса; повторное нажатие листает внутри класса."""
+        ids = [wid for wid in weapon_sort(self.ammo.keys()) if WEAPONS[wid].slot == slot]
+        if not ids:
+            return
+        if self.weapon_id in ids:
+            if len(ids) < 2:
+                return
+            wid = ids[(ids.index(self.weapon_id) + 1) % len(ids)]
+        else:
+            wid = ids[0]
+        self.select(wid)
         self.w.audio.play('click', 0.6)
 
     def use_ammo(self, n=1):
@@ -338,8 +364,10 @@ class Player(object):
         if a <= 0:
             # патроны кончились: убираем оружие
             del self.ammo[wid]
-            ids = sorted(self.ammo.keys())
-            self.select(ids[-1] if ids else W_FIST)
+            # берём то, что было в руках до него: ближайшее оружие «полегче»
+            order = weapon_sort(list(self.ammo.keys()) + [wid])
+            k = order.index(wid)
+            self.select(order[k - 1] if k > 0 else W_FIST)
         return True
 
     def clear_weapons(self):
@@ -395,10 +423,9 @@ class Player(object):
             self.cycle(1)
         if inp.hit('wheel_down') or inp.hit('q'):
             self.cycle(-1)
-        for i in range(1, 10):
+        for i in range(1, 9):
             if inp.hit(str(i)):
-                if (i - 1) in self.ammo:
-                    self.select(i - 1)
+                self.select_slot(i)
         if inp.hit('c'):
             cam = self.w.cam
             cam.zoom = (cam.zoom + 1) % 3
@@ -701,7 +728,7 @@ class Player(object):
         self.aiming = False
         if inp.held('mouse1') or inp.held('control'):
             wp = self.weapon
-            if wp.id in (W_PISTOL, W_UZI) and self.fire_cd <= 0.0:
+            if wp.id in (W_PISTOL, W_UZI, W_SILENCED) and self.fire_cd <= 0.0:
                 if wp.auto or inp.hit('mouse1') or inp.hit('control'):
                     self.fire_cd = wp.rate
                     w.weapons.player_fire(wp, driveby=True)

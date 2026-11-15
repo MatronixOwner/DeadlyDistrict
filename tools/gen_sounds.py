@@ -759,6 +759,8 @@ def main():
     S('uzi', lambda: gunshot(0.18, 0.022, 260, 5500))
     S('shotgun', lambda: gunshot(0.6, 0.07, 120, 3000, 1.3))
     S('ak', lambda: gunshot(0.3, 0.04, 150, 3800, 1.2))
+    S('silenced', lambda: lp(gunshot(0.16, 0.016, 150, 1500, 0.6), 2400), 0.42)
+    S('sniper', lambda: gunshot(0.95, 0.085, 105, 3600, 1.5))
     S('rocket', rocket)
     S('explosion', explosion)
     S('punch', punch)
@@ -795,6 +797,20 @@ def main():
     S('fire', lambda: loopify(lp(noise(int(1.8 * SR)), 600) * 0.7 + hp(noise(int(1.8 * SR)), 2000) *
                               (rng.rand(int(1.8 * SR)) > 0.985) * 3.0, 0.2), 0.6)
     S('click', lambda: tone(1500, 0.03, 'square', 0.008), 0.3)
+    # телефон: звонок (две трели), снятие трубки и отбой
+    S('phone', lambda: seq([(k * 0.085 + g * 0.62, tone(1318 if k % 2 else 1568, 0.07, 'square', 0.05))
+                            for g in range(2) for k in range(5)]), 0.32)
+    S('phone_up', lambda: seq([(0.0, tone(988, 0.05, 'tri')), (0.05, tone(1318, 0.09, 'tri', 0.05))]), 0.4)
+    S('phone_down', lambda: seq([(0.0, tone(784, 0.06, 'tri')), (0.06, tone(523, 0.12, 'tri', 0.06))]), 0.4)
+    # ворота гаража: гул привода и лязг секций
+    S('garage', lambda: fade(lp(noise(int(1.1 * SR)), 260) * 0.9 +
+                             0.5 * np.sin(2 * np.pi * 62 * tt(1.1)) * (0.7 + 0.3 * np.sin(2 * np.pi * 9 * tt(1.1))) +
+                             1.6 * hp(noise(int(1.1 * SR)), 1800) * (rng.rand(int(1.1 * SR)) > 0.992), 0.06, 0.25), 0.6)
+    # мастерская: трещотка гаечного ключа
+    S('wrench', lambda: seq([(k * 0.07, fade(bp(noise(int(0.035 * SR)), 1800, 5200) *
+                                             env_exp(int(0.035 * SR), 0.008), 0.0005, 0.004))
+                             for k in range(7)]), 0.5)
+    S('engine_bike', lambda: engine(92.0, 0.5))
     for name, fn in (('retro', track_retro), ('beat', track_beat), ('rock', track_rock),
                      ('chanson', track_chanson), ('theme', track_theme)):
         if only and name not in only:

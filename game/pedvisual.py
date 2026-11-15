@@ -6,7 +6,7 @@
 """
 import random
 
-from panda3d.core import PartBundle
+from panda3d.core import PartBundle, LMatrix4, LVector3
 
 from .models import CHAR_HEIGHT, PED_HEIGHT
 
@@ -18,6 +18,8 @@ SPRINT_FROM = 4.6           # ...и на быстрый бег
 
 FADE = 0.18                 # время плавного перехода между клипами, с
 DEATHS = ('death_a', 'death_b', 'death_c')
+# клипы, в которых длинный ствол держат двумя руками: оружие в них направляется от правой ладони к левой
+TWO_HANDS = ('rifle_idle', 'rifle_walk', 'rifle_run', 'rifle_fire')
 
 
 class PedVisual(object):
@@ -66,6 +68,7 @@ class PedVisual(object):
         self.grips = {}
         self.gun = None
         self.gun_kind = None
+        self._rifle = None          # (точка хвата, «верх») в системе кости правой кисти
         self.play('idle', True, 1.0, 0.0)
         self.time = random.random() * 2.0           # чтобы толпа не дышала в такт
 
@@ -141,6 +144,8 @@ class PedVisual(object):
             if fi != self.frame:
                 self.frame = fi
                 self.cur_ctrl.pose(fi)
+        if self._rifle is not None and self.gun_kind == 'rifle':
+            self._aim_long()
         if self.fade > 0.0:
             self.fade -= dt
             k = self.fade / self.fade_len
@@ -204,10 +209,34 @@ class PedVisual(object):
                 hand = self.grips['_hand'] = self.actor.exposeJoint(None, 'modelRoot', joint)
             grip = self.grips[kind] = hand.attachNewNode('grip')
             grip.setMat(mat)
-        self.gun = t.copyTo(grip)
-        self.gun.setTextureOff(2)                   # текстура персонажа на оружие не распространяется
-        self.gun.setColorScaleOff(2)
+        self.gun = t.copyTo(grip)                   # у шаблона своя текстура, чужая на него не ложится
         self.gun_kind = kind
+        if kind == 'rifle' and self._rifle is None:
+            if '_left' not in self.grips:
+                self.grips['_left'] = self.actor.exposeJoint(None, 'modelRoot', 'middle_01_l')
+            m = grip.getMat()
+            self._rifle = (m.getRow3(3), LVector3(m.getRow3(2)), LMatrix4(m))
+
+    def _aim_long(self):
+        """Длинный ствол лежит в двух руках: правая держит рукоять, ствол смотрит на левую ладонь.
+
+        Оружие привязано к правой кисти жёстко, а кисти в каждом клипе стоят друг относительно друга
+        по-своему; без этой поправки автомат на бегу и в стойке торчит мимо левой руки."""
+        grip = self.grips['rifle']
+        o, up0, rest = self._rifle
+        if self.cur not in TWO_HANDS:
+            grip.setMat(rest)
+            return
+        d = self.grips['_left'].getPos(self.grips['_hand']) - o
+        if d.lengthSquared() < 0.0036:              # ладони сошлись (меньше 6 см): направление ненадёжно
+            return
+        d.normalize()
+        r = d.cross(up0)
+        if r.lengthSquared() < 1e-6:
+            return
+        r.normalize()
+        up = r.cross(d)
+        grip.setMat(LMatrix4(r.x, r.y, r.z, 0.0, d.x, d.y, d.z, 0.0, up.x, up.y, up.z, 0.0, o.x, o.y, o.z, 1.0))
 
     def remove(self):
         a = self.actor

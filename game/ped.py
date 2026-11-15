@@ -265,6 +265,7 @@ class Ped(object):
         self.anim_phase = random.random() * 6.28
         self.punch_t = 0.0
         self.aiming = False
+        self.ready_t = 0.0          # сколько ещё держать пистолет поднятым после выстрела
         self.aim_pitch = 0.0
         self.stuck_t = 0.0
         self.strafe = random.choice((-1.0, 1.0))
@@ -978,12 +979,18 @@ class Ped(object):
             else:
                 vis.play('rifle_idle', True, 1.0)
         elif armed == 'pistol':
+            # Пистолет поднимают, чтобы целиться и стрелять, и ещё пару секунд держат наготове;
+            # в остальное время рука с ним опущена, как при обычной стойке.
+            if self.aiming or self.shot_t > 0.0:
+                self.ready_t = 1.6
+            elif self.ready_t > 0.0:
+                self.ready_t -= dt
             if self.shot_t > 0.0 and not w.auto:
                 vis.play('pistol_shoot', False, 1.8, 0.05, self.shot_t > self._shot_prev)
-            elif self.aiming or self.shot_t > 0.0:
+            elif self.aiming or self.shot_t > 0.0 or self.ready_t > 0.0:
                 vis.play('pistol_aim', True, 1.0, 0.12)
             else:
-                vis.play('pistol_idle', True, 1.0)
+                vis.play(self.idle_clip or 'idle', True, 1.0, 0.3)
         elif self.hit_t > 0.0:
             vis.play('hit_b' if vis.punch_n % 2 else 'hit_a', False, 1.2, 0.06)
         elif st == 'cower':

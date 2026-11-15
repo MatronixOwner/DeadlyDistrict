@@ -144,15 +144,19 @@ def test_animation_follows_state(game, world):
     p.set_weapon(W_PISTOL)
     assert p.vis.gun is not None and p.vis.gun_kind == 'pistol'
     harness.run(game, 0.3)
-    assert p.vis.cur == 'pistol_idle'
+    assert p.vis.cur == 'idle'                       # пока не целится, рука с пистолетом опущена
     p.aiming = True
     harness.run(game, 0.3)
     assert p.vis.cur == 'pistol_aim'
     p.shot_t = 0.3
     harness.run(game, 0.1)
     assert p.vis.cur == 'pistol_shoot'
-    # автомат держат двумя руками
     p.aiming = False
+    harness.run(game, 0.7)
+    assert p.vis.cur == 'pistol_aim'                 # после выстрела ещё секунду держит наготове
+    harness.run(game, 2.0)
+    assert p.vis.cur == 'idle'                       # ...и опускает
+    # автомат держат двумя руками
     p.set_weapon(W_AK)
     assert p.vis.gun_kind == 'rifle'
     harness.run(game, 0.5)
@@ -304,3 +308,31 @@ def test_red_shirt_guy_wears_trousers(world):
         for (x, y) in pts:
             c = img.getXel(int(x * k), int(y * k))
             assert max(c[0], c[1], c[2]) < 0.56, (n, x, y, tuple(c))                    # было 0.64–0.76
+
+
+def test_long_gun_lies_in_both_hands(game, world):
+    """Автомат привязан к правой кисти, но ствол должен проходить через левую ладонь — и в стойке, и на бегу.
+    Раньше он был закреплён жёстко и в половине клипов торчал мимо левой руки."""
+    from panda3d.core import LPoint3
+    w = world
+    harness.quiet(w, peds=True)
+    px, py = w.player.pos()
+    p = w.spawn_ped(px + 3.0, py, 0.0, random_look(random.Random(4), 'D'))
+    p.keep = True
+    p.set_state('stand')
+    p.set_weapon(W_AK)
+    vis = p.vis
+    for clip in ('rifle_idle', 'rifle_walk', 'rifle_run', 'rifle_fire'):
+        worst = 0.0
+        for k in range(6):
+            vis.play(clip, True, 1.0, 0.0, True, k / 6.0)
+            vis.update(0.0)
+            vis.actor.update(force=True)
+            vis.update(0.0)
+            gun = vis.gun
+            left = vis.grips['_left']
+            lp = left.getPos(gun)                    # левая ладонь в системе оружия: ствол — ось +Y
+            assert lp.y > 0.05, (clip, k, lp)        # ладонь впереди рукояти
+            worst = max(worst, math.hypot(lp.x, lp.z))
+        assert worst < 0.03, (clip, worst)
+    w.remove_ped(p)

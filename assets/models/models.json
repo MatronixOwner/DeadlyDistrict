@@ -1189,12 +1189,13 @@
  },
  "weapons": {
   "ak": {
-   "length": 0.9,
+   "length": 0.94,
    "muzzle": [
     0.0,
-    0.612,
-    0.171
-   ]
+    0.592,
+    0.122
+   ],
+   "tex": true
   },
   "bat": {
    "length": 0.86,
@@ -1204,6 +1205,15 @@
     0.02
    ]
   },
+  "double": {
+   "length": 1.06,
+   "muzzle": [
+    0.0,
+    0.763,
+    0.044
+   ],
+   "tex": true
+  },
   "grenade": {
    "length": 0.13,
    "muzzle": [
@@ -1211,6 +1221,24 @@
     0.065,
     0.018
    ]
+  },
+  "knife": {
+   "length": 0.3,
+   "muzzle": [
+    0.0,
+    0.228,
+    -0.007
+   ],
+   "tex": true
+  },
+  "m4": {
+   "length": 0.85,
+   "muzzle": [
+    0.0,
+    0.62,
+    0.113
+   ],
+   "tex": true
   },
   "molotov": {
    "length": 0.2,
@@ -1221,36 +1249,58 @@
    ]
   },
   "pistol": {
-   "length": 0.24,
+   "length": 0.205,
    "muzzle": [
     0.0,
-    0.187,
-    0.069
-   ]
+    0.17,
+    0.071
+   ],
+   "tex": true
   },
   "rocket": {
-   "length": 1.05,
+   "length": 1.02,
    "muzzle": [
     0.0,
-    0.63,
-    0.241
-   ]
+    0.551,
+    0.068
+   ],
+   "tex": true
   },
   "shotgun": {
    "length": 0.98,
    "muzzle": [
     0.0,
-    0.686,
-    0.053
-   ]
+    0.676,
+    0.051
+   ],
+   "tex": true
+  },
+  "silenced": {
+   "length": 0.355,
+   "muzzle": [
+    0.0,
+    0.32,
+    0.071
+   ],
+   "tex": true
+  },
+  "sniper": {
+   "length": 1.22,
+   "muzzle": [
+    0.0,
+    0.769,
+    0.092
+   ],
+   "tex": true
   },
   "uzi": {
    "length": 0.42,
    "muzzle": [
     0.0,
-    0.302,
-    0.117
-   ]
+    0.378,
+    0.126
+   ],
+   "tex": true
   }
  }
 }

@@ -696,7 +696,7 @@ class Game(object):
 
     def open_shop(self):
         from .menu import Menu, Item
-        from .defs import WEAPONS, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV
+        from .defs import WEAPONS, WEAPON_ORDER
         if self.state != 'play':
             return
         w = self.world
@@ -748,8 +748,7 @@ class Game(object):
                 own = '' if a is None else ('  есть' if a < 0 else '  есть: %d' % a)
                 return '$%d%s' % (wd.price, own)
             return f
-        items = [Item(label(wid), buy(wid), value=have(wid))
-                 for wid in (W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_GRENADE, W_MOLOTOV, W_ROCKET)]
+        items = [Item(label(wid), buy(wid), value=have(wid)) for wid in WEAPON_ORDER if WEAPONS[wid].price > 0]
         items.append(Item('Бронежилет', buy_armor, value=lambda: '$800'))
         items.append(Item('Уйти', close))
         m = Menu(self.ui, 'Оружейный магазин — $%d' % pl.money, items, back=close, top=0.44, spacing=0.11,
