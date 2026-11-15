@@ -89,8 +89,9 @@ def selftest():
     # каждая модель и каждая её текстура должны быть в сборке, а не только те, что встретились за минуту игры
     from game.vehicle import SPECS, PAINTS
     for key in sorted(mdl.meta['chars']):
-        tex = mdl.char_texture(key)
-        _need(tex is not None and tex.getXSize() > 8, 'character texture is missing: %s' % key)
+        for name in mdl.char_textures(key):
+            tex = mdl.char_texture(name)
+            _need(tex is not None and tex.getXSize() > 8, 'character texture is missing: %s (%s)' % (name, key))
     for kind in sorted(SPECS):
         _need(mdl.vehicle_info(kind, SPECS[kind]) is not None, 'vehicle model is missing: %s' % kind)
         _need(mdl.vehicle_body(kind, SPECS[kind], PAINTS[0]) is not None, 'vehicle body failed: %s' % kind)

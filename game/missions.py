@@ -26,7 +26,7 @@ def contact_look(name):
     if name == 'vano':
         return make_look(skin=SKINS[2], hair=(0.1, 0.08, 0.06), shirt=(0.9, 0.9, 0.86), pants=(0.2, 0.24, 0.36),
                          torso='tank', beard=True, hat='cap', hat_color=(0.6, 0.1, 0.1), fat=1.3, scale=1.02,
-                         model='m_red')
+                         model='m_red_h3')
     if name == 'rosa':
         return make_look(skin=SKINS[0], hair=(0.62, 0.1, 0.08), shirt=(0.8, 0.12, 0.3), pants=(0.8, 0.12, 0.3),
                          torso='tee', female=True, scale=0.97, fat=0.95, model='f_goth')

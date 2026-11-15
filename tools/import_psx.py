@@ -39,28 +39,69 @@ OUT = os.path.join(ROOT, 'assets', 'models')
 M2M_REPO = ('https://github.com/Mesh2Motion/mesh2motion-app', ['static/assets/human'])
 CARS_REPO = ('https://github.com/Raccoon-Formality/Parking_Ticket_Mayhem', ['assets/3d/psx_cars'])
 
-# персонажи: имя в игре -> файл Mesh2Motion (static/assets/human/variations/<файл>.glb)
+# исходные модели: имя -> файл Mesh2Motion (static/assets/human/variations/<файл>.glb)
+# В наборе есть ещё «убийцы» в масках и монстры — в игре про город им не место, мы их не берём.
 CHARS = {
     'm_shirt': 'psx-05', 'm_red': 'psx-06', 'm_grey': 'psx-10', 'm_leather': 'psx-15', 'm_old': 'psx-32',
     'f_goth': 'psx-female-08', 'f_black': 'psx-female-09', 'f_old': 'psx-31-female',
     'cop_m': 'psx-18-police', 'cop_f': 'psx-17-female-police', 'swat': 'psx-21-police',
     'medic': 'psx-26-doctor', 'army': 'psx-28-hm',
-    'thug_a': 'psx-killer-04', 'thug_pig': 'psx-killer-05', 'thug_clown': 'psx-killer-07',
 }
 REFERENCE = 'psx-05'            # к его скелету приводятся все остальные
+# Эти модели целиком в игре не ходят — от них берутся только части:
+#   m_red — его лицо досталось главному герою и больше никому; m_grey — нужна только одежда.
+PARTS_ONLY = ('m_red', 'm_grey')
 
-# Перекрашенные варианты одежды: имя -> (модель, что красим, как).  Так на улицах больше разных людей.
+# Сборные персонажи: тело одной модели, голова другой.  имя -> (тело, голова)
+# Так у героя своё лицо, а на улицах больше разных людей.  Текстуры у частей свои (тело и голова
+# красятся отдельно), поэтому новая пара не стоит ни одного лишнего файла текстуры.
+COMBOS = {
+    'hero': ('m_leather', 'm_red'),             # Макс: кожаная куртка и спокойное лицо
+    'm_leather_b': ('m_leather', 'cop_m'),
+    'm_leather_c': ('m_leather', 'm_old'),
+    'm_red_h2': ('m_red', 'cop_m'),
+    'm_red_h3': ('m_red', 'medic'),
+    'm_red_h4': ('m_red', 'm_shirt'),
+    'm_shirt_h3': ('m_shirt', 'medic'),
+    'm_shirt_h4': ('m_shirt', 'cop_m'),
+    'm_grey_h2': ('m_grey', 'cop_m'),
+    'm_grey_h3': ('m_grey', 'm_old'),
+    'm_grey_h4': ('m_grey', 'm_leather'),
+    'm_old_h3': ('m_old', 'medic'),
+}
+
+# Перекрашенная одежда: имя текстуры -> (исходная текстура, что красим, как)
 #   что:  'red' — насыщенно-красное, 'blue' — синее и голубое
 #   как:  hue — новый оттенок (градусы), sat и val — множители насыщенности и яркости
-SKINS = {
-    'm_red_b': ('m_red', 'red', dict(hue=215, sat=0.80, val=0.85)),
-    'm_red_c': ('m_red', 'red', dict(hue=125, sat=0.60, val=0.70)),
-    'm_red_d': ('m_red', 'red', dict(hue=48, sat=0.75, val=1.0)),
-    'm_shirt_b': ('m_shirt', 'blue', dict(hue=345, sat=1.1, val=1.0)),
-    'm_shirt_c': ('m_shirt', 'blue', dict(sat=0.0, val=1.06)),
-    'm_grey_b': ('m_grey', 'blue', dict(sat=0.3, val=0.42)),
-    'f_old_b': ('f_old', 'blue', dict(hue=335, sat=1.0, val=1.0)),
-    'f_old_c': ('f_old', 'blue', dict(hue=95, sat=0.8, val=0.9)),
+RECOLORS = {
+    'red_blue': ('m_red', 'red', dict(hue=215, sat=0.80, val=0.85)),
+    'red_green': ('m_red', 'red', dict(hue=125, sat=0.60, val=0.70)),
+    'red_yellow': ('m_red', 'red', dict(hue=48, sat=0.75, val=1.0)),
+    'red_orange': ('m_red', 'red', dict(hue=26, sat=0.9, val=1.0)),
+    'red_purple': ('m_red', 'red', dict(hue=282, sat=0.75, val=0.8)),
+    'red_black': ('m_red', 'red', dict(sat=0.0, val=0.32)),
+    'red_white': ('m_red', 'red', dict(sat=0.0, val=1.25)),
+    'shirt_pink': ('m_shirt', 'blue', dict(hue=345, sat=1.1, val=1.0)),
+    'shirt_grey': ('m_shirt', 'blue', dict(sat=0.0, val=1.06)),
+    'shirt_green': ('m_shirt', 'blue', dict(hue=140, sat=0.8, val=0.85)),
+    'shirt_dark': ('m_shirt', 'blue', dict(sat=0.25, val=0.45)),
+    'grey_dark': ('m_grey', 'blue', dict(sat=0.3, val=0.42)),
+    'f_old_pink': ('f_old', 'blue', dict(hue=335, sat=1.0, val=1.0)),
+    'f_old_green': ('f_old', 'blue', dict(hue=95, sat=0.8, val=0.9)),
+}
+
+# Ещё облики: имя -> (модель, текстура одежды)
+VARIANTS = {
+    'm_shirt_b': ('m_shirt', 'shirt_pink'), 'm_shirt_c': ('m_shirt', 'shirt_grey'),
+    'm_red_h2b': ('m_red_h2', 'red_blue'), 'm_red_h2c': ('m_red_h2', 'red_green'),
+    'm_red_h2p': ('m_red_h2', 'red_purple'),
+    'm_red_h3b': ('m_red_h3', 'red_orange'), 'm_red_h3c': ('m_red_h3', 'red_black'),
+    'm_red_h3g': ('m_red_h3', 'red_green'), 'm_red_h3p': ('m_red_h3', 'red_purple'),
+    'm_red_h4b': ('m_red_h4', 'red_yellow'), 'm_red_h4c': ('m_red_h4', 'red_white'),
+    'm_shirt_h3b': ('m_shirt_h3', 'shirt_dark'), 'm_shirt_h4b': ('m_shirt_h4', 'shirt_green'),
+    'm_shirt_h4c': ('m_shirt_h4', 'shirt_grey'),
+    'm_grey_h2b': ('m_grey_h2', 'grey_dark'), 'm_grey_h4b': ('m_grey_h4', 'grey_dark'),
+    'f_old_b': ('f_old', 'f_old_pink'), 'f_old_c': ('f_old', 'f_old_green'),
 }
 
 
@@ -81,17 +122,28 @@ def recolor(img, what, hue=None, sat=1.0, val=1.0):
 
 # клипы анимации: имя в игре -> файл Mesh2Motion (static/assets/human/animations/<файл>.glb)
 ANIMS = {
-    'idle': 'idle-a', 'walk': 'walk', 'walk_f': 'walk-female', 'jog': 'jog', 'sprint': 'sprint',
-    'run_f': 'run-female', 'walk_back': 'walk-backwards',
+    # ходьба, бег
+    'idle': 'idle-subtle', 'idle_wide': 'idle-a', 'walk': 'walk', 'walk_f': 'walk-female', 'jog': 'jog',
+    'sprint': 'sprint', 'run_f': 'run-female', 'walk_back': 'walk-backwards', 'walk_relaxed': 'walk-relaxed',
+    'walk_formal': 'walk-formal', 'walk_hurt': 'walk-injured', 'air': 'jump-air',
+    # драка и оружие
     'punch_a': 'punch-jab', 'punch_b': 'punch-cross', 'kick': 'kick-front', 'swing': 'two-handed-horizontal-swing',
     'pistol_idle': 'pistol-idle', 'pistol_aim': 'pistol-idle-aim', 'pistol_shoot': 'pistol-shoot',
     'pistol_walk': 'pistol-walk',
     'rifle_idle': 'rifle-idle', 'rifle_fire': 'rifle-fire', 'rifle_walk': 'rifle-walk', 'rifle_run': 'rifle-run',
     'throw': 'grenade-throw', 'hit_a': 'hit-chest', 'hit_b': 'hit-head', 'knockback': 'hit-knockback',
-    'death_a': 'death-b', 'death_b': 'death-c', 'death_c': 'death-d', 'getup': 'laytoidle',
+    'death_a': 'death-b', 'death_b': 'death-c', 'death_c': 'death-d', 'getup': 'laytoidle', 'cower': 'defend',
+    # разговоры и жесты
     'talk': 'idle-talking', 'listen': 'idle-listening', 'arms': 'idle-foldarms', 'phone': 'idle-talkingphone',
-    'texting': 'texting-walk', 'cower': 'defend', 'drive': 'driving', 'sit': 'sitting-idle', 'air': 'jump-air',
-    'victory': 'victory',
+    'texting': 'texting-walk', 'greet': 'greeting', 'nod': 'head-nod', 'no': 'reject', 'angry': 'angry',
+    'confused': 'confused', 'victory': 'victory', 'clap': 'clapping',
+    # сидя и лёжа
+    'drive': 'driving', 'sit': 'sitting-idle', 'sit_talk': 'sitting-talking', 'sit_down': 'sitting-enter',
+    'sit_up': 'sitting-exit', 'write': 'sitting-writing', 'sit_ground': 'sit-ground-idle', 'sleep': 'sleeping',
+    # действия
+    'door': 'open-door', 'interact': 'interact', 'pickup': 'pick-up', 'push': 'push', 'knock': 'knock',
+    'kneel': 'kneel', 'tired': 'tired-hunched', 'hurt': 'idle-hurt', 'dizzy': 'dizzy', 'drink': 'consume',
+    'dance_a': 'dance-simple', 'dance_b': 'dance-arm-pump', 'fix': 'fixing-kneeling', 'crouch': 'crouch-idle',
 }
 
 
@@ -272,6 +324,180 @@ class Skinned(object):
         return dict((n['name'], n) for n in self.g['nodes'] if 'name' in n)
 
 
+FINGERS = ('index', 'middle', 'ring', 'pinky')
+
+
+def mitten(ch):
+    """Кисть как «варежка»: четыре пальца двигаются одним куском.
+
+    У моделей набора пальцы не разделены — это один блок с нарисованными пальцами.  Автоматическая
+    привязка раздала его вершины костям разных пальцев, и в движении блок рвало веером.  Здесь все
+    такие вершины перепривязываются к костям среднего пальца: какой сустав — зависит от того,
+    как далеко вершина от костяшек.  Большой палец остаётся отдельным.
+    """
+    names = ch.jnames
+    idx = dict((n, k) for k, n in enumerate(names))
+    bind = np.linalg.inv(ch.ibm)                    # кости в позе привязки, в системе сетки
+    w = ch.jw / ch.jw.sum(1, keepdims=True)
+    nv = len(ch.pos)
+    infl = []
+    for v in range(nv):
+        d = {}
+        for k in range(4):
+            if w[v, k] > 0.0:
+                d[int(ch.ji[v, k])] = d.get(int(ch.ji[v, k]), 0.0) + float(w[v, k])
+        infl.append(d)
+    for side in ('l', 'r'):
+        fset = set(k for k, n in enumerate(names) if n.split('_')[0] in FINGERS and n.endswith('_' + side))
+        chain = [idx['middle_0%d_%s' % (k, side)] for k in (1, 2, 3)]
+        p = [bind[j][:3, 3] for j in chain]
+        tip = bind[idx['middle_04_leaf_' + side]][:3, 3]
+        axis = tip - p[0]
+        length = float(np.linalg.norm(axis))
+        axis /= length
+        t1 = float((p[1] - p[0]) @ axis)
+        t2 = float((p[2] - p[0]) @ axis)
+        bw = 0.22 * length                         # ширина плавного перехода между суставами
+        for v in range(nv):
+            d = infl[v]
+            wf = sum(x for j, x in d.items() if j in fset)
+            if wf <= 0.0:
+                continue
+            for j in [j for j in d if j in fset]:
+                del d[j]
+            t = float((ch.pos[v] - p[0]) @ axis)
+            w0 = min(1.0, max(0.0, (t1 + bw * 0.5 - t) / bw))
+            w2 = min(1.0, max(0.0, (t - (t2 - bw * 0.5)) / bw))
+            w1 = max(0.0, 1.0 - w0 - w2)
+            for j, x in zip(chain, (w0, w1, w2)):
+                if x > 0.0:
+                    d[j] = d.get(j, 0.0) + wf * x
+    ji = np.zeros((nv, 4), dtype=np.int64)
+    jw = np.zeros((nv, 4), dtype=np.float64)
+    for v, d in enumerate(infl):
+        top = sorted(d.items(), key=lambda kv: -kv[1])[:4]
+        tot = sum(x for _, x in top)
+        for k, (j, x) in enumerate(top):
+            ji[v, k] = j
+            jw[v, k] = x / tot
+    ch.ji, ch.jw = ji, jw
+
+
+HEAD_BONES = ('head', 'head_leaf', 'neck_01')
+CUT_BODY, CUT_HEAD = 0.35, 0.30         # где резать: доля пути от основания шеи до головы
+NECK_SKIRT = 0.10                       # на сколько метров шея головы уходит вниз, в воротник
+HEAD_U = 4.0                            # сдвиг u, которым помечены вершины головы
+
+
+def combine(ref, body, head, head_tex):
+    """Тело одной модели и голова другой.  body и head — (pos, nrm, uv, ji, jw, idx) на скелете ref.
+
+    Голова отрезается чуть ниже подбородка, у тела убирается всё выше воротника; шея головы уходит
+    внутрь воротника тела.  Текстуры у частей остаются свои: вершины головы помечаются сдвигом
+    текстурной координаты u на HEAD_U, и при записи модели уходят в отдельный узел «head».
+    """
+    hb = [k for k, n in enumerate(ref.jnames) if n in HEAD_BONES]
+    y_neck = float(ref.world[ref.jnames.index('neck_01')][1, 3])
+    y_head = float(ref.world[ref.jnames.index('head')][1, 3])
+
+    def headness(ji, jw):
+        return np.where(np.isin(ji, hb), jw, 0.0).sum(1)
+
+    bpos, bnrm, buv, bji, bjw, bidx = body
+    hpos, hnrm, huv, hji, hjw, hidx = head
+    bh = headness(bji, bjw)
+    hh = headness(hji, hjw)
+    cut_b = y_neck + CUT_BODY * (y_head - y_neck)   # у тела остаётся всё ниже этой высоты
+    cut_h = y_neck + CUT_HEAD * (y_head - y_neck)   # у головы — всё выше этой (шея с запасом вниз)
+    bt = bidx.reshape(-1, 3)
+    ht = hidx.reshape(-1, 3)
+    # тело: убираем треугольники, целиком лежащие выше среза; у тех, что срез пересекают, верхние
+    # вершины опускаем на срез и подтягиваем к оси шеи — они спрячутся внутри новой шеи
+    by = bpos[bt][:, :, 1]
+    drop = (by > cut_b).all(1) & (bh[bt] >= 0.25).all(1)
+    bt = bt[~drop]
+    bpos = bpos.copy()
+    neck = ref.world[ref.jnames.index('neck_01')][:3, 3]
+    up = (bpos[:, 1] > cut_b) & (bh >= 0.25)
+    bpos[up, 1] = cut_b
+    bpos[up, 0] = neck[0] + (bpos[up, 0] - neck[0]) * 0.7
+    bpos[up, 2] = neck[2] + (bpos[up, 2] - neck[2]) * 0.7
+    # голова: только то, что привязано к шее и голове (без плеч и воротника), и не ниже среза
+    keep = (hh[ht] >= 0.45).all(1) & (hpos[ht][:, :, 1] > cut_h).all(1)
+    ht = ht[keep]
+    # у отрезанной головы снизу открытый край; тянем его вниз «юбкой», чтобы шея уходила в воротник
+    weld = {}
+    wid = np.array([weld.setdefault(tuple(q), len(weld)) for q in np.round(hpos, 5)])
+    edges = {}
+    for a, b, c in ht:
+        for u, v in ((a, b), (b, c), (c, a)):
+            key = (min(wid[u], wid[v]), max(wid[u], wid[v]))
+            edges.setdefault(key, []).append((u, v))
+    ni = ref.jnames.index('neck_01')
+    add_pos, add_nrm, add_uv, add_tri = [], [], [], []
+    base_n = len(hpos)
+    # цвет «юбки» — обычная кожа шеи: берём точку текстуры с медианным цветом среди вершин шеи
+    used = np.unique(ht.reshape(-1))
+    band = used[(hpos[used, 1] > cut_h + 0.03) & (hpos[used, 1] < cut_h + 0.09)]
+    if len(band) == 0:
+        band = used
+    px = np.asarray(head_tex.convert('RGB'), dtype=np.float64)
+    th, tw = px.shape[:2]
+    cols = np.array([px[min(th - 1, max(0, int(huv[q, 1] * th))), min(tw - 1, max(0, int(huv[q, 0] * tw)))]
+                     for q in band])
+    med = np.median(cols, axis=0)
+    skin_uv = huv[band[int(np.argmin(((cols - med) ** 2).sum(1)))]]
+    for key, lst in edges.items():
+        if len(lst) != 1:
+            continue
+        u, v = lst[0]
+        if hpos[u, 1] > cut_h + 0.06 and hpos[v, 1] > cut_h + 0.06:
+            continue                                # это не срез шеи, а другая дырка в модели
+        k = base_n + len(add_pos)
+        for q in (u, v):                            # верх «юбки»: те же точки, но цвета кожи
+            add_pos.append(hpos[q].copy())
+            add_nrm.append(hnrm[q])
+            add_uv.append(skin_uv)
+        for q in (u, v):                            # низ
+            pq = hpos[q].copy()
+            pq[1] -= NECK_SKIRT
+            pq[0] = neck[0] + (pq[0] - neck[0]) * 0.8
+            pq[2] = neck[2] + (pq[2] - neck[2]) * 0.8
+            add_pos.append(pq)
+            add_nrm.append(hnrm[q])
+            add_uv.append(skin_uv)
+        add_tri.append((k + 1, k, k + 2))
+        add_tri.append((k + 1, k + 2, k + 3))
+    if add_pos:
+        hpos = np.r_[hpos, np.array(add_pos)]
+        hnrm = np.r_[hnrm, np.array(add_nrm)]
+        huv = np.r_[huv, np.array(add_uv)]
+        nj = np.zeros((len(add_pos), hji.shape[1]), dtype=hji.dtype)
+        nj[:, 0] = ni
+        nw = np.zeros((len(add_pos), hjw.shape[1]))
+        nw[:, 0] = 1.0
+        hji = np.r_[hji, nj]
+        hjw = np.r_[hjw, nw]
+        ht = np.r_[ht, np.array(add_tri)]
+
+    def compact(tri, *arrs):
+        used = np.unique(tri.reshape(-1))
+        remap = np.full(int(tri.max()) + 1, -1, dtype=np.int64)
+        remap[used] = np.arange(len(used))
+        return remap[tri], [a[used] for a in arrs]
+
+    bt, (bpos, bnrm, buv, bji, bjw) = compact(bt, bpos, bnrm, buv, bji, bjw)
+    ht, (hpos, hnrm, huv, hji, hjw) = compact(ht, hpos, hnrm, huv, hji, hjw)
+    huv = huv + np.array([HEAD_U, 0.0])             # пометка «это голова»: у неё своя текстура
+    pos = np.r_[bpos, hpos]
+    nrm = np.r_[bnrm, hnrm]
+    uv = np.r_[buv, huv]
+    ji = np.r_[bji, hji]
+    jw = np.r_[bjw, hjw]
+    idx = np.r_[bt.reshape(-1), ht.reshape(-1) + len(bpos)]
+    return pos, nrm, uv, ji, jw, idx
+
+
 def retarget(ch, ref):
     """Перенести сетку персонажа ch на скелет ref: вершины сдвигаются вместе со своими костями."""
     name_to_ref = dict((n, k) for k, n in enumerate(ref.jnames))
@@ -411,10 +637,16 @@ def simplify_skin(geom, name):
     nvd.setNumRows(n)
     wv, wn, wt, wb = (GeomVertexWriter(nvd, 'vertex'), GeomVertexWriter(nvd, 'normal'),
                       GeomVertexWriter(nvd, 'texcoord'), GeomVertexWriter(nvd, 'transform_blend'))
+    is_head = [False] * n
     for i in range(n):
         wv.setData3(rv.getData3())
         wn.setData3(rn.getData3())
-        wt.setData2(rt.getData2())
+        uv = rt.getData2()
+        if uv[0] > HEAD_U * 0.5:
+            is_head[i] = True
+            wt.setData2(uv[0] - HEAD_U, uv[1])
+        else:
+            wt.setData2(uv)
         b = rb.getData1i()
         j = bmap.get(b)
         if j is None:
@@ -436,16 +668,23 @@ def simplify_skin(geom, name):
     ntbt.setRows(SparseArray.range(0, n))
     nvd.setTransformBlendTable(ntbt)
     g2 = geom.decompose()
-    prim = GeomTriangles(Geom.UHStatic)
+    prims = [GeomTriangles(Geom.UHStatic), GeomTriangles(Geom.UHStatic)]       # тело, голова
     for k in range(g2.getNumPrimitives()):
         p = g2.getPrimitive(k)
         for t in range(p.getNumPrimitives()):
             s, e = p.getPrimitiveStart(t), p.getPrimitiveEnd(t)
-            prim.addVertices(p.getVertex(s), p.getVertex(s + 1), p.getVertex(s + 2))
-    prim.closePrimitive()
-    ng = Geom(nvd)
-    ng.addPrimitive(prim)
-    return ng, n, ntbt.getNumBlends()
+            v0 = p.getVertex(s)
+            prims[1 if is_head[v0] else 0].addVertices(v0, p.getVertex(s + 1), p.getVertex(s + 2))
+    out = []
+    for prim in prims:
+        if prim.getNumVertices() == 0:
+            out.append(None)
+            continue
+        prim.closePrimitive()
+        ng = Geom(nvd)
+        ng.addPrimitive(prim)
+        out.append(ng)
+    return out[0], out[1], n, ntbt.getNumBlends()
 
 
 def hand_frames(char_bam, adir):
@@ -502,11 +741,16 @@ def do_chars(meta):
     try:
         ref = Skinned(os.path.join(m2m_dir(), 'variations', REFERENCE + '.glb'))
         meta['chars'] = {}
-        for name, src in sorted(CHARS.items()):
-            ch = Skinned(os.path.join(m2m_dir(), 'variations', src + '.glb'))
-            pos, nrm, ji, jw = retarget(ch, ref)
+        parts = {}                                  # имя -> (pos, nrm, uv, ji, jw, idx) на общем скелете
+
+        def save_tex(name, img):
+            # 256 цветов с подобранной палитрой: вдвое меньше файл, на глаз разницы нет
+            img.convert('RGB').quantize(256, method=Image.MEDIANCUT, dither=Image.NONE).save(
+                os.path.join(cdir, name + '.png'), optimize=True)
+
+        def write_char(name, src, pos, nrm, uv, ji, jw, idx):
             gp = os.path.join(tmp, name + '.glb')
-            char_gltf(ref, pos, nrm, ch.uv, ji, jw, ch.idx, gp)
+            char_gltf(ref, pos, nrm, uv, ji, jw, idx, gp)
             bp = os.path.join(tmp, name + '.bam')
             gltf2bam(gp, bp)
             root = base.loader.loadModel(Filename.fromOsSpecific(bp), noCache=True)
@@ -515,13 +759,18 @@ def do_chars(meta):
             verts = blends = 0
             for gnp in char.findAllMatches('**/+GeomNode'):
                 gn = gnp.node()
-                ngn = GeomNode('skin')
+                body_gn, head_gn = GeomNode('skin'), GeomNode('head')
                 for i in range(gn.getNumGeoms()):
-                    g, n, nb = simplify_skin(gn.getGeom(i), name)
+                    gb, gh, n, nb = simplify_skin(gn.getGeom(i), name)
                     verts += n
                     blends += nb
-                    ngn.addGeom(g)
-                new_nodes.append(NodePath(ngn))
+                    if gb is not None:
+                        body_gn.addGeom(gb)
+                    if gh is not None:
+                        head_gn.addGeom(gh)
+                new_nodes.append(NodePath(body_gn))
+                if head_gn.getNumGeoms():
+                    new_nodes.append(NodePath(head_gn))
             for c in char.getChildren():
                 if not isinstance(c.node(), AnimBundleNode):
                     c.removeNode()
@@ -530,17 +779,29 @@ def do_chars(meta):
             root.setName(name)
             out = os.path.join(cdir, name + '.bam')
             root.writeBamFile(Filename.fromOsSpecific(out))
-            tex = Image.open(io.BytesIO(ch.image)).convert('RGB')
-            tex.save(os.path.join(cdir, name + '.png'), optimize=True)
             mn, mx = pos.min(0), pos.max(0)
-            meta['chars'][name] = dict(verts=verts, height=round(float(mx[1] - mn[1]), 3), tex=list(tex.size),
-                                       source=src, model=name)
-            print('  %-11s %-22s вершин %4d, наборов весов %3d, рост %.2f м, текстура %dx%d' % (
-                name, src, verts, blends, mx[1] - mn[1], tex.size[0], tex.size[1]))
-        for name, (model, what, op) in sorted(SKINS.items()):
-            tex = recolor(Image.open(os.path.join(cdir, model + '.png')), what, **op)
-            tex.save(os.path.join(cdir, name + '.png'), optimize=True)
-            meta['chars'][name] = dict(meta['chars'][model], model=model)
+            print('  %-12s %-28s вершин %4d, наборов весов %3d, рост %.2f м' % (name, src, verts, blends,
+                                                                                mx[1] - mn[1]))
+            return dict(verts=verts, height=round(float(mx[1] - mn[1]), 3), source=src, model=name)
+
+        textures = {}
+        for name, src in sorted(CHARS.items()):
+            ch = Skinned(os.path.join(m2m_dir(), 'variations', src + '.glb'))
+            mitten(ch)
+            pos, nrm, ji, jw = retarget(ch, ref)
+            textures[name] = Image.open(io.BytesIO(ch.image)).convert('RGB')
+            save_tex(name, textures[name])
+            parts[name] = (pos, nrm, ch.uv, ji, jw, ch.idx)
+            if name not in PARTS_ONLY:
+                meta['chars'][name] = dict(write_char(name, src, pos, nrm, ch.uv, ji, jw, ch.idx), tex=name)
+        for name, (body, head) in sorted(COMBOS.items()):
+            pos, nrm, uv, ji, jw, idx = combine(ref, parts[body], parts[head], textures[head])
+            info = write_char(name, '%s + %s' % (CHARS[body], CHARS[head]), pos, nrm, uv, ji, jw, idx)
+            meta['chars'][name] = dict(info, tex=body, head_tex=head)
+        for name, (model, what, op) in sorted(RECOLORS.items()):
+            save_tex(name, recolor(textures[model], what, **op))
+        for name, (model, tex) in sorted(VARIANTS.items()):
+            meta['chars'][name] = dict(meta['chars'][model], tex=tex)
         # --- анимации: один набор на всех (скелет общий)
         dec = os.path.join(tmp, 'anims')
         script = os.path.join(ROOT, 'tools', 'm2m_decode.mjs')

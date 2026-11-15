@@ -36,8 +36,11 @@ def test_models_are_available(world):
     m = world.models
     assert m.ok and m.chars_ok
     for key, info in m.meta['chars'].items():
-        assert os.path.isfile(os.path.join(m.dir, 'chars', key + '.png')), key
+        for tex in m.char_textures(key):
+            assert os.path.isfile(os.path.join(m.dir, 'chars', tex + '.png')), key
         assert os.path.isfile(os.path.join(m.dir, 'chars', info['model'] + '.bam')), key
+    # в игре про город нет персонажей из фильмов ужасов
+    assert not [k for k in m.meta['chars'] if 'thug' in k or 'killer' in k or 'monster' in k]
     for clip in ('idle', 'walk', 'walk_f', 'jog', 'sprint', 'run_f', 'punch_a', 'punch_b', 'swing', 'pistol_idle',
                  'pistol_aim', 'pistol_shoot', 'rifle_idle', 'rifle_fire', 'rifle_walk', 'rifle_run', 'throw',
                  'hit_a', 'death_a', 'death_b', 'death_c', 'getup', 'talk', 'listen', 'cower', 'air'):
@@ -72,14 +75,14 @@ def test_vehicle_model_fits_its_spec(world, kind):
 
 
 @pytest.mark.parametrize('name,look,kind,expect', [
-    ('player', player_look(), 'civ', ('m_leather',)),
+    ('player', player_look(), 'civ', ('hero',)),
     ('cop', cop_look(), 'cop', ('cop_m', 'cop_f')),
     ('swat', swat_look(), 'swat', ('swat',)),
     ('army', army_look(), 'army', ('army',)),
     ('fbi', fbi_look(), 'fbi', ('m_shirt_c',)),
     ('medic', medic_look(), 'civ', ('medic',)),
-    ('mafia', gang_look('mafia'), 'gang', ('thug_a', 'm_old')),
-    ('vano', M.contact_look('vano'), 'mission', ('m_red',)),
+    ('mafia', gang_look('mafia'), 'gang', ('m_leather', 'm_leather_b', 'm_leather_c', 'm_shirt_h3b')),
+    ('vano', M.contact_look('vano'), 'mission', ('m_red_h3',)),
     ('rosa', M.contact_look('rosa'), 'mission', ('f_goth',)),
     ('prof', M.contact_look('prof'), 'mission', ('m_old',)),
 ])
@@ -105,13 +108,16 @@ def test_every_zone_look_gets_a_model(world):
             w.remove_ped(p)
     assert len(keys) >= 10                                        # на улицах — разные люди
     assert {k[0] for k in keys} == {'m', 'f'}
-    assert 'm_leather' not in keys                                # куртка героя — только у героя
+    assert 'hero' not in keys                                     # облик героя — только у героя
+    # и его лицо тоже: голова «m_red» больше никому не достаётся
+    assert not [k for k in w.models.meta['chars'] if k != 'hero' and w.models.meta['chars'][k].get('head_tex') == 'm_red']
+    assert 'm_red' not in w.models.meta['chars']
 
 
 def test_animation_follows_state(game, world):
     w = world
     x, y = w.city.landmarks['safehouse']['road']
-    p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, make_look(model='m_grey'), 'mission')
+    p = w.spawn_ped(x + 4.0, y - 3.0, 0.0, make_look(model='m_grey_h2'), 'mission')
     p.keep = True
     p.set_state('stand')
     harness.run(game, 0.3)
@@ -208,7 +214,7 @@ def test_weapons_have_models(world):
 def test_player_keeps_model_through_respawn(game, world):
     w = world
     pl = w.player
-    assert pl.ped.vis is not None and pl.ped.vis.key == 'm_leather'
+    assert pl.ped.vis is not None and pl.ped.vis.key == 'hero'
     pl.give_weapon(W_AK, 30)
     assert pl.ped.vis.gun is not None
     pl.ped.hurt(500.0, None, 'bullet')
@@ -237,3 +243,48 @@ def test_animation_runs_on_game_time(game, world):
     game.resume()
     harness.run(game, 0.2)
     assert p.vis.time != t0
+
+
+def test_hands_are_mittens(world):
+    """У моделей кисть — «варежка»: четыре пальца одним куском.  Если привязать её вершины к костям
+    разных пальцев, в движении кисть рвёт веером.  Все пальцы, кроме большого, должны слушаться
+    костей среднего."""
+    from panda3d.core import GeomNode, JointVertexTransform
+    m = world.models
+    seen = 0
+    for model in sorted(set(info['model'] for info in m.meta['chars'].values())):
+        root = m._load('chars', model + '.bam')
+        names = set()
+        for gnp in root.findAllMatches('**/+GeomNode'):
+            gn = gnp.node()
+            for i in range(gn.getNumGeoms()):
+                tbt = gn.getGeom(i).getVertexData().getTransformBlendTable()
+                for b in range(tbt.getNumBlends()):
+                    blend = tbt.getBlend(b)
+                    for k in range(blend.getNumTransforms()):
+                        t = blend.getTransform(k)
+                        if isinstance(t, JointVertexTransform):
+                            names.add(t.getJoint().getName())
+        assert names, model
+        bad = [n for n in names if n.split('_')[0] in ('index', 'ring', 'pinky')]
+        assert not bad, (model, bad)
+        seen += 1
+    assert seen >= 20
+
+
+def test_combined_character_has_two_textures(world):
+    """Сборный персонаж: тело одной модели, голова другой — каждая часть со своей текстурой."""
+    m = world.models
+    info = m.meta['chars']['hero']
+    assert info['tex'] == 'm_leather' and info['head_tex'] == 'm_red'
+    a = m.actor('hero')
+    body, head = a.find('**/skin'), a.find('**/head')
+    assert not body.isEmpty() and not head.isEmpty()
+    tb, th = body.getTexture(), head.getTexture()
+    assert tb is not None and th is not None and tb != th
+    # у обычной модели узла «head» нет
+    b = m.actor('m_shirt')
+    assert b.find('**/head').isEmpty()
+    for x in (a, b):
+        x.cleanup()
+        x.removeNode()

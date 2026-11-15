@@ -168,11 +168,11 @@ GANG_COLORS = {'reds': (0.75, 0.10, 0.10), 'greens': (0.10, 0.50, 0.18), 'purple
 
 # кто состоит в какой банде (модели из assets/models/chars)
 GANG_MODELS = {
-    'reds': ('m_red', 'm_red', 'thug_a'),
-    'greens': ('m_red_c', 'm_red_c', 'thug_pig'),
-    'purple': ('thug_clown', 'thug_a', 'm_grey_b'),
-    'mafia': ('thug_a', 'm_old', 'thug_a'),
-    None: ('thug_a', 'thug_pig', 'thug_clown'),
+    'reds': ('m_red_h2', 'm_red_h3', 'm_red_h4'),
+    'greens': ('m_red_h2c', 'm_red_h3g', 'm_shirt_h4b'),
+    'purple': ('m_red_h2p', 'm_red_h3p', 'm_leather_b'),
+    'mafia': ('m_leather', 'm_leather_b', 'm_leather_c', 'm_shirt_h3b'),
+    None: ('m_leather_b', 'm_red_h3c', 'm_grey_h4b'),
 }
 
 
@@ -190,4 +190,4 @@ def gang_look(gang='reds', r=None):
 
 def player_look():
     return make_look(skin=SKINS[1], hair=(0.20, 0.13, 0.08), shirt=(0.62, 0.33, 0.16), pants=(0.26, 0.37, 0.62),
-                     shoes=SHOES[1], torso='leather', model='m_leather')
+                     shoes=SHOES[1], torso='leather', model='hero')

@@ -51,14 +51,17 @@ PAINT_SAT = 0.86
 # ---------------------------------------------------------------------------
 CIV_M = {
     # одежда из внешности (defs.Look.torso) -> кто подходит
-    'jacket': ('m_shirt', 'm_shirt_b', 'm_shirt_c', 'm_old'),
-    'leather': ('m_grey_b', 'm_old'),
-    'police': ('m_shirt_c',),
-    None: ('m_red', 'm_red_b', 'm_red_c', 'm_red_d', 'm_grey', 'm_grey_b', 'm_shirt', 'm_shirt_b', 'm_old'),
+    'jacket': ('m_shirt', 'm_shirt_b', 'm_shirt_c', 'm_shirt_h3', 'm_shirt_h3b', 'm_shirt_h4', 'm_shirt_h4b',
+               'm_old', 'm_old_h3'),
+    'leather': ('m_leather', 'm_leather_c', 'm_grey_h4b'),
+    'police': ('m_shirt_c', 'm_shirt_h4c'),
+    None: ('m_red_h2', 'm_red_h2b', 'm_red_h2c', 'm_red_h3b', 'm_red_h3c', 'm_red_h4b', 'm_red_h4c',
+           'm_grey_h2', 'm_grey_h2b', 'm_grey_h3', 'm_grey_h4', 'm_grey_h4b', 'm_shirt', 'm_shirt_h4c', 'm_old'),
 }
 CIV_F = ('f_goth', 'f_black', 'f_old', 'f_old_b', 'f_old_c', 'f_black', 'f_goth')
-GANG = ('thug_a', 'thug_pig', 'thug_clown', 'thug_a')
+GANG = ('m_leather_b', 'm_red_h3c', 'm_leather', 'm_grey_h4b')
 FEMALE = ('f_goth', 'f_black', 'f_old', 'f_old_b', 'f_old_c', 'cop_f')
+HERO = 'hero'               # этот облик — только у главного героя
 
 # оружие: идентификатор -> (файл, доворот в руке: курс, тангаж, крен)
 WEAPON_MODELS = {
@@ -126,7 +129,8 @@ class Models(object):
             return
         try:
             for key in sorted(self.meta['chars']):
-                self.char_texture(key)
+                for tex in self.char_textures(key):
+                    self.char_texture(tex)
                 # создаём по экземпляру каждой модели: при этом загружаются и привязываются все клипы
                 a = self.actor(key)
                 for name in self.meta['anims']:
@@ -340,7 +344,7 @@ class Models(object):
             opts = CIV_M.get(look.torso) or CIV_M[None]
             key = opts[n % len(opts)]
         if key not in chars:
-            key = 'f_black' if look.female else 'm_grey'
+            key = 'f_black' if look.female else 'm_shirt'
         return key
 
     def is_female(self, key):
@@ -356,17 +360,33 @@ class Models(object):
             t = Actor(self._load('chars', model + '.bam'), anims)
             self._actors[model] = t
         a = Actor(other=t)
-        a.setTexture(self.char_texture(key), 1)
+        info = self.meta['chars'][key]
+        head = info.get('head_tex')
+        if head:
+            # сборный персонаж: у тела и головы свои текстуры
+            a.find('**/skin').setTexture(self.char_texture(info['tex']), 1)
+            a.find('**/head').setTexture(self.char_texture(head), 1)
+        else:
+            a.setTexture(self.char_texture(info.get('tex', key)), 1)
         # рамки для отсечения считаем один раз: поза меняется, а рост — нет
         node = a.node()
         node.setBounds(BoundingSphere(LPoint3(0.0, 0.0, 0.95), 1.7))
         node.setFinal(True)
         return a
 
-    def char_texture(self, key):
-        t = self._ctex.get(key)
+    def char_textures(self, key):
+        """Имена файлов текстур персонажа: одежда и, у сборных, голова."""
+        info = self.meta['chars'][key]
+        names = [info.get('tex', key)]
+        if info.get('head_tex'):
+            names.append(info['head_tex'])
+        return names
+
+    def char_texture(self, name):
+        """Текстура assets/models/chars/<name>.png."""
+        t = self._ctex.get(name)
         if t is None:
-            t = self.loader.loadTexture(self.path('chars', key + '.png'))
+            t = self.loader.loadTexture(self.path('chars', name + '.png'))
             self.assets.setup_filter(t, True)
-            self._ctex[key] = t
+            self._ctex[name] = t
         return t

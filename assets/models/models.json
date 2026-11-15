@@ -4,13 +4,37 @@
    "fps": 30.0,
    "frames": 93
   },
+  "angry": {
+   "fps": 30.0,
+   "frames": 23
+  },
   "arms": {
    "fps": 30.0,
    "frames": 74
   },
+  "clap": {
+   "fps": 30.0,
+   "frames": 44
+  },
+  "confused": {
+   "fps": 30.0,
+   "frames": 85
+  },
   "cower": {
    "fps": 30.0,
    "frames": 28
+  },
+  "crouch": {
+   "fps": 30.0,
+   "frames": 109
+  },
+  "dance_a": {
+   "fps": 30.0,
+   "frames": 37
+  },
+  "dance_b": {
+   "fps": 30.0,
+   "frames": 59
   },
   "death_a": {
    "fps": 30.0,
@@ -24,13 +48,33 @@
    "fps": 30.0,
    "frames": 66
   },
+  "dizzy": {
+   "fps": 30.0,
+   "frames": 72
+  },
+  "door": {
+   "fps": 30.0,
+   "frames": 137
+  },
+  "drink": {
+   "fps": 30.0,
+   "frames": 39
+  },
   "drive": {
    "fps": 30.0,
    "frames": 60
   },
+  "fix": {
+   "fps": 30.0,
+   "frames": 194
+  },
   "getup": {
    "fps": 30.0,
    "frames": 47
+  },
+  "greet": {
+   "fps": 30.0,
+   "frames": 148
   },
   "hit_a": {
    "fps": 30.0,
@@ -40,9 +84,21 @@
    "fps": 30.0,
    "frames": 15
   },
+  "hurt": {
+   "fps": 30.0,
+   "frames": 49
+  },
   "idle": {
    "fps": 30.0,
+   "frames": 77
+  },
+  "idle_wide": {
+   "fps": 30.0,
    "frames": 93
+  },
+  "interact": {
+   "fps": 30.0,
+   "frames": 74
   },
   "jog": {
    "fps": 30.0,
@@ -52,6 +108,14 @@
    "fps": 30.0,
    "frames": 41
   },
+  "kneel": {
+   "fps": 30.0,
+   "frames": 88
+  },
+  "knock": {
+   "fps": 30.0,
+   "frames": 87
+  },
   "knockback": {
    "fps": 30.0,
    "frames": 24
@@ -60,9 +124,21 @@
    "fps": 30.0,
    "frames": 49
   },
+  "no": {
+   "fps": 30.0,
+   "frames": 112
+  },
+  "nod": {
+   "fps": 30.0,
+   "frames": 24
+  },
   "phone": {
    "fps": 30.0,
    "frames": 87
+  },
+  "pickup": {
+   "fps": 30.0,
+   "frames": 70
   },
   "pistol_aim": {
    "fps": 30.0,
@@ -88,6 +164,10 @@
    "fps": 30.0,
    "frames": 37
   },
+  "push": {
+   "fps": 30.0,
+   "frames": 99
+  },
   "rifle_fire": {
    "fps": 30.0,
    "frames": 37
@@ -112,6 +192,26 @@
    "fps": 30.0,
    "frames": 62
   },
+  "sit_down": {
+   "fps": 30.0,
+   "frames": 49
+  },
+  "sit_ground": {
+   "fps": 30.0,
+   "frames": 89
+  },
+  "sit_talk": {
+   "fps": 30.0,
+   "frames": 109
+  },
+  "sit_up": {
+   "fps": 30.0,
+   "frames": 39
+  },
+  "sleep": {
+   "fps": 30.0,
+   "frames": 48
+  },
   "sprint": {
    "fps": 30.0,
    "frames": 24
@@ -132,6 +232,10 @@
    "fps": 30.0,
    "frames": 58
   },
+  "tired": {
+   "fps": 30.0,
+   "frames": 29
+  },
   "victory": {
    "fps": 30.0,
    "frames": 56
@@ -147,6 +251,22 @@
   "walk_f": {
    "fps": 30.0,
    "frames": 41
+  },
+  "walk_formal": {
+   "fps": 30.0,
+   "frames": 49
+  },
+  "walk_hurt": {
+   "fps": 30.0,
+   "frames": 49
+  },
+  "walk_relaxed": {
+   "fps": 30.0,
+   "frames": 42
+  },
+  "write": {
+   "fps": 30.0,
+   "frames": 119
   }
  },
  "chars": {
@@ -154,241 +274,314 @@
    "height": 1.872,
    "model": "army",
    "source": "psx-28-hm",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "army",
    "verts": 1002
   },
   "cop_f": {
    "height": 1.785,
    "model": "cop_f",
    "source": "psx-17-female-police",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "cop_f",
    "verts": 970
   },
   "cop_m": {
    "height": 1.802,
    "model": "cop_m",
    "source": "psx-18-police",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "cop_m",
    "verts": 739
   },
   "f_black": {
    "height": 1.775,
    "model": "f_black",
    "source": "psx-female-09",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "f_black",
    "verts": 1155
   },
   "f_goth": {
    "height": 1.759,
    "model": "f_goth",
    "source": "psx-female-08",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "f_goth",
    "verts": 1044
   },
   "f_old": {
    "height": 1.789,
    "model": "f_old",
    "source": "psx-31-female",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "f_old",
    "verts": 994
   },
   "f_old_b": {
    "height": 1.789,
    "model": "f_old",
    "source": "psx-31-female",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "f_old_pink",
    "verts": 994
   },
   "f_old_c": {
    "height": 1.789,
    "model": "f_old",
    "source": "psx-31-female",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "f_old_green",
    "verts": 994
   },
-  "m_grey": {
-   "height": 1.821,
-   "model": "m_grey",
-   "source": "psx-10",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 823
+  "hero": {
+   "head_tex": "m_red",
+   "height": 1.814,
+   "model": "hero",
+   "source": "psx-15 + psx-06",
+   "tex": "m_leather",
+   "verts": 775
   },
-  "m_grey_b": {
-   "height": 1.821,
-   "model": "m_grey",
-   "source": "psx-10",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 823
+  "m_grey_h2": {
+   "head_tex": "cop_m",
+   "height": 1.805,
+   "model": "m_grey_h2",
+   "source": "psx-10 + psx-18-police",
+   "tex": "m_grey",
+   "verts": 827
+  },
+  "m_grey_h2b": {
+   "head_tex": "cop_m",
+   "height": 1.805,
+   "model": "m_grey_h2",
+   "source": "psx-10 + psx-18-police",
+   "tex": "grey_dark",
+   "verts": 827
+  },
+  "m_grey_h3": {
+   "head_tex": "m_old",
+   "height": 1.775,
+   "model": "m_grey_h3",
+   "source": "psx-10 + psx-32",
+   "tex": "m_grey",
+   "verts": 839
+  },
+  "m_grey_h4": {
+   "head_tex": "m_leather",
+   "height": 1.793,
+   "model": "m_grey_h4",
+   "source": "psx-10 + psx-15",
+   "tex": "m_grey",
+   "verts": 843
+  },
+  "m_grey_h4b": {
+   "head_tex": "m_leather",
+   "height": 1.793,
+   "model": "m_grey_h4",
+   "source": "psx-10 + psx-15",
+   "tex": "grey_dark",
+   "verts": 843
   },
   "m_leather": {
    "height": 1.79,
    "model": "m_leather",
    "source": "psx-15",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "m_leather",
    "verts": 751
+  },
+  "m_leather_b": {
+   "head_tex": "cop_m",
+   "height": 1.802,
+   "model": "m_leather_b",
+   "source": "psx-15 + psx-18-police",
+   "tex": "m_leather",
+   "verts": 767
+  },
+  "m_leather_c": {
+   "head_tex": "m_old",
+   "height": 1.771,
+   "model": "m_leather_c",
+   "source": "psx-15 + psx-32",
+   "tex": "m_leather",
+   "verts": 779
   },
   "m_old": {
    "height": 1.774,
    "model": "m_old",
    "source": "psx-32",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "m_old",
    "verts": 755
   },
-  "m_red": {
-   "height": 1.813,
-   "model": "m_red",
-   "source": "psx-06",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 754
+  "m_old_h3": {
+   "head_tex": "medic",
+   "height": 1.794,
+   "model": "m_old_h3",
+   "source": "psx-32 + psx-26-doctor",
+   "tex": "m_old",
+   "verts": 786
   },
-  "m_red_b": {
-   "height": 1.813,
-   "model": "m_red",
-   "source": "psx-06",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 754
+  "m_red_h2": {
+   "head_tex": "cop_m",
+   "height": 1.801,
+   "model": "m_red_h2",
+   "source": "psx-06 + psx-18-police",
+   "tex": "m_red",
+   "verts": 778
   },
-  "m_red_c": {
-   "height": 1.813,
-   "model": "m_red",
-   "source": "psx-06",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 754
+  "m_red_h2b": {
+   "head_tex": "cop_m",
+   "height": 1.801,
+   "model": "m_red_h2",
+   "source": "psx-06 + psx-18-police",
+   "tex": "red_blue",
+   "verts": 778
   },
-  "m_red_d": {
-   "height": 1.813,
-   "model": "m_red",
-   "source": "psx-06",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 754
+  "m_red_h2c": {
+   "head_tex": "cop_m",
+   "height": 1.801,
+   "model": "m_red_h2",
+   "source": "psx-06 + psx-18-police",
+   "tex": "red_green",
+   "verts": 778
+  },
+  "m_red_h2p": {
+   "head_tex": "cop_m",
+   "height": 1.801,
+   "model": "m_red_h2",
+   "source": "psx-06 + psx-18-police",
+   "tex": "red_purple",
+   "verts": 778
+  },
+  "m_red_h3": {
+   "head_tex": "medic",
+   "height": 1.79,
+   "model": "m_red_h3",
+   "source": "psx-06 + psx-26-doctor",
+   "tex": "m_red",
+   "verts": 786
+  },
+  "m_red_h3b": {
+   "head_tex": "medic",
+   "height": 1.79,
+   "model": "m_red_h3",
+   "source": "psx-06 + psx-26-doctor",
+   "tex": "red_orange",
+   "verts": 786
+  },
+  "m_red_h3c": {
+   "head_tex": "medic",
+   "height": 1.79,
+   "model": "m_red_h3",
+   "source": "psx-06 + psx-26-doctor",
+   "tex": "red_black",
+   "verts": 786
+  },
+  "m_red_h3g": {
+   "head_tex": "medic",
+   "height": 1.79,
+   "model": "m_red_h3",
+   "source": "psx-06 + psx-26-doctor",
+   "tex": "red_green",
+   "verts": 786
+  },
+  "m_red_h3p": {
+   "head_tex": "medic",
+   "height": 1.79,
+   "model": "m_red_h3",
+   "source": "psx-06 + psx-26-doctor",
+   "tex": "red_purple",
+   "verts": 786
+  },
+  "m_red_h4": {
+   "head_tex": "m_shirt",
+   "height": 1.794,
+   "model": "m_red_h4",
+   "source": "psx-06 + psx-05",
+   "tex": "m_red",
+   "verts": 774
+  },
+  "m_red_h4b": {
+   "head_tex": "m_shirt",
+   "height": 1.794,
+   "model": "m_red_h4",
+   "source": "psx-06 + psx-05",
+   "tex": "red_yellow",
+   "verts": 774
+  },
+  "m_red_h4c": {
+   "head_tex": "m_shirt",
+   "height": 1.794,
+   "model": "m_red_h4",
+   "source": "psx-06 + psx-05",
+   "tex": "red_white",
+   "verts": 774
   },
   "m_shirt": {
    "height": 1.798,
    "model": "m_shirt",
    "source": "psx-05",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "m_shirt",
    "verts": 744
   },
   "m_shirt_b": {
    "height": 1.798,
    "model": "m_shirt",
    "source": "psx-05",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "shirt_pink",
    "verts": 744
   },
   "m_shirt_c": {
    "height": 1.798,
    "model": "m_shirt",
    "source": "psx-05",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "shirt_grey",
    "verts": 744
+  },
+  "m_shirt_h3": {
+   "head_tex": "medic",
+   "height": 1.794,
+   "model": "m_shirt_h3",
+   "source": "psx-05 + psx-26-doctor",
+   "tex": "m_shirt",
+   "verts": 775
+  },
+  "m_shirt_h3b": {
+   "head_tex": "medic",
+   "height": 1.794,
+   "model": "m_shirt_h3",
+   "source": "psx-05 + psx-26-doctor",
+   "tex": "shirt_dark",
+   "verts": 775
+  },
+  "m_shirt_h4": {
+   "head_tex": "cop_m",
+   "height": 1.805,
+   "model": "m_shirt_h4",
+   "source": "psx-05 + psx-18-police",
+   "tex": "m_shirt",
+   "verts": 767
+  },
+  "m_shirt_h4b": {
+   "head_tex": "cop_m",
+   "height": 1.805,
+   "model": "m_shirt_h4",
+   "source": "psx-05 + psx-18-police",
+   "tex": "shirt_green",
+   "verts": 767
+  },
+  "m_shirt_h4c": {
+   "head_tex": "cop_m",
+   "height": 1.805,
+   "model": "m_shirt_h4",
+   "source": "psx-05 + psx-18-police",
+   "tex": "shirt_grey",
+   "verts": 767
   },
   "medic": {
    "height": 1.796,
    "model": "medic",
    "source": "psx-26-doctor",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "medic",
    "verts": 779
   },
   "swat": {
    "height": 1.777,
    "model": "swat",
    "source": "psx-21-police",
-   "tex": [
-    512,
-    512
-   ],
+   "tex": "swat",
    "verts": 737
-  },
-  "thug_a": {
-   "height": 1.81,
-   "model": "thug_a",
-   "source": "psx-killer-04",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 722
-  },
-  "thug_clown": {
-   "height": 1.795,
-   "model": "thug_clown",
-   "source": "psx-killer-07",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 746
-  },
-  "thug_pig": {
-   "height": 1.871,
-   "model": "thug_pig",
-   "source": "psx-killer-05",
-   "tex": [
-    512,
-    512
-   ],
-   "verts": 773
   }
  },
  "hand": {
