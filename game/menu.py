@@ -14,7 +14,7 @@ from .mapinfo import MAP_CX, MAP_CY, MAP_HALF
 GOLD = ACCENT
 WHITE = PAPER
 GREY = MUTE
-ROWS = 16                   # сколько строк умеет показать меню
+ROWS = 11                   # сколько строк видно сразу; длинный список прокручивается
 LEFT = 0.14                 # отступ от левого края экрана
 ROW_W = 1.02                # ширина строки обычного меню
 ROW_WIDE = 1.46             # ...и широкого (магазин, настройки с длинными значениями)
@@ -47,6 +47,8 @@ class Menu(object):
         self.text = text
         self.wide = wide
         self.text_scale = 0.062
+        self.dim = 0.66                 # затемнение игры за меню; у ателье — слабое, машину должно быть видно
+        self.on_select = None           # вызывается, когда выбранная строка меняется (предпросмотр)
         self.sel = 0
         for i, it in enumerate(items):
             if it.enabled:
@@ -70,6 +72,8 @@ class MenuUI(object):
         self.dim.setTransparency(TransparencyAttrib.MAlpha)
         self.dim.hide()
         self.left = self.root.attachNewNode('left')              # всё меню привязано к левому краю экрана
+        self.panel = kit.card(self.left, 0.0, LEFT + ROW_WIDE + 0.10, -1.5, 1.5, INK, 0.78, 'panel')
+        self.panel.hide()
         # название игры в главном меню: две строки и подпись
         self.logo = kit.label(self.left, '', LEFT, 0.60, 0.21, PAPER, kit.title, 'l', shadow=False)
         self.logo2 = kit.label(self.left, '', LEFT, 0.415, 0.21, ACCENT, kit.title, 'l', shadow=False)
@@ -78,6 +82,9 @@ class MenuUI(object):
         self.rule = kit.card(self.left, LEFT, LEFT + 0.15, 0.610, 0.618, ACCENT, 1.0)
         self.body = kit.label(self.left, '', LEFT, 0.42, 0.05, PAPER, kit.text, 'l', wrap=34, shadow=False)
         self.hint = kit.label(self.left, '', LEFT, -0.915, 0.034, MUTE, kit.text, 'l', shadow=False)
+        self.more_up = kit.label(self.left, u'\u2191', 0, 0, 0.040, MUTE, kit.bold, 'c', shadow=False)
+        self.more_dn = kit.label(self.left, u'\u2193', 0, 0, 0.040, MUTE, kit.bold, 'c', shadow=False)
+        self._first = 0
         self.rows = []
         self.labels = []
         self.values = []
@@ -134,9 +141,15 @@ class MenuUI(object):
             return
         self.root.show()
         self.dim.show()
+        self.dim.setColor(INK[0], INK[1], INK[2], m.dim)
         asp = self.base.getAspectRatio()
         self.aspect = asp
         self.left.setX(-asp)
+        if m.dim < 0.4:
+            self.panel.show()
+            self.panel.setSx((LEFT + (ROW_WIDE if m.wide else ROW_W) + 0.10) / (LEFT + ROW_WIDE + 0.10))
+        else:
+            self.panel.hide()
         logo = self.show_logo and len(self.stack) == 1
         if logo:
             self.logo.setText('DEADLY')
@@ -162,24 +175,35 @@ class MenuUI(object):
             tn = self.body.textNode
             top -= max(1, tn.getNumRows()) * tn.getLineHeight() * m.text_scale * 0.86 + 0.07
         n_items = len(m.items)
-        # строки: высота зависит от того, сколько пунктов надо уместить до нижней подсказки
+        # длинный список прокручивается: видно ROWS строк, выбранная всегда среди них
+        shown = min(n_items, ROWS)
+        first = getattr(m, '_first', 0)
+        if m.sel < first:
+            first = m.sel
+        elif m.sel >= first + shown:
+            first = m.sel - shown + 1
+        first = max(0, min(first, n_items - shown))
+        m._first = first
+        self._first = first
         row_h = min(0.118, m.spacing * 0.94)
-        if n_items > 1:
-            row_h = min(row_h, (top + 0.80) / n_items)
+        if shown > 1:
+            row_h = min(row_h, (top + 0.78) / shown)
         size = min(0.060, row_h * 0.52)
         width = ROW_WIDE if m.wide else ROW_W
         self._top = top
         self._row_h = row_h
         self._row_w = width
-        for i in range(ROWS):
-            row, lab, val = self.rows[i], self.labels[i], self.values[i]
-            if i >= n_items:
+        self._shown = shown
+        for k in range(ROWS):
+            row, lab, val = self.rows[k], self.labels[k], self.values[k]
+            i = first + k
+            if k >= shown:
                 row.hide()
                 lab.setText('')
                 val.setText('')
                 continue
             it = m.items[i]
-            z1 = top - i * row_h
+            z1 = top - k * row_h
             z0 = z1 - row_h + 0.010
             sel = (i == m.sel)
             row.show()
@@ -206,6 +230,17 @@ class MenuUI(object):
                 val.setText(v)
             else:
                 val.setText('')
+        # стрелки «выше есть ещё» и «ниже есть ещё»
+        self.more_up.setPos(LEFT + width + 0.045, top - 0.045)
+        self.more_dn.setPos(LEFT + width + 0.045, top - shown * row_h + 0.03)
+        if first > 0:
+            self.more_up.show()
+        else:
+            self.more_up.hide()
+        if first + shown < n_items:
+            self.more_dn.show()
+        else:
+            self.more_dn.hide()
         hint = u'↑↓  выбор      Enter  подтвердить'
         if m.back is not None or len(self.stack) > 1:
             hint += u'      Esc  назад'
@@ -225,6 +260,8 @@ class MenuUI(object):
         if i != m.sel:
             m.sel = i
             self.game.audio.play('menu_move', 0.6)
+            if m.on_select is not None:
+                m.on_select(i)
             self.refresh()
 
     def _activate(self, d=0):
@@ -303,12 +340,16 @@ class MenuUI(object):
         x0 = -self.aspect + LEFT
         if not (x0 <= mx <= x0 + self._row_w):
             return False
-        for i, it in enumerate(m.items):
-            z1 = self._top - i * self._row_h
+        for k in range(getattr(self, '_shown', 0)):
+            i = self._first + k
+            it = m.items[i]
+            z1 = self._top - k * self._row_h
             if z1 - self._row_h <= mz <= z1:
                 if it.enabled:
                     if i != m.sel:
                         m.sel = i
+                        if m.on_select is not None:
+                            m.on_select(i)
                         self.refresh()
                     return True
         return False

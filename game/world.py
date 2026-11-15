@@ -216,11 +216,14 @@ class World(object):
         self.citymesh.update_signals(self.roadnet.time, self.roadnet.light_group)
         self.citymesh.scroll_water(self.time)
         t = self.time
+        night = self.sky.night if self.sky is not None else 0.0
         for v in self.vehicles:
             if v.siren:
                 v.update_siren(t)
             elif v.siren_np is not None:
                 v.update_siren(t)
+            if v.neon_np is not None:
+                v.neon_np.setAlphaScale(0.22 + 0.78 * night)     # неон под днищем: днём едва заметен, ночью горит
 
     # ------------------------------------------------------------------
     # столкновения
@@ -761,7 +764,8 @@ class World(object):
             ev = 0.33 + 0.3 * abs(v.in_throttle) + 0.1 * min(1.0, sp / 20.0)
             if au.radio_playing():
                 ev *= 0.5                       # с включённым радио мотор тише, как в салоне
-            au.loop('engine', 'engine_truck' if v.spec.engine == 'truck' else 'engine', ev, self.engine_rate)
+            au.loop('engine', 'engine_truck' if v.spec.engine == 'truck' else 'engine', min(1.0, ev * v.snd_gain),
+                    self.engine_rate * v.snd_pitch * (1.12 if v.boost else 1.0))
             slip = abs(v.slip)
             if (slip > 3.0 or (v.in_handbrake and sp > 5.0)) and sp > 3.0:
                 au.loop('skid', 'skid', min(0.7, 0.25 + slip * 0.06), 0.9 + min(0.3, slip * 0.02))

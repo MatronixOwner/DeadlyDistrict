@@ -23,6 +23,8 @@ PAINTS = [
     (0.10, 0.42, 0.22), (0.92, 0.72, 0.10), (0.42, 0.10, 0.44), (0.85, 0.42, 0.10), (0.36, 0.22, 0.14),
     (0.16, 0.56, 0.66), (0.60, 0.08, 0.20), (0.80, 0.76, 0.60), (0.24, 0.28, 0.34),
 ]
+PAINT_NAMES = ['Красный', 'Синий', 'Белый', 'Чёрный', 'Серебристый', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый',
+               'Коричневый', 'Бирюзовый', 'Вишнёвый', 'Бежевый', 'Графитовый']
 RUST_PAINTS = [(0.42, 0.30, 0.22), (0.36, 0.38, 0.34), (0.50, 0.44, 0.34), (0.30, 0.24, 0.26)]
 
 
@@ -511,6 +513,17 @@ class Vehicle(object):
         self.keep = False                # не удалять автоматически (миссии, машина игрока)
         self.garage = False              # стоит в гараже игрока: сохраняется вместе с игрой
         self.tune = {}                   # тюнинг: категория -> уровень или вариант (см. tuning.py)
+        self.k_acc = self.k_top = self.k_brake = self.k_grip = 1.0      # множители ходовых качеств от тюнинга
+        self.ride = 0.0                  # высота посадки относительно заводской, м
+        self.nitro = False               # стоит баллон закиси азота
+        self.nitro_k = 0.0               # сколько в нём осталось (0..1)
+        self.boost = False               # нитро сейчас включено
+        self.horn = None                 # свой сигнал (иначе — по типу машины)
+        self.snd_pitch = 1.0             # выхлоп: тон и громкость мотора
+        self.snd_gain = 1.0
+        self.light_tint = None
+        self.tune_np = None
+        self.neon_np = None
         self.mission = None
         self.spot = None                 # индекс парковочного места
         self.stolen = False
@@ -630,11 +643,21 @@ class Vehicle(object):
         self.body = self._new_body()
         if self.minfo is not None and len(self.minfo['wheels']) == 4:
             self._texture_wheels()
+        if self.tune:
+            from . import tuning
+            tuning.apply(self)                       # детали в цвет кузова красятся заново
+
+    def apply_tune(self, tune=None):
+        """Поставить тюнинг (словарь «деталь -> вариант»; None — применить заново то, что уже стоит)."""
+        from . import tuning
+        tuning.apply(self, tune)
 
     def _ensure_lights(self):
         if self.lights is None:
             self.lights = lights_template(self.world.assets, self.kind, self.minfo).copyTo(self.tilt)
             self.lights.hide()
+            if self.light_tint is not None:
+                self.lights.setColorScale(self.light_tint[0], self.light_tint[1], self.light_tint[2], 1.0)
         return self.lights
 
     def set_lights(self, on):
@@ -790,18 +813,30 @@ class Vehicle(object):
             thr = 0.0
             brk = max(brk, 0.4)             # пустая машина стоит на «ручнике»
         hp_k = 1.0 if self.health > 300 else (0.55 + 0.45 * max(0.0, self.health) / 300.0)
+        # тюнинг и нитро: свои разгон, предельная скорость, тормоза
+        top = spec.top * self.k_top
+        accel = spec.accel * self.k_acc
+        brake = spec.brake * self.k_brake
+        if self.nitro:
+            if self.boost and self.nitro_k > 0.0 and thr > 0.0:
+                self.nitro_k = max(0.0, self.nitro_k - dt / 3.2)
+                accel *= 1.7
+                top *= 1.16
+            else:
+                self.boost = False
+                self.nitro_k = min(1.0, self.nitro_k + dt / 14.0)
         acc = 0.0
         if thr > 0.0:
             if vf >= -0.8:
-                k = 1.0 - (vf / (spec.top * hp_k)) ** 2 if vf > 0 else 1.0
-                acc = spec.accel * thr * max(0.0, k) * hp_k
+                k = 1.0 - (vf / (top * hp_k)) ** 2 if vf > 0 else 1.0
+                acc = accel * thr * max(0.0, k) * hp_k
                 if vf < 8.0:
                     acc *= 1.25
             else:
-                acc = spec.brake * thr
+                acc = brake * thr
         elif thr < 0.0:
             if vf > 0.8:
-                acc = spec.brake * thr
+                acc = brake * thr
             else:
                 rev_top = spec.top * 0.32
                 k = 1.0 - (vf / -rev_top) ** 2 if vf < 0 else 1.0
@@ -809,7 +844,7 @@ class Vehicle(object):
         vf0 = vf
         vf += acc * dt
         if brk > 0.0:
-            vf = approach(vf, 0.0, spec.brake * brk * dt)
+            vf = approach(vf, 0.0, brake * brk * dt)
         # сопротивление
         vf -= vf * 0.045 * dt
         if thr == 0.0:
@@ -824,7 +859,7 @@ class Vehicle(object):
         self.steer = approach(self.steer, target, rate * dt)
         yaw_rate = vf * math.tan(self.steer) / spec.wheelbase
         # ограничение по сцеплению
-        lim = (spec.grip * 1.35) / max(sp, 4.0)
+        lim = (spec.grip * self.k_grip * 1.35) / max(sp, 4.0)
         if self.in_handbrake:
             lim *= 1.6
         yaw_rate = clamp(yaw_rate, -lim, lim)
@@ -837,7 +872,7 @@ class Vehicle(object):
         rx, ry = nfy, -nfx
         vf2 = self.vx * nfx + self.vy * nfy
         vr = self.vx * rx + self.vy * ry
-        grip = spec.grip
+        grip = spec.grip * self.k_grip
         if self.in_handbrake:
             grip *= 0.22
             vf2 = approach(vf2, 0.0, spec.brake * 0.5 * dt)

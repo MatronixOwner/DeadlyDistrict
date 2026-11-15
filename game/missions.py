@@ -1364,7 +1364,7 @@ class Missions(object):
         for name in ('spray', 'spray2'):
             if name in lm:
                 x, y = lm[name]['bay']
-                self.static_blips.append(hud.add_blip('blip_spray', x, y, edge=False, rng=400.0))
+                self.static_blips.append(hud.add_blip('blip_tune', x, y, edge=False, rng=400.0))
         for name in ('guns', 'guns2'):
             if name in lm:
                 x, y = lm[name]['door']
@@ -2020,24 +2020,11 @@ class Missions(object):
                 continue
             self.spray_cd[name] = True
             if v.kind in ('police', 'enforcer', 'fbi', 'army', 'ambulance', 'bus'):
-                hud.help('Такую машину здесь не перекрасят.', 4.0)
+                hud.help('С такой машиной здесь не работают.', 4.0)
                 continue
-            cost = 300
-            if pl.money < cost:
-                hud.help('Перекраска стоит $%d. Приходи с деньгами.' % cost, 4.0)
-                continue
-            pl.add_money(-cost)
-            old = v.paint
-            v.set_paint((old + 1 + random.randrange(8)) % 14)
-            v.health = v.max_health
-            v.burn_t = 0.0
-            w.police.locked = None if self.active is None else w.police.locked
-            if w.police.locked is None:
-                w.police.clear()
-            w.audio.play('spray', 0.9)
-            hud.fade(1.0, 4.0)
-            self._spray_t = 0.7
-            hud.help('Новая покраска и ремонт: -$%d. Розыск снят.' % cost, 5.0)
+            if 'tune' not in self.hints:
+                self.hints.add('tune')
+            w.game.open_tuning(v, name)             # меню ателье: покраска, ремонт, тюнинг
         if self._spray_t > 0.0:
             self._spray_t -= dt
             if self._spray_t <= 0.0:

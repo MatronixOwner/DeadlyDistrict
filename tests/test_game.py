@@ -189,10 +189,22 @@ def test_spray_shop_clears_wanted(game, world):
     pl.enter_vehicle(car, silent=True)
     car.health = 400.0
     w.police.set_level(2)
-    paint = car.paint
+    car.set_paint(0)
     harness.run(game, 1.5)
+    # заехал в бокс и остановился — открылось меню ателье; первая строка — покраска
+    assert game.state == 'shop' and game.ui.stack[-1].title == 'Ателье'
+    assert w.cam.override is not None
+    harness.press(game, 'enter')
+    assert game.ui.stack[-1].title == 'Покраска'
+    harness.press(game, 'arrow_down')                        # с красного на синий
+    harness.press(game, 'enter')
+    assert car.paint == 1 and pl.money == 700
     assert w.police.level == 0 and car.health == car.max_health
-    assert pl.money == 700 and car.paint != paint
+    harness.press(game, 'escape')
+    harness.press(game, 'escape')
+    assert game.state == 'play' and not game.ui.active and w.cam.override is None
+    harness.run(game, 1.0)
+    assert game.state == 'play'                              # пока стоишь в боксе, меню не открывается заново
 
 
 def test_pickups_and_packages(game, world):
@@ -1186,3 +1198,137 @@ def test_camera_stays_under_garage_roof(game, world):
     harness.run(game, 0.6)
     assert gar.contains(w.cam.x, w.cam.y, -0.5)
     assert w.cam.z < w.city.ceiling(gar.cx, gar.cy) - 0.2
+
+
+# ----------------------------------------------------------------------
+# тюнинг
+# ----------------------------------------------------------------------
+def test_tuning_catalogue():
+    """В ателье больше тридцати деталей; у каждой есть название и цена."""
+    from game import tuning
+    assert tuning.TOTAL >= 30 and len(tuning.PARTS) >= 12
+    keys = [k for k, _, _ in tuning.PARTS]
+    assert len(keys) == len(set(keys))
+    for key, title, opts in tuning.PARTS:
+        assert title and opts
+        for name, price in opts:
+            assert name and 100 <= price <= 10000
+    assert tuning.clean({'engine': 3, 'neon': 9, 'ghost': 1, 'rims': 'x', 'turbo': 0}) == {'engine': 3}
+    assert tuning.value({'engine': 1, 'nitro': 1}) == 1200 + 4000
+
+
+def test_tuning_changes_the_car(game, world):
+    """Двигатель и турбина разгоняют машину быстрее, тормоза останавливают раньше, броня добавляет прочности,
+    внешние детали появляются на кузове, а сброс возвращает всё как было."""
+    from game import tuning
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(4.0)
+
+    def sprint(tune):
+        if pl.vehicle is not None:
+            pl.leave_vehicle(force=True)
+        for v_ in list(w.vehicles):
+            w.remove_vehicle(v_)
+        car = w.spawn_vehicle('sedan', x, y, yaw, paint=2)
+        car.apply_tune(tune)
+        pl.teleport(x, y - 3.0)
+        pl.enter_vehicle(car, silent=True)
+        harness.run(game, 0.3)
+        harness.run(game, 4.0, keys=('w',))
+        v4 = car.speed
+        d = 0.0
+        x0_ = car.x
+        while car.speed > 0.5 and d < 8.0:
+            harness.run(game, 0.1, keys=('s',))
+            d += 0.1
+        return car, v4, car.x - x0_
+    stock, v_stock, stop_stock = sprint({})
+    assert stock.k_acc == 1.0 and stock.max_health == stock.spec.health and stock.tune_np is None
+    fast, v_fast, stop_fast = sprint({'engine': 3, 'turbo': 1, 'gearbox': 2, 'brakes': 3, 'tyres': 2})
+    assert v_fast > v_stock * 1.15, (v_stock, v_fast)
+    assert fast.k_brake > 1.5
+    # внешние детали и прочность
+    car = fast
+    car.apply_tune({'spoiler': 3, 'roof': 2, 'bumper': 1, 'neon': 1, 'rims': 3, 'armor': 3, 'susp': 1, 'exhaust': 2,
+                    'horn': 2, 'xenon': 2, 'nitro': 1})
+    assert car.tune_np is not None and not car.tune_np.isEmpty() and car.neon_np is not None
+    assert car.max_health == car.spec.health * 2.0 and car.ride < 0.0
+    assert car.horn == 'horn_tune' and car.nitro and car.snd_pitch < 1.0
+    mn, mx = car.tune_np.getTightBounds(car.tilt)
+    assert mx.z > car.spec.H * 0.8 and mn.y < -car.spec.L * 0.5 + 0.2 and mx.y > car.spec.L * 0.5      # крыша, корма, нос
+    # перекраска не снимает детали
+    car.set_paint(4)
+    assert car.tune_np is not None and car.neon_np is not None and len(car.tune) == 11
+    # нитро: на Shift машина едет быстрее, баллон пустеет и потом наполняется
+    car.nitro_k = 1.0
+    car.x, car.y, car.yaw = x, y, yaw
+    car.vx = car.vy = car.speed = 0.0
+    harness.run(game, 3.0, keys=('w',))
+    v_plain = car.speed
+    car.x, car.y, car.yaw = x, y, yaw
+    car.vx = car.vy = car.speed = 0.0
+    car.nitro_k = 1.0
+    harness.run(game, 3.0, keys=('w', 'shift'))
+    assert car.speed > v_plain * 1.08 and car.nitro_k < 0.3, (v_plain, car.speed, car.nitro_k)
+    k0 = car.nitro_k
+    harness.run(game, 2.0)
+    assert car.nitro_k > k0
+    # всё снять
+    car.apply_tune({})
+    assert car.tune_np is None and car.neon_np is None and car.k_acc == 1.0 and car.max_health == car.spec.health
+    assert not car.nitro and car.horn is None and car.ride == 0.0
+
+
+def test_tuning_shop_and_garage_remember_parts(game, world):
+    """В ателье деталь покупается из меню; машина с тюнингом переживает гараж и загрузку сохранения."""
+    from game import tuning
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    pl.add_money(20000)
+    bx, by = w.city.landmarks['spray']['bay']
+    car = w.spawn_vehicle('muscle', bx, by, math.pi / 2, paint=3)
+    pl.teleport(bx + 3.0, by)
+    pl.enter_vehicle(car, silent=True)
+    harness.run(game, 1.2)
+    assert game.state == 'shop'
+    m = game.ui.stack[-1]
+    labels = [it.label for it in m.items]
+    assert labels[0] == 'Покраска' and 'Двигатель' in labels and 'Неон' in labels and labels[-1] == 'Выехать'
+    i = labels.index('Двигатель')
+    for _ in range(i):
+        harness.press(game, 'arrow_down')
+    harness.press(game, 'enter')
+    assert game.ui.stack[-1].title == 'Двигатель'
+    harness.press(game, 'arrow_down')
+    harness.press(game, 'arrow_down')
+    harness.press(game, 'enter')                             # «Форсированный»
+    assert car.tune == {'engine': 2} and pl.money == 20000 - 2600
+    harness.press(game, 'enter')                             # повторно то же — ничего не списывается
+    assert pl.money == 20000 - 2600
+    harness.press(game, 'escape')
+    harness.press(game, 'escape')
+    assert game.state == 'play'
+    car.apply_tune({'engine': 2, 'spoiler': 2, 'neon': 4})
+    # в гараж — и в сохранение
+    gar = w.garage
+    pl.leave_vehicle(force=True)
+    sx, sy = gar.slots[1]
+    car.x, car.y, car.yaw = sx, sy, math.pi / 2
+    car.vx = car.vy = car.speed = 0.0
+    car.sync()
+    pl.teleport(sx, sy - 9.0)
+    harness.run(game, 1.0)
+    assert car in gar.cars
+    saved = settings_mod.load_save()['garage'][0]
+    assert saved['kind'] == 'muscle' and saved['tune'] == {'engine': 2, 'spoiler': 2, 'neon': 4}
+    game.to_main_menu()
+    game.continue_game()
+    w = game.world
+    car = w.garage.cars[0]
+    assert car.kind == 'muscle' and car.tune == {'engine': 2, 'spoiler': 2, 'neon': 4}
+    assert car.k_acc > 1.1 and car.tune_np is not None and car.neon_np is not None
+    w = harness.start_game(game)

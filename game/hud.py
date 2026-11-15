@@ -87,11 +87,15 @@ class Hud(object):
         self.me = kit.image(self.origin, 'blip_player', 0, 0, 0.027)
         self.blips = []
         self.radar_range = 110.0
+        # под картой три полоски: здоровье, броня и запас закиси азота (если на машине стоит баллон)
         bw = MAP_W
-        self.hp_bar = kit.bar(self.radar, 0.0, -BAR_H - 0.008, bw * 0.60 - 0.004, BAR_H, HEALTH)
-        self.ar_bar = kit.bar(self.radar, bw * 0.60 + 0.004, -BAR_H - 0.008, bw * 0.40 - 0.004, BAR_H, ARMOR)
+        self.hp_bar = kit.bar(self.radar, 0.0, -BAR_H - 0.008, bw * 0.50 - 0.004, BAR_H, HEALTH)
+        self.ar_bar = kit.bar(self.radar, bw * 0.50 + 0.004, -BAR_H - 0.008, bw * 0.25 - 0.008, BAR_H, ARMOR)
+        self.nx_bar = kit.bar(self.radar, bw * 0.75 + 0.004, -BAR_H - 0.008, bw * 0.25 - 0.004, BAR_H, ACCENT)
+        self.nx_bar.setScale(0.0001, 1, 1)
         self.hp_frac = -1.0
         self.ar_frac = -1.0
+        self.nx_frac = 0.0
         self.clock_text = kit.label(self.radar, '', 0.0, MAP_H + 0.03, 0.042, PAPER, kit.bold, 'l')
         self.day_text = kit.label(self.radar, '', MAP_W, MAP_H + 0.03, 0.034, MUTE, kit.text, 'r')
         # полоска задания (например, состояние чужой машины): над картой, видна только когда нужна
@@ -453,6 +457,11 @@ class Hud(object):
         if abs(ar - self.ar_frac) > 0.004:
             self.ar_frac = ar
             self.ar_bar.setScale(max(ar, 0.0001), 1, 1)
+        veh = pl.vehicle
+        nx = veh.nitro_k if (veh is not None and veh.nitro) else 0.0
+        if abs(nx - self.nx_frac) > 0.004:
+            self.nx_frac = nx
+            self.nx_bar.setScale(max(nx, 0.0001), 1, 1)
         # часы
         self._set(self.clock_text, 'clock', w.sky.clock_text())
         self._set(self.day_text, 'day', u'день %d' % w.sky.day)

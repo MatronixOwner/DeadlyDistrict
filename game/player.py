@@ -722,8 +722,19 @@ class Player(object):
             if v.kind in ('police', 'ambulance', 'enforcer', 'fbi'):
                 v.siren = not v.siren
             else:
-                w.audio.play('horn_truck' if v.spec.engine == 'truck' else 'horn', 0.9)
+                w.audio.play(v.horn or ('horn_truck' if v.spec.engine == 'truck' else 'horn'), 0.9)
                 w.crowd.panic(v.x, v.y, 14.0)
+        # нитро: Shift, пока в баллоне что-то есть
+        if v.nitro:
+            want = inp.held('shift') and v.in_throttle > 0.0 and v.nitro_k > 0.05
+            if want and not v.boost and v.nitro_k > 0.25:
+                v.boost = True
+                w.audio.play('spray', 0.8, 1.5)
+            elif not want:
+                v.boost = False
+            if 'nitro' not in w.missions.hints:
+                w.missions.hints.add('nitro')
+                w.hud.help('На машине стоит закись азота: держи Shift на газу. Баллон сам наполняется.', 7.0)
         if inp.hit('r') and v.spec.radio:
             v.radio = (v.radio + 1) % len(STATIONS)
             w.radio_pref = v.radio

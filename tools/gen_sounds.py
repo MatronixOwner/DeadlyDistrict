@@ -811,6 +811,11 @@ def main():
                                              env_exp(int(0.035 * SR), 0.008), 0.0005, 0.004))
                              for k in range(7)]), 0.5)
     S('engine_bike', lambda: engine(92.0, 0.5))
+    # сигналы из тюнинг-ателье: мелодия на пять нот и «крякалка»
+    S('horn_tune', lambda: seq([(k * 0.16, horn(f, f * 1.26, 0.15)) for k, f in
+                                enumerate((392.0, 392.0, 523.0, 659.0, 784.0))]), 0.8)
+    S('horn_quack', lambda: seq([(k * 0.19, fade(np.sign(np.sin(sweep(620.0, 330.0, 0.15))) * 0.6 *
+                                                 env_exp(int(0.15 * SR), 0.12), 0.002, 0.02)) for k in range(3)]), 0.6)
     for name, fn in (('retro', track_retro), ('beat', track_beat), ('rock', track_rock),
                      ('chanson', track_chanson), ('theme', track_theme)):
         if only and name not in only:

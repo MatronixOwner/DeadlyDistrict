@@ -758,6 +758,173 @@ class Game(object):
         m.text_scale = 0.058
         self.ui.open(m)
 
+    def open_tuning(self, v, name):
+        """Покрасочная, она же тюнинг-ателье: машина стоит в боксе, слева — меню, изменения видны сразу."""
+        from .menu import Menu, Item
+        from . import tuning, ui
+        from .vehicle import PAINTS, PAINT_NAMES
+        if self.state != 'play':
+            return
+        w = self.world
+        pl = w.player
+        ms = w.missions
+        self.state = 'shop'
+        self.inp.capture_mouse(False)
+        self.audio.pause_all(True)
+        w.hud.stash(True)
+        x0, y0, x1, y1 = w.city.landmarks[name]['bay_rect']
+        # машину разворачивают носом к воротам: так её видно снаружи, и выезжать потом удобно
+        v.x, v.y = (x0 + x1) * 0.5, y0 + (y1 - y0) * 0.48
+        v.yaw = -math.pi / 2
+        v.vx = v.vy = v.speed = v.omega = 0.0
+        v.sync()
+        hz = v.z + 0.7
+
+        def view(cx, cy, cz, shift=1.9):
+            # меню занимает левую часть экрана: целимся левее машины, чтобы она оказалась справа
+            dx, dy = v.x - cx, v.y - cy
+            d = math.hypot(dx, dy) or 1.0
+            return (cx, cy, cz, v.x - dy / d * shift, v.y + dx / d * shift, hz)
+        cam = view(v.x - 2.6, y0 - 3.4, v.z + 1.9)
+        FRONT = ('xenon', 'bumper', 'roof', 'neon', 'rims', 'susp', 'armor', 'engine', 'turbo', 'horn')
+
+        def look(kind):
+            # камера всегда снаружи, у ворот; чтобы показать корму, машину разворачивают носом внутрь
+            v.yaw = -math.pi / 2 if kind == 'front' else math.pi / 2
+            v.sync()
+            w.cam.override = cam
+            w.cam.update(0.0, 0, 0)
+        look('front')
+        can_paint = v.spec.paints is None
+
+        def close():
+            self.ui.close_all()
+            v.yaw = -math.pi / 2                      # отдают машину носом к воротам
+            v.sync()
+            w.cam.override = None
+            w.cam.yaw = v.yaw
+            w.cam.snap()
+            w.hud.stash(False)
+            self.state = 'play'
+            self.audio.pause_all(False)
+            self.inp.clear()
+            self.inp.capture_mouse(True)
+
+        def pay(cost):
+            if pl.money < cost:
+                self.audio.play('menu_back', 0.7)
+                return False
+            if cost:
+                pl.add_money(-cost)
+                w.hud.money_show = pl.money
+            return True
+
+        def balance():
+            return 'На счету: %s' % ui.money(pl.money)
+
+        def refresh_texts():
+            for m_ in self.ui.stack:
+                if m_.text is not None:
+                    m_.text = balance()
+
+        def repair_cost():
+            return int(round((1.0 - v.health / v.max_health) * 400.0 / 10.0)) * 10
+
+        def repair():
+            c_ = repair_cost()
+            if c_ <= 0 or not pay(c_):
+                return
+            v.health = v.max_health
+            v.burn_t = 0.0
+            self.audio.play('wrench', 0.8)
+            refresh_texts()
+
+        def paint_to(idx):
+            def f():
+                if idx == v.paint % len(PAINTS) or not pay(300):
+                    return
+                v.set_paint(idx)
+                v.health = v.max_health
+                v.burn_t = 0.0
+                # новая краска — новая машина для полиции (если задание не держит розыск нарочно)
+                w.police.locked = None if ms.active is None else w.police.locked
+                if w.police.locked is None:
+                    w.police.clear()
+                self.audio.play('spray', 0.9)
+                refresh_texts()
+            return f
+
+        def open_paint():
+            look('front')
+            cur = lambda i: ('стоит' if i == v.paint % len(PAINTS) else ui.money(300))
+            items = [Item(PAINT_NAMES[i], paint_to(i), value=(lambda i=i: cur(i))) for i in range(len(PAINTS))]
+            items.append(Item('Назад', self.ui.close))
+            pm = Menu(self.ui, 'Покраска', items, wide=True, text=balance())
+            pm.dim = 0.10
+            pm.text_scale = 0.058
+            pm.sel = v.paint % len(PAINTS)
+            self.ui.open(pm)
+
+        def set_part(key, n):
+            def f():
+                cur = v.tune.get(key, 0)
+                if n == cur:
+                    return
+                cost = tuning.PART[key][1][n - 1][1] if n else 0
+                if not pay(cost):
+                    return
+                t = dict(v.tune)
+                if n:
+                    t[key] = n
+                else:
+                    t.pop(key, None)
+                v.apply_tune(t)
+                if key == 'horn' and v.horn:
+                    self.audio.play(v.horn, 0.8)
+                else:
+                    self.audio.play('wrench', 0.8)
+                refresh_texts()
+            return f
+
+        def open_part(key):
+            def f():
+                look('front' if key in FRONT else 'rear')
+                title, opts = tuning.PART[key]
+
+                def val(n, price):
+                    return lambda: ('стоит' if v.tune.get(key, 0) == n else (ui.money(price) if n else ''))
+                items = [Item('Заводское', set_part(key, 0), value=val(0, 0))]
+                for i, (nm, price) in enumerate(opts):
+                    items.append(Item(nm, set_part(key, i + 1), value=val(i + 1, price)))
+
+                def back():
+                    look('front')
+                    self.ui.close()
+                items.append(Item('Назад', back))
+                pm = Menu(self.ui, title, items, back=back, wide=True, text=balance())
+                pm.dim = 0.10
+                pm.text_scale = 0.058
+                pm.sel = v.tune.get(key, 0)
+                self.ui.open(pm)
+            return f
+
+        def part_value(key):
+            def f():
+                n = v.tune.get(key, 0)
+                return tuning.PART[key][1][n - 1][0] if n else '—'
+            return f
+        items = []
+        if can_paint:
+            items.append(Item('Покраска', open_paint, value=lambda: PAINT_NAMES[v.paint % len(PAINTS)]))
+        items.append(Item('Ремонт', repair, value=lambda: (ui.money(repair_cost()) if repair_cost() > 0 else 'не нужен')))
+        for key, title, opts in tuning.parts_for(v):
+            items.append(Item(title, open_part(key), value=part_value(key)))
+        items.append(Item('Выехать', close))
+        m = Menu(self.ui, 'Ателье', items, back=close, wide=True, text=balance())
+        m.dim = 0.10
+        m.text_scale = 0.058
+        self.ui.open(m)
+
     def open_save(self):
         """Синий маркер у убежища: спросить, сохранять ли игру."""
         from .menu import Menu, Item
