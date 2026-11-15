@@ -121,8 +121,26 @@ def from_img(img):
     return np.asarray(img, np.float32).copy()
 
 
+_photo = None
+
+
+def photo_names():
+    """Имена текстур, которые делает tools/gen_city.py из фотоматериалов: их не перезаписываем."""
+    global _photo
+    if _photo is None:
+        try:
+            import json
+            with open(os.path.join(OUT, '_photo.json'), encoding='utf-8') as f:
+                _photo = set(json.load(f).get('textures', []))
+        except Exception:
+            _photo = set()
+    return _photo
+
+
 def save(a, name):
     img = a if isinstance(a, Image.Image) else to_img(a)
+    if name in photo_names():
+        return img
     path = os.path.join(OUT, name + '.png')
     img.save(path, optimize=True)
     _written.append((name, img))

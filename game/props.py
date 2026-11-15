@@ -60,15 +60,61 @@ def lamp(mb, night, p, rnd):
     return ('c', 0.16, 6.5, BREAK_HARD)
 
 
+UP3 = ((0.0, 0.0, 1.0),) * 3
+LEAF_TINTS = [(0.96, 1.0, 0.94), (0.86, 0.96, 0.84), (1.0, 1.0, 0.9), (0.9, 0.92, 0.86)]
+
+
+def leaf_card(mb, key, p0, p1, p2, p3, cb, ct, uv=(0.0, 0.0, 1.0, 1.0)):
+    """«Карточка» листвы (рисуется с двух сторон).  Нормали смотрят вверх, чтобы крона была освещена
+    ровно, а не пятнами по плоскостям; cb/ct — цвет снизу и сверху."""
+    u0, v0, u1, v1 = uv
+    mb.tri(key, p0, p1, p2, (u0, v0), (u1, v0), (u1, v1), cb, UP3, c1=cb, c2=ct)
+    mb.tri(key, p0, p2, p3, (u0, v0), (u1, v1), (u0, v1), cb, UP3, c1=ct, c2=ct)
+
+
 def tree(mb, night, p, rnd):
+    """Дерево: ствол с корой и крона из перекрещенных плоскостей с фотографией листвы."""
     s = p.get('size', 1.0)
-    trunk = (0.36 + rnd.random() * 0.08, 0.26, 0.17, 1.0)
-    mb.cylinder(None, 0, 0, 0, 2.6 * s, 0.24 * s, 6, trunk, r_top=0.15 * s, cap_top=False)
-    g = rnd.choice([(0.20, 0.46, 0.18), (0.26, 0.52, 0.20), (0.18, 0.40, 0.20), (0.32, 0.50, 0.16)])
     seed = p.get('seed', 0)
-    mb.blob(None, 0, 0, 3.7 * s, 2.1 * s, 2.1 * s, 1.7 * s, g + (1.0,), seed=seed)
-    mb.blob(None, 0.5 * s, 0.3 * s, 5.0 * s, 1.4 * s, 1.4 * s, 1.2 * s,
-            (g[0] * 1.12, g[1] * 1.12, g[2] * 1.12, 1.0), seed=seed + 1)
+    r2 = random.Random(seed * 7 + 3)
+    key = ('foliage_b' if seed % 3 == 1 else 'foliage_a', 'a')
+    tint = r2.choice(LEAF_TINTS)
+    ct = tint + (1.0,)
+    cb = (tint[0] * 0.56, tint[1] * 0.58, tint[2] * 0.56, 1.0)
+    cm = (tint[0] * 0.78, tint[1] * 0.80, tint[2] * 0.78, 1.0)
+    th = (2.3 + r2.random() * 0.5) * s
+    mb.cylinder('bark', 0, 0, 0, th + 1.6 * s, 0.23 * s, 6, (0.84, 0.78, 0.72, 1.0), r_top=0.08 * s, cap_top=False,
+                uv_wrap=2.0)
+    R = (2.3 + r2.random() * 0.6) * s
+    z0 = th - 0.9 * s
+    z1 = z0 + (4.6 + r2.random() * 0.9) * s
+    zm = (z0 + z1) * 0.5
+    a0 = r2.random() * math.pi
+    for k in range(3):
+        a = a0 + k * math.pi / 3.0
+        ca, sa = math.cos(a) * R, math.sin(a) * R
+        leaf_card(mb, key, (-ca, -sa, z0), (ca, sa, z0), (ca, sa, z1), (-ca, -sa, z1), cb, ct)
+    # наклонные плоскости: крона не «исчезает» при взгляде сверху и снизу
+    for k in range(2):
+        a = a0 + 0.6 + k * math.pi / 2.0
+        ca, sa = math.cos(a), math.sin(a)
+        r = R * 0.92
+        dz = r * 0.38
+        zc = zm + (0.5 - k) * 0.9 * s
+        leaf_card(mb, key, (-ca * r + sa * r, -sa * r - ca * r, zc - dz), (ca * r + sa * r, sa * r - ca * r, zc + dz),
+                  (ca * r - sa * r, sa * r + ca * r, zc + dz), (-ca * r - sa * r, -sa * r + ca * r, zc - dz), cm, ct)
+    # боковые «шапки» листвы
+    for k in range(4):
+        a = a0 + k * math.pi / 2.0 + r2.random() * 0.7
+        d = R * (0.42 + r2.random() * 0.2)
+        cx, cy = math.cos(a) * d, math.sin(a) * d
+        cz = zm + (r2.random() - 0.35) * 1.5 * s
+        r = R * (0.5 + r2.random() * 0.14)
+        for j in range(2):
+            aa = a + j * math.pi / 2.0 + 0.4
+            ca, sa = math.cos(aa) * r, math.sin(aa) * r
+            leaf_card(mb, key, (cx - ca, cy - sa, cz - r), (cx + ca, cy + sa, cz - r), (cx + ca, cy + sa, cz + r),
+                      (cx - ca, cy - sa, cz + r), cm, ct)
     return ('c', 0.3 * s, 6.0 * s, F_SOLID | F_CAM)
 
 
@@ -87,15 +133,15 @@ def palm(mb, night, p, rnd):
         r0 = 0.22 - 0.08 * t0
         r1 = 0.22 - 0.08 * t1
         z0, z1 = hgt * t0, hgt * t1
-        c = (0.50 - 0.05 * (i % 2), 0.40 - 0.04 * (i % 2), 0.28, 1.0)
+        c = (1.0 - 0.08 * (i % 2), 0.9 - 0.07 * (i % 2), 0.72, 1.0)
         n = 5
         for k in range(n):
             a0 = k * 2 * math.pi / n
             a1 = (k + 1) * 2 * math.pi / n
-            mb.quad(None, (px + math.cos(a0) * r0, py + math.sin(a0) * r0, z0),
+            mb.quad('bark', (px + math.cos(a0) * r0, py + math.sin(a0) * r0, z0),
                     (px + math.cos(a1) * r0, py + math.sin(a1) * r0, z0),
                     (nx + math.cos(a1) * r1, ny + math.sin(a1) * r1, z1),
-                    (nx + math.cos(a0) * r1, ny + math.sin(a0) * r1, z1), color=c)
+                    (nx + math.cos(a0) * r1, ny + math.sin(a0) * r1, z1), (k * 0.4, 0, k * 0.4 + 0.4, 1), c)
         px, py = nx, ny
     leaves = 8
     for k in range(leaves):

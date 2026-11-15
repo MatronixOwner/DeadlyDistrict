@@ -12,6 +12,7 @@ from . import GAME_TITLE, __version__
 from . import settings as settings_mod
 from . import audio as audio_mod
 from .settings import Settings, DRAW_DIST, TRAFFIC_LEVELS
+from .sky import set_lens_range
 
 RESOLUTIONS = [(1024, 576), (1280, 720), (1366, 768), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
 
@@ -450,7 +451,7 @@ class Game(object):
             s.set('draw_distance', int(min(2, max(0, int(s.get('draw_distance')) + d))))
             dd = DRAW_DIST[int(s.get('draw_distance'))]
             w.sky.fog_start, w.sky.far = dd
-            self.base.camLens.setNearFar(0.35, w.sky.far)
+            set_lens_range(self.base, w.sky.far)
             w.sky._apply(0.0)
 
         def ch_traffic(d):

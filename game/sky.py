@@ -29,6 +29,21 @@ def _mix(a, b, t):
     return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
 
 
+def set_lens_range(base, far):
+    """Ближняя и дальняя плоскости камеры.
+
+    Программный рендерер (запасной вариант для ПК без OpenGL) неточно отсекает геометрию у дальней
+    плоскости: далёкие предметы «просвечивают» сквозь стены.  Для него плоскость отодвигается, а всё
+    дальнее и так скрыто туманом."""
+    k = 1.0
+    try:
+        if base.pipe is not None and base.pipe.getInterfaceName() == 'TinyPanda':
+            k = 5.0
+    except Exception:
+        pass
+    base.camLens.setNearFar(0.35, far * k)
+
+
 class Sky(object):
 
     def __init__(self, world):
@@ -48,7 +63,7 @@ class Sky(object):
         self.fog_color = (0.6, 0.75, 0.9)
         dd = DRAW_DIST[int(clamp(world.settings.get('draw_distance'), 0, 2))]
         self.fog_start, self.far = dd
-        base.camLens.setNearFar(0.35, self.far)
+        set_lens_range(base, self.far)
         # свет
         self.amb = AmbientLight('amb')
         self.sun = DirectionalLight('sun')

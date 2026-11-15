@@ -7,6 +7,7 @@ from panda3d.core import NodePath, TextureStage, TransparencyAttrib
 
 from .meshbuilder import MeshBuilder, erase_vertices
 from . import props as P
+from .facade import Facades
 from .city import (CURB, SIDEWALK, AVE_W, ST_W, CAP_LEN, BAY_W, FLOOR_H, GF_H, WATER_Z, ROAD_X_AVE, ROAD_Y_AVE)
 from .collision import (F_CAR, F_PED, F_SIGHT, F_BULLET, F_BREAK, F_CAM, F_SOLID, F_WALL)
 
@@ -189,91 +190,10 @@ class CityMesh(object):
     # ------------------------------------------------------------------
     # здания
     # ------------------------------------------------------------------
-    def _facade_box(self, mb, night, b, x0, y0, x1, y1, z0, z1, rnd, is_base):
-        """Стены одного объёма здания (основание или ярус)."""
-        tint = _c4(b.tint)
-        for side in 'nsew':
-            ax, ay, dx, dy, nx, ny, L = side_frame(x0, y0, x1, y1, side)
-            if L < 0.05:
-                continue
-            bx, by = ax + dx * L, ay + dy * L
-            has_win = side in b.sides_win
-            zb = z0
-            if is_base and b.gf_h > 0.01:
-                zg = z0 + b.gf_h
-                n = max(1, int(round(L / b.gf_bay)))
-                if side in b.sides_gf and has_win:
-                    key = b.gf_tex
-                    col = tint if key.startswith('fac_') else W4
-                    mb.quad(key, (ax, ay, z0), (bx, by, z0), (bx, by, zg), (ax, ay, zg), (0, 0, n, 1), col)
-                elif has_win:
-                    mb.quad('gf_blank', (ax, ay, z0), (bx, by, z0), (bx, by, zg), (ax, ay, zg), (0, 0, n, 1),
-                            tint)
-                else:
-                    mb.quad(b.blank_tex, (ax, ay, z0), (bx, by, z0), (bx, by, zg), (ax, ay, zg),
-                            (0, 0, L / 4.0, b.gf_h / 4.0), _c4(b.blank_tint))
-                zb = zg
-            if z1 - zb < 0.5:
-                continue
-            if has_win:
-                n = max(1, int(round(L / b.bay_w)))
-                fl = max(1, int(round((z1 - zb) / b.floor_h)))
-                mb.quad(b.fac, (ax, ay, zb), (bx, by, zb), (bx, by, z1), (ax, ay, z1), (0, 0, n, fl), tint)
-                if b.night:
-                    uo = rnd.randint(0, 3) * 0.25
-                    vo = rnd.randint(0, 3) * 0.25
-                    night.quad((b.fac + '_n', 'addc'), (ax, ay, zb), (bx, by, zb), (bx, by, z1), (ax, ay, z1),
-                               (uo, vo, uo + n / 4.0, vo + fl / 4.0))
-            else:
-                mb.quad(b.blank_tex, (ax, ay, zb), (bx, by, zb), (bx, by, z1), (ax, ay, z1),
-                        (0, 0, L / 4.0, (z1 - zb) / 4.0), _c4(b.blank_tint))
-
-    def _flat_roof(self, mb, b, x0, y0, x1, y1, z):
-        pc = _c4(b.tint, 0.62)
-        ph = 0.6
-        mb.flat(b.roof_tex, x0, y0, x1, y1, z, tile=(4.0, 4.0), color=_c4(b.roof_color))
-        for side in 'nsew':
-            ax, ay, dx, dy, nx, ny, L = side_frame(x0, y0, x1, y1, side)
-            bx, by = ax + dx * L, ay + dy * L
-            mb.quad('concrete', (ax, ay, z), (bx, by, z), (bx, by, z + ph), (ax, ay, z + ph),
-                    (0, 0, L / 4.0, 0.15), pc)
-            mb.quad('concrete', (bx, by, z), (ax, ay, z), (ax, ay, z + ph), (bx, by, z + ph),
-                    (0, 0, L / 4.0, 0.15), pc)
-
-    def _gable_roof(self, mb, b, x0, y0, x1, y1, z):
-        o = 0.45
-        col = _c4(b.roof_color)
-        gcol = _c4(b.tint, 0.94)
-        wx, wy = x1 - x0, y1 - y0
-        if wx >= wy:
-            cy = (y0 + y1) * 0.5
-            rh = wy * 0.36
-            zr = z + rh
-            ze = z - o * (rh / (wy * 0.5))
-            nu = (wx + 2 * o) / 3.0
-            mb.quad(b.roof_tex, (x0 - o, y0 - o, ze), (x1 + o, y0 - o, ze), (x1 + o, cy, zr), (x0 - o, cy, zr),
-                    (0, 0, nu, 2), col)
-            mb.quad(b.roof_tex, (x1 + o, y1 + o, ze), (x0 - o, y1 + o, ze), (x0 - o, cy, zr), (x1 + o, cy, zr),
-                    (0, 0, nu, 2), col)
-            mb.tri(None, (x1, y0, z), (x1, y1, z), (x1, cy, zr), color=gcol)
-            mb.tri(None, (x0, y1, z), (x0, y0, z), (x0, cy, zr), color=gcol)
-            return zr
-        cx = (x0 + x1) * 0.5
-        rh = wx * 0.36
-        zr = z + rh
-        ze = z - o * (rh / (wx * 0.5))
-        nu = (wy + 2 * o) / 3.0
-        mb.quad(b.roof_tex, (x1 + o, y0 - o, ze), (x1 + o, y1 + o, ze), (cx, y1 + o, zr), (cx, y0 - o, zr),
-                (0, 0, nu, 2), col)
-        mb.quad(b.roof_tex, (x0 - o, y1 + o, ze), (x0 - o, y0 - o, ze), (cx, y0 - o, zr), (cx, y1 + o, zr),
-                (0, 0, nu, 2), col)
-        mb.tri(None, (x0, y0, z), (x1, y0, z), (cx, y0, zr), color=gcol)
-        mb.tri(None, (x1, y1, z), (x0, y1, z), (cx, y1, zr), color=gcol)
-        return zr
-
-    def _sign(self, mb, night, x0, y0, x1, y1, side, off, z, w, h, tex, lit=True, back=False):
+    def _sign(self, mb, night, x0, y0, x1, y1, side, off, z, w, h, tex, lit=True, back=False, depth=0.26):
+        """Вывеска-короб на стене."""
         ax, ay, dx, dy, nx, ny, L = side_frame(x0, y0, x1, y1, side)
-        o = 0.1
+        o = depth
         cx, cy = ax + dx * off + nx * o, ay + dy * off + ny * o
         a = (cx - dx * w * 0.5, cy - dy * w * 0.5, z - h * 0.5)
         b = (cx + dx * w * 0.5, cy + dy * w * 0.5, z - h * 0.5)
@@ -281,6 +201,15 @@ class CityMesh(object):
         d = (a[0], a[1], z + h * 0.5)
         key = (tex, 'unlit') if lit else tex
         mb.quad(key, a, b, c, d, (0, 0, 1, 1), (0.92, 0.92, 0.92, 1.0))
+        if depth > 0.12 and not back:
+            # боковины короба
+            a0, b0 = (a[0] - nx * o, a[1] - ny * o, a[2]), (b[0] - nx * o, b[1] - ny * o, b[2])
+            c0, d0 = (b0[0], b0[1], c[2]), (a0[0], a0[1], d[2])
+            edge = (0.16, 0.16, 0.18, 1.0)
+            mb.quad(None, a0, a, d, d0, color=edge)
+            mb.quad(None, b, b0, c0, c, color=edge)
+            mb.quad(None, d, c, c0, d0, color=(0.24, 0.24, 0.26, 1.0))
+            mb.quad(None, a0, b0, b, a, color=(0.10, 0.10, 0.11, 1.0))
         if lit and night is not None and tex.startswith('sign_'):
             # лёгкое свечение вывески ночью
             P.pool(night, min(a[0], b[0]) - 2 + nx * 2.5, min(a[1], b[1]) - 2 + ny * 2.5,
@@ -291,41 +220,17 @@ class CityMesh(object):
 
     def _buildings(self):
         c = self.city
+        fac = Facades(self)
         for b in c.buildings:
             mb = self._mb(b.block)
             night = self._night(b.block)
             rnd = random.Random(int(b.x0 * 7 + b.y0 * 13) & 0xffff)
-            z0 = b.z0
-            top = z0 + b.h
-            self._facade_box(mb, night, b, b.x0, b.y0, b.x1, b.y1, z0, top, rnd, True)
-            roof_z = top
-            rx0, ry0, rx1, ry1 = b.x0, b.y0, b.x1, b.y1
-            if b.roof_type == 'gable':
-                self._gable_roof(mb, b, b.x0, b.y0, b.x1, b.y1, top)
-                # дверь
-                side = b.open_sides[:1] if b.open_sides else 's'
-                ax, ay, dx, dy, nx, ny, L = side_frame(b.x0, b.y0, b.x1, b.y1, side)
-                m = L * 0.5
-                o = 0.04
-                pa = (ax + dx * (m - 1.75) + nx * o, ay + dy * (m - 1.75) + ny * o, z0)
-                pb = (ax + dx * (m + 1.75) + nx * o, ay + dy * (m + 1.75) + ny * o, z0)
-                mb.quad('gf_house', pa, pb, (pb[0], pb[1], z0 + FLOOR_H), (pa[0], pa[1], z0 + FLOOR_H),
-                        (0, 0, 1, 1), _c4(b.tint))
-            else:
-                self._flat_roof(mb, b, b.x0, b.y0, b.x1, b.y1, top)
-                for (tx0, ty0, tx1, ty1, tz0, tz1) in b.tiers:
-                    self._facade_box(mb, night, b, tx0, ty0, tx1, ty1, z0 + tz0, z0 + tz1, rnd, False)
-                    self._flat_roof(mb, b, tx0, ty0, tx1, ty1, z0 + tz1)
-                    roof_z = z0 + tz1
-                    rx0, ry0, rx1, ry1 = tx0, ty0, tx1, ty1
+            top = fac.build(b, mb, night, rnd)
             # вывески
             for s in b.signs:
                 self._sign(mb, night, b.x0, b.y0, b.x1, b.y1, s['side'], s['off'], s['z'], s['w'], s['h'], s['tex'])
-            # предметы на крыше
-            for rp in b.roof_props:
-                self._roof_prop(mb, night, rp, roof_z, b, rnd)
-            # столкновения
-            self.static.add_box(b.x0, b.y0, b.x1, b.y1, 0.0, roof_z + 0.6, F_WALL, ('bld', b))
+            # столкновения: прямоугольник участка, как и раньше
+            self.static.add_box(b.x0, b.y0, b.x1, b.y1, 0.0, top + 0.1, F_WALL, ('bld', b))
 
     def _roof_prop(self, mb, night, rp, z, b, rnd):
         kind = rp[0]
@@ -497,12 +402,13 @@ class CityMesh(object):
             w, h = s['w'], s['h']
             x, y, z = s['x'], s['y'], s['z']
             side = s['side']
+            dep = 0.26 if (s['tex'].startswith('sign_') and not s.get('post')) else 0.1
             if side in ('s', 'n'):
                 self._sign(mb, night, x - w / 2, y, x + w / 2, y, side, w / 2, z, w, h, s['tex'],
-                           back=s.get('post', False))
+                           back=s.get('post', False), depth=dep)
             else:
                 self._sign(mb, night, x, y - w / 2, x, y + w / 2, side, w / 2, z, w, h, s['tex'],
-                           back=s.get('post', False))
+                           back=s.get('post', False), depth=dep)
             if s.get('post'):
                 for k in (-0.4, 0.4):
                     mb.box(None, x + w * k - 0.1, y - 0.1, 0.0, x + w * k + 0.1, y + 0.1, z + h / 2,

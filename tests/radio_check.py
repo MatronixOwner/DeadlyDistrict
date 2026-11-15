@@ -121,9 +121,16 @@ def main():
     assert heard == want, (heard, want)
 
     # песня кончилась — сама включается следующая
+    # (ждём по настоящим часам: тестовые песни длятся чуть больше секунды; считаем смены, а не сравниваем
+    #  номера — за это время список может успеть пройти по кругу)
     i0 = au.track_i
-    frames(1.8, real=True)
-    assert playing() and au.track_i != i0, 'после конца песни следующая не началась'
+    changed = False
+    t0 = time.time()
+    while time.time() - t0 < 6.0 and not changed:
+        frames(0.1, real=True)
+        changed = au.track_i != i0
+    frames(0.1)
+    assert changed and playing(), 'после конца песни следующая не началась'
 
     # R — следующая станция; каждая что-то играет, последняя — тишина
     for k in range(1, len(A.STATIONS)):
