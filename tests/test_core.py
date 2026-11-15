@@ -127,6 +127,10 @@ def test_first_run_takes_the_whole_screen_at_native_resolution():
     S.choose_screen(st, (1920, 1080), sizes)
     assert (st['screen'], st['width'], st['height']) == (S.SCREEN_BORDERLESS, 1920, 1080)
     assert st['cfg'] == S.CFG_VERSION and st['fullscreen'] is False
+    assert 'msaa' not in st                                   # Full HD: сглаживание остаётся как было
+    st = _FakeSettings(width=1280, height=720)
+    S.choose_screen(st, (3840, 2160), sizes)
+    assert (st['screen'], st['width'], st['height'], st['msaa']) == (S.SCREEN_BORDERLESS, 3840, 2160, 0)
     st = _FakeSettings(width=1280, height=720)
     S.choose_screen(st, (0, 0), sizes)
     assert (st['screen'], st['width'], st['height']) == (S.SCREEN_WINDOW, 1280, 720)
@@ -213,3 +217,30 @@ def test_selftest_does_not_rely_on_assert():
     body = src[src.index('def selftest():'):src.index('def main():')]
     assert '\n    assert ' not in body
     assert body.count('_need(') >= 10
+
+
+def test_antialiasing_note_matches_what_the_window_was_opened_with(tmp_path, monkeypatch):
+    """На экране 4K первый запуск выключает сглаживание ДО открытия окна, и меню не должно
+    после этого писать «после перезапуска»: окно уже открыто без сглаживания."""
+    from game import app, settings as S
+    monkeypatch.setenv('DD_USER_DIR', str(tmp_path))
+    monkeypatch.setattr(S, 'dpi_aware', lambda: None)
+    monkeypatch.setattr(S, 'desktop_size', lambda: (3840, 2160))
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_configure(settings, headless=False):
+        seen['msaa'] = int(settings.get('msaa'))
+        raise Stop()                                          # окно не открываем
+
+    monkeypatch.setattr(app, 'configure', fake_configure)
+    g = app.Game.__new__(app.Game)
+    try:
+        g.__init__()
+    except Stop:
+        pass
+    assert seen['msaa'] == 0                                  # с этим значением открывается окно
+    assert g._boot[0] == 0                                    # и его же помнит меню
+    assert g.settings.get('screen') == S.SCREEN_BORDERLESS and g.settings.get('width') == 3840

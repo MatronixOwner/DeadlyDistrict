@@ -140,6 +140,10 @@ def choose_screen(settings, desktop, sizes):
         if size is not None:
             settings.set('width', size[0])
             settings.set('height', size[1])
+    if dw * dh > 2560 * 1440:
+        # на экранах 4K точек вчетверо больше, чем в Full HD: сглаживание краёв там почти не заметно,
+        # а встроенной видеокарте оно обходится дорого
+        settings.set('msaa', 0)
     settings.set('fullscreen', False)
     settings.set('cfg', CFG_VERSION)
 

@@ -95,11 +95,12 @@ class Game(object):
         self.settings = Settings()
         self.headless = headless
         self._win_todo = []                # отложенные шаги смены режима экрана: (через сколько кадров, что)
-        self._boot = (int(self.settings.get('msaa')), bool(self.settings.get('vsync')))
         opened_here = base is None
+        if base is None and not headless:
+            self._choose_screen()          # может поменять и сглаживание, поэтому — до запоминания
+        # с какими значениями открыто окно: по ним меню пишет «после перезапуска»
+        self._boot = (int(self.settings.get('msaa')), bool(self.settings.get('vsync')))
         if base is None:
-            if not headless:
-                self._choose_screen()
             configure(self.settings, headless)
             from direct.showbase.ShowBase import ShowBase
             base = ShowBase()
