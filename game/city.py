@@ -1063,7 +1063,7 @@ class City(object):
                         y_ = yy + kk * cw
                         stack = r.weighted([(1, 5), (2, 4), (3, 2)])
                         for s in range(stack):
-                            self._box(xx, y_, CURB + s * ch, xx + cl, y_ + cw, CURB + (s + 1) * ch, 'corrugated', b.id,
+                            self._box(xx, y_, CURB + s * ch, xx + cl, y_ + cw, CURB + (s + 1) * ch, 'container', b.id,
                                       color=r.pick(self.CONTAINER_COLORS), uv_m=2.6, solid=(s == 0),
                                       top_tex='corrugated')
                         self.boxes[-stack]['stack_h'] = stack * ch
@@ -1080,7 +1080,7 @@ class City(object):
                         x_ = xx + kk * cw
                         stack = r.weighted([(1, 5), (2, 4), (3, 2)])
                         for s in range(stack):
-                            self._box(x_, yy, CURB + s * ch, x_ + cw, yy + cl, CURB + (s + 1) * ch, 'corrugated', b.id,
+                            self._box(x_, yy, CURB + s * ch, x_ + cw, yy + cl, CURB + (s + 1) * ch, 'container', b.id,
                                       color=r.pick(self.CONTAINER_COLORS), uv_m=2.6, solid=(s == 0),
                                       top_tex='corrugated')
                         self.boxes[-stack]['stack_h'] = stack * ch

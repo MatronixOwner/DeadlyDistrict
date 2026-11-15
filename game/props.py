@@ -167,17 +167,20 @@ def palm(mb, night, p, rnd):
 
 def bench(mb, night, p, rnd):
     # сиденье вытянуто вдоль локальной Y, спинка сзади (-X)
-    mb.box(None, -0.22, -0.85, 0.40, 0.24, 0.85, 0.47, WOOD)
-    mb.box(None, -0.28, -0.85, 0.47, -0.20, 0.85, 0.95, WOOD)
+    wood = rnd.choice([(0.62, 0.40, 0.24, 1.0), (0.30, 0.44, 0.30, 1.0), (0.56, 0.34, 0.22, 1.0)])
+    mb.box('planks', -0.22, -0.85, 0.40, 0.24, 0.85, 0.47, wood, uv_m=0.5)
+    mb.box('planks', -0.28, -0.85, 0.56, -0.21, 0.85, 0.95, wood, uv_m=0.5)
     for y in (-0.75, 0.75):
         mb.box(None, -0.26, y - 0.04, 0.0, 0.22, y + 0.04, 0.40, METAL)
+        mb.box(None, -0.29, y - 0.04, 0.40, -0.22, y + 0.04, 0.9, METAL)
     return ('c', 0.55, 0.9, BREAK_HARD)
 
 
 def bin_(mb, night, p, rnd):
     c = rnd.choice([(0.18, 0.38, 0.22, 1), (0.30, 0.32, 0.34, 1), (0.20, 0.30, 0.46, 1)])
-    mb.cylinder(None, 0, 0, 0, 0.85, 0.27, 7, c, top_color=(0.08, 0.08, 0.08, 1))
-    mb.cylinder(None, 0, 0, 0.85, 0.92, 0.30, 7, METAL, cap_top=False)
+    c = (min(1.0, c[0] * 1.5), min(1.0, c[1] * 1.5), min(1.0, c[2] * 1.5), 1.0)
+    mb.cylinder('metal_paint', 0, 0, 0, 0.85, 0.27, 8, c, top_color=(0.05, 0.05, 0.05, 1), uv_wrap=2.0)
+    mb.cylinder(None, 0, 0, 0.85, 0.92, 0.30, 8, METAL, cap_top=False)
     return ('c', 0.3, 0.9, BREAK_HARD)
 
 
@@ -232,8 +235,11 @@ def busstop(mb, night, p, rnd):
 
 def dumpster(mb, night, p, rnd):
     c = rnd.choice([(0.14, 0.32, 0.20, 1), (0.16, 0.24, 0.40, 1), (0.36, 0.20, 0.14, 1)])
-    mb.box(None, -0.55, -0.95, 0.12, 0.55, 0.95, 1.2, c)
+    c = (min(1.0, c[0] * 1.7), min(1.0, c[1] * 1.7), min(1.0, c[2] * 1.7), 1.0)
+    mb.box('metal_paint', -0.55, -0.95, 0.12, 0.55, 0.95, 1.2, c, uv_m=1.6)
     mb.box(None, -0.6, -1.0, 1.2, 0.6, 1.0, 1.28, (0.1, 0.1, 0.1, 1))
+    mb.box(None, -0.62, -0.5, 0.86, -0.55, 0.5, 0.94, METAL)
+    mb.box(None, 0.55, -0.5, 0.86, 0.62, 0.5, 0.94, METAL)
     for y in (-0.8, 0.8):
         for x in (-0.45, 0.45):
             mb.box(None, x - 0.06, y - 0.06, 0.0, x + 0.06, y + 0.06, 0.12, METAL)
@@ -248,7 +254,8 @@ def crate(mb, night, p, rnd):
 
 def barrel(mb, night, p, rnd):
     c = rnd.choice([(0.40, 0.22, 0.14, 1), (0.16, 0.26, 0.42, 1), (0.5, 0.42, 0.12, 1)])
-    mb.cylinder(None, 0, 0, 0, 0.9, 0.3, 8, c, top_color=(0.07, 0.06, 0.05, 1))
+    c = (min(1.0, c[0] * 1.6), min(1.0, c[1] * 1.6), min(1.0, c[2] * 1.6), 1.0)
+    mb.cylinder('metal_paint', 0, 0, 0, 0.9, 0.3, 8, c, top_color=(0.07, 0.06, 0.05, 1), uv_wrap=2.0)
     if p.get('fire'):
         glow(night, 0, 0, 1.1, 2.4, (1.0, 0.55, 0.15, 0.9))
         pool(night, -3.5, -3.5, 3.5, 3.5, 0.05, color=(1.0, 0.5, 0.15, 1.0), k=0.5)

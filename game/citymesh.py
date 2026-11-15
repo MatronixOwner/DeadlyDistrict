@@ -119,6 +119,15 @@ class CityMesh(object):
             self._road_quad(mb, cap, ox, oy, dx, dy, hw, 0.0, CAP_LEN, 0.0, 1.0, flip=True)
             self._road_quad(mb, tex, ox, oy, dx, dy, hw, CAP_LEN, L - CAP_LEN, 0.0, float(n))
             self._road_quad(mb, cap, ox, oy, dx, dy, hw, L - CAP_LEN, L, 0.0, 1.0)
+            # крышки люков
+            rnd = random.Random(int(a * 3 + cc * 17) & 0xffff)
+            for _ in range(rnd.randint(1, 2) if mid > 30.0 else 0):
+                t = CAP_LEN + mid * rnd.uniform(0.1, 0.9)
+                off = hw * rnd.choice((-0.62, -0.3, 0.3, 0.62))
+                mx, my = ox + dx * t - dy * off, oy + dy * t + dx * off
+                r = 0.46
+                mb.quad(('manhole', 'decal'), (mx - r, my - r, 0.012), (mx + r, my - r, 0.012),
+                        (mx + r, my + r, 0.012), (mx - r, my + r, 0.012), (0, 0, 1, 1), (0.9, 0.9, 0.9, 1.0))
         for n in c.nodes.values():
             mb = self._mb(self._road_chunk(n.x, n.y))
             mb.flat('asphalt', n.x - n.hw, n.y - n.hh, n.x + n.hw, n.y + n.hh, 0.0, tile=(8.0, 8.0))
@@ -279,7 +288,9 @@ class CityMesh(object):
     # ------------------------------------------------------------------
     def _boxes(self):
         for bx in self.city.boxes:
-            if bx['faces']:
+            if bx['tex'] == 'container':
+                self._container(self._mb(bx['block']), bx)
+            elif bx['faces']:
                 mb = self._mb(bx['block'])
                 col = _c4(bx['color'])
                 mb.box(bx['tex'], bx['x0'], bx['y0'], bx['z0'], bx['x1'], bx['y1'], bx['z1'], col,
@@ -295,6 +306,25 @@ class CityMesh(object):
                         uv_wrap=max(1.0, round(cy['r'] * 2.0)), top_color=_c4(cy['color'], 0.8))
             if cy['solid']:
                 self.static.add_circle(cy['x'], cy['y'], cy['r'], cy['z1'], F_WALL, ('cyl', cy))
+
+    def _container(self, mb, bx):
+        """Морской контейнер: ребристые борта, торцы с дверями."""
+        x0, y0, z0, x1, y1, z1 = bx['x0'], bx['y0'], bx['z0'], bx['x1'], bx['y1'], bx['z1']
+        col = _c4(bx['color'])
+        dark = _c4(bx['color'], 0.82)
+        if (x1 - x0) >= (y1 - y0):
+            sides = ((x0, y0, x1, y0), (x1, y1, x0, y1))
+            ends = ((x1, y0, x1, y1), (x0, y1, x0, y0))
+        else:
+            sides = ((x1, y0, x1, y1), (x0, y1, x0, y0))
+            ends = ((x0, y0, x1, y0), (x1, y1, x0, y1))
+        for i, (ax, ay, bx_, by) in enumerate(sides):
+            mb.quad('container_side', (ax, ay, z0), (bx_, by, z0), (bx_, by, z1), (ax, ay, z1), (0, 0, 1, 1),
+                    col if i == 0 else dark)
+        for i, (ax, ay, bx_, by) in enumerate(ends):
+            mb.quad('container_end', (ax, ay, z0), (bx_, by, z0), (bx_, by, z1), (ax, ay, z1), (0, 0, 1, 1),
+                    col if i == 0 else dark)
+        mb.flat('corrugated', x0, y0, x1, y1, z1, tile=(2.6, 2.6), color=_c4(bx['color'], 0.7))
 
     def _walls(self):
         for w in self.city.walls:

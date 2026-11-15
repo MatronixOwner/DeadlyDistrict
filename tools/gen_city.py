@@ -900,6 +900,63 @@ def gen_nature():
 
 
 # ---------------------------------------------------------------------------
+# уличные предметы: контейнеры, ящики, скамейки, баки
+# ---------------------------------------------------------------------------
+def _grey(a, level=178.0, contrast=1.0):
+    """Материал в оттенках серого со средней яркостью level — чтобы красить его цветом вершин."""
+    a = tone(a, sat=0.0, contrast=contrast)
+    return a / max(1.0, float(a.mean())) * level
+
+
+def gen_props():
+    # морской контейнер (красится): борт без надписей и торец с дверями
+    side = src('Industrial/shipping_container_01_side.jpg')
+    r1, r2 = side[4:120, 64:122], side[4:120, 198:256]     # участки борта без надписей и логотипа
+    a = np.concatenate([r1, r2, r1[:, ::-1], r2[:, ::-1]], 1)
+    a = _grey(resize(a, 256, 128), 176.0, 1.15)
+    streaks(a, 301, 0.2)
+    a[:5] *= 0.6
+    a[-6:] *= 0.55
+    for x in (0, 252):
+        a[:, x:x + 4] *= 0.6
+    save(a, 'container_side', colors=48)
+    e = _grey(resize(src('Industrial/shipping_container_01_front.jpg'), 128, 128), 176.0, 1.15)
+    box(e, 62, 6, 66, 122, (60, 60, 60))                   # створ дверей
+    for x in (22, 44, 84, 106):                            # штанги запоров
+        box(e, x, 8, x + 3, 120, (212, 212, 212))
+        box(e, x - 3, 60, x + 6, 66, (70, 70, 70))
+    e[:5] *= 0.6
+    e[-6:] *= 0.55
+    for x in (0, 124):
+        e[:, x:x + 4] *= 0.6
+    save(e, 'container_end', colors=48)
+
+    # деревянный ящик
+    c = resize(src('Misc/crate_old_01.jpg')[2:62, 4:68], 64, 64)
+    save(tone(c, mul=(1.02, 0.96, 0.86), contrast=1.1), 'crate', colors=48)
+
+    # крашеные доски скамеек (красятся)
+    w = _grey(tiled(src('Wood/wood_planks_tan.png')[:, 4:124], 64, 64, 1, 1), 196.0, 1.5)
+    save(w, 'planks', colors=32)
+
+    # крашеный металл с потёками: мусорные баки, бочки (красится)
+    m = _grey(resize(src('Metal/metal_rusty_02.png'), 128, 64), 170.0, 0.9)
+    r = resize(src('Metal/metal_siding_01.jpg'), 128, 64)
+    m = m * 0.55 + _grey(r, 170.0, 1.2) * 0.45
+    streaks(m, 311, 0.2)
+    save(m, 'metal_paint', colors=48)
+
+    # крышка люка (наклейка на асфальт)
+    im = src_rgba('Industrial/manhole_cover.png').resize((64, 64), Image.LANCZOS)
+    a = np.asarray(im, np.float32).copy()
+    yy, xx = np.mgrid[0:64, 0:64]
+    rr = np.hypot(xx - 31.5, yy - 31.5)
+    a[..., 3] = np.clip((28.5 - rr) * 1.6, 0, 1) * 255
+    a[..., :3] *= 0.82
+    save(Image.fromarray(a.astype(np.uint8), 'RGBA'), 'manhole')
+
+
+# ---------------------------------------------------------------------------
 def contact_sheet(path):
     names = sorted(written)
     cell = 132
@@ -927,6 +984,7 @@ def main():
     gen_groundfloors()
     gen_details()
     gen_nature()
+    gen_props()
     with open(MANIFEST, 'w', encoding='utf-8') as f:
         json.dump({'textures': sorted(written),
                    'windows': {k: [[round(v, 4) for v in r] for r in rs] for k, rs in sorted(windows.items())}},
