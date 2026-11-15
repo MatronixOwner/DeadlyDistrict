@@ -29,7 +29,8 @@ TRAFFIC_LEVELS = [(10, 14), (18, 26), (26, 36)]                   # (машин�
 def user_dir():
     """Папка для настроек и сохранений (создаётся при необходимости)."""
     if sys.platform.startswith('win'):
-        base = os.environ.get('APPDATA') or os.path.expanduser('~')
+        # та же папка, куда собранное приложение пишет журнал output.log
+        base = os.environ.get('LOCALAPPDATA') or os.environ.get('APPDATA') or os.path.expanduser('~')
     elif sys.platform == 'darwin':
         base = os.path.expanduser('~/Library/Application Support')
     else:
@@ -77,11 +78,35 @@ def find_root():
     return cands[0] if cands else os.getcwd()
 
 
+def desktop_size():
+    """Размер основного экрана в пикселях или (0, 0), если узнать его не удалось."""
+    if sys.platform.startswith('win'):
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            return int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
+        except Exception:
+            pass
+    return 0, 0
+
+
+def fit_window(sizes, desktop):
+    """Самое большое окно из списка, которое помещается на экране вместе с рамкой и панелью задач."""
+    dw, dh = desktop
+    if dw <= 0 or dh <= 0:
+        return None
+    fits = [(w, h) for (w, h) in sizes if w <= dw - 60 and h <= dh - 120]
+    if not fits:
+        return min(sizes)
+    return max(fits)
+
+
 class Settings(object):
 
     def __init__(self):
         self.path = os.path.join(user_dir(), 'settings.json')
         self.data = dict(DEFAULTS)
+        self.fresh = True                 # файла настроек ещё нет (первый запуск)
         self.load()
 
     def load(self):
@@ -91,6 +116,7 @@ class Settings(object):
             for k, v in d.items():
                 if k in DEFAULTS and isinstance(v, type(DEFAULTS[k])):
                     self.data[k] = v
+            self.fresh = False
         except Exception:
             pass
 

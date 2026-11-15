@@ -102,3 +102,13 @@ def test_math_helpers():
     assert abs(mathutil.turn_towards(0.0, 1.0, 0.25) - 0.25) < 1e-9
     assert mathutil.approach(1.0, 0.0, 2.0) == 0.0
     assert abs(mathutil.yaw_to_h(math.pi / 2)) < 1e-9          # «на север» в Panda3D — H = 0
+
+
+def test_first_run_window_fits_the_screen():
+    from game.settings import fit_window
+    sizes = [(1024, 576), (1280, 720), (1366, 768), (1600, 900), (1920, 1080)]
+    assert fit_window(sizes, (1366, 768)) == (1024, 576)        # ноутбук: окно не уходит под панель задач
+    assert fit_window(sizes, (1920, 1080)) == (1600, 900)
+    assert fit_window(sizes, (2560, 1440)) == (1920, 1080)
+    assert fit_window(sizes, (800, 600)) == (1024, 576)         # меньше не бывает
+    assert fit_window(sizes, (0, 0)) is None                    # размер экрана неизвестен — оставить как есть

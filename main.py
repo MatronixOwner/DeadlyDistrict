@@ -20,6 +20,17 @@ def _crash_log(text):
         return None
 
 
+def _message_box(text):
+    """Окно с сообщением об ошибке (в собранном приложении консоли нет)."""
+    if not sys.platform.startswith('win'):
+        return
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, text, 'Deadly District', 0x10)
+    except Exception:
+        pass
+
+
 def selftest():
     """Прогнать игру без окна: меню, новая игра, пауза.  Возвращает код выхода."""
     from panda3d.core import loadPrcFileData
@@ -76,8 +87,12 @@ def main():
     except Exception:
         text = traceback.format_exc()
         sys.stderr.write(text)
-        _crash_log(text)
-        raise
+        sys.stderr.flush()
+        path = _crash_log(text)
+        last = text.strip().splitlines()[-1] if text.strip() else ''
+        _message_box('Игра не смогла запуститься.\n\n%s\n\nПодробности записаны в файл:\n%s'
+                     % (last, path or 'crash.log'))
+        sys.exit(1)
 
 
 if __name__ == '__main__':

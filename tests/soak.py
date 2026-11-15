@@ -108,6 +108,9 @@ def main():
         traceback.print_exc()
         print('FAILED at t=%.1f state=%s player=%s' % (t, g.state, pl.state))
         return 1
+    if g._errors_total:
+        print('FAILED: %d ошибок в сценариях заданий (см. вывод выше)' % g._errors_total)
+        return 1
     el = time.time() - t0
     print('SOAK OK: %.0f s game time in %.1f s (%.1fx), %.2f ms/frame' % (t, el, t / el, el / frames * 1000))
     return 0

@@ -82,6 +82,12 @@ class Game(object):
         self.settings = Settings()
         self.headless = headless
         if base is None:
+            if self.settings.fresh and not headless:
+                # первый запуск: окно подбирается под размер экрана
+                size = settings_mod.fit_window(RESOLUTIONS[:5], settings_mod.desktop_size())
+                if size is not None:
+                    self.settings.set('width', size[0])
+                    self.settings.set('height', size[1])
             configure(self.settings, headless)
             from direct.showbase.ShowBase import ShowBase
             base = ShowBase()
@@ -102,6 +108,8 @@ class Game(object):
         self.attract_t = 0.0
         self.focus_lost = False
         self.credits_pending = False
+        self._errors_row = 0
+        self._errors_total = 0
         self._set_icon()
         try:
             base.render.setAntialias(AntialiasAttrib.MMultisample)
@@ -621,8 +629,40 @@ class Game(object):
             dt = 0.05
         if dt <= 0.0:
             dt = 0.001
-        self.step(dt)
+        try:
+            self.step(dt)
+            self._errors_row = 0
+        except Exception:
+            # единичный сбой в одном кадре не должен закрывать игру; если же ошибка
+            # повторяется из кадра в кадр — выходим с сообщением
+            self._errors_row += 1
+            self.report_error()
+            if self._errors_row > 20:
+                raise
+            try:
+                self.inp.end_frame()
+            except Exception:
+                pass
         return task.cont
+
+    def report_error(self):
+        """Записать текущее исключение в журнал (crash.log и стандартный вывод ошибок)."""
+        import traceback
+        text = traceback.format_exc()
+        try:
+            sys.stderr.write(text)
+            sys.stderr.flush()
+        except Exception:
+            pass
+        self._errors_total += 1
+        if self._errors_total > 40:
+            return
+        try:
+            path = os.path.join(settings_mod.user_dir(), 'crash.log')
+            with open(path, 'a' if self._errors_total > 1 else 'w', encoding='utf-8') as f:
+                f.write('[t=%.1f state=%s]\n%s\n' % (self.t, self.state, text))
+        except Exception:
+            pass
 
     def step(self, dt):
         self.dt = dt

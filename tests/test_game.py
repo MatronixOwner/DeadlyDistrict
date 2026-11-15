@@ -329,3 +329,63 @@ def test_taxi_job(game, world):
     harness.press(game, 't')                     # конец смены
     harness.run(game, 0.5)
     assert w.missions.active is None
+
+
+def test_broken_mission_script_does_not_crash(game, world):
+    """Ошибка внутри сценария задания срывает задание, но не роняет игру."""
+    w = world
+    ms = w.missions
+
+    def broken(m):
+        yield 0.1
+        raise RuntimeError('сценарий сломан')
+    spec = dict(id='zz', contact='vano', title='Сбой', reward=1, fn=broken, req=[])
+    assert ms.start(spec)
+    harness.run(game, 1.0)
+    assert ms.active is None and 'zz' not in ms.done
+    assert game.state == 'play'
+    path = os.path.join(settings_mod.user_dir(), 'crash.log')
+    assert 'сценарий сломан' in open(path, encoding='utf-8').read()
+    os.remove(path)
+
+
+def test_first_mission_like_a_player(game, world):
+    """Начало сюжета так, как его проходит человек: пешком в маркер, брифинг, F — и за руль."""
+    w = world
+    pl = w.player
+    ms = w.missions
+    harness.quiet(w)
+    x, y = w.city.landmarks['vano']['door']
+    pl.teleport(x, y - 6.0)
+    harness.run(game, 0.3)
+    assert ms.active is None
+    w.cam.yaw = math.pi / 2                       # лицом к гаражу
+    harness.run(game, 3.0, keys=('w',))           # идём в розовый маркер
+    assert ms.active is not None and ms.active.spec['id'] == 'v1'
+    assert pl.freeze                              # идёт брифинг
+    for _ in range(8):                            # пролистываем реплики
+        if not pl.freeze:
+            break
+        harness.run(game, 0.6)
+        harness.press(game, 'enter')
+    harness.run(game, 0.5)
+    assert not pl.freeze
+    assert 'Волну' in ms.active.objective
+    car = ms.active.vehicles[0]
+    dx, dy = car.door_pos(-1)
+    pl.ped.x, pl.ped.y = dx - 0.4, dy             # подошли к водительской двери
+    harness.run(game, 0.2)
+    harness.press(game, 'f')
+    harness.run(game, 2.5)
+    assert pl.vehicle is car
+    harness.run(game, 0.3)
+    assert 'Порт' in ms.active.objective
+    # едем сами: газ в пол по прямой
+    x0 = car.x
+    harness.run(game, 3.0, keys=('w',))
+    assert abs(car.x - x0) > 15.0
+    # бросили машину Вано и уничтожили её — задание провалено, игра продолжается
+    car.explode(True)
+    harness.run(game, 1.0)
+    assert ms.active is None and 'v1' not in ms.done
+    assert ms.next_mission('vano')['id'] == 'v1'
