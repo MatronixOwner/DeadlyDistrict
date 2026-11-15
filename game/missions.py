@@ -275,6 +275,7 @@ class Run(object):
         p.sync()
         w.cam.override = (dx + 2.6, dy - 3.6, 1.9, dx - 0.3, dy + 0.4, 1.45)
         w.hud.show(False)
+        w.hud.mission_title('')              # заголовок не должен висеть поверх сценки
         ms.letterbox(True)
         w.hud.clear_subtitles()
         title = CONTACTS[contact]['title']
@@ -688,8 +689,7 @@ def m_p4(m):
     w.audio.play('siren', 0.5)
     m.set_timer(90.0, '')
     m.obj('Удерживай вход в банк, пока выносят деньги!')
-    m.help('У дверей банка лежат аптечка и бронежилет — они появляются снова.', 8.0)
-    pl.damage_taken_k = 0.6                  # бронежилет Профа держит удар лучше обычного
+    pl.damage_taken_k = 0.5                  # бронежилет Профа держит удар лучше обычного
 
     def tick(dt):
         if math.hypot(pl.pos()[0] - door[0], pl.pos()[1] - door[1]) > 45.0:
@@ -886,17 +886,12 @@ class Missions(object):
         self.static_blips.append(hud.add_blip('blip_taxi', x, y, edge=False, rng=300.0))
         # предметы на карте
         for i, (x, y, hint) in enumerate(c.pickup_spots):
-            kind, wid, amount = spot_pickup(i, hint)
+            res = spot_pickup(i, hint)
+            if res is None:
+                continue
+            kind, wid, amount = res
             pk = Pickup(w, kind, x, y, wid, amount, respawn=240.0)
             self.pickups.append(pk)
-        hx, hy = lm['hospital']['door']
-        self.pickups.append(Pickup(w, 'health', hx - 3.0, hy, respawn=120.0))
-        px, py = lm['police']['door']
-        self.pickups.append(Pickup(w, 'armor', px + 12.0, py + 0.3, respawn=240.0))
-        # у входа в банк: аптечка и бронежилет (пригодятся в финале)
-        bx, by = lm['bank']['door']
-        self.pickups.append(Pickup(w, 'health', bx - 3.2, by + 0.2, respawn=45.0))
-        self.pickups.append(Pickup(w, 'armor', bx + 3.2, by + 0.2, respawn=45.0))
         self._spawn_packages()
         self.refresh_contacts()
 
@@ -1391,7 +1386,6 @@ class Missions(object):
                 self.pickups.append(Pickup(w, 'weapon', sx - 2.5, sy, W_UZI, 90, respawn=300.0))
             elif tier == 2:
                 self.pickups.append(Pickup(w, 'weapon', sx - 4.0, sy, W_SHOTGUN, 16, respawn=300.0))
-                self.pickups.append(Pickup(w, 'armor', sx - 5.5, sy, respawn=300.0))
             elif tier == 3:
                 self.pickups.append(Pickup(w, 'weapon', sx - 7.0, sy, W_AK, 90, respawn=300.0))
                 self.pickups.append(Pickup(w, 'weapon', sx - 8.5, sy, W_ROCKET, 5, respawn=300.0))

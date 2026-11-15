@@ -81,8 +81,12 @@ class Hud(object):
         self.blips = []
         self.radar_range = 110.0
         # --- сообщения
-        self.sub_text = OnscreenText(text='', parent=self.msg, pos=(0, -0.74), scale=0.066, fg=WHITE,
-                                     font=self.f_txt, align=TextNode.ACenter, wordwrap=30, mayChange=True)
+        # субтитры: нижняя строка всегда на одной высоте (над чёрной полосой сценок),
+        # длинные реплики растут вверх
+        self.sub_scale = 0.056
+        self.sub_base = -0.735
+        self.sub_text = OnscreenText(text='', parent=self.msg, pos=(0, self.sub_base), scale=self.sub_scale, fg=WHITE,
+                                     font=self.f_txt, align=TextNode.ACenter, wordwrap=40, mayChange=True)
         self.help_text = OnscreenText(text='', parent=self.tl, pos=(0.06, -0.12), scale=0.052, fg=WHITE,
                                       font=self.f_txt, align=TextNode.ALeft, wordwrap=17, mayChange=True,
                                       bg=(0, 0, 0, 0.62))
@@ -173,11 +177,13 @@ class Hud(object):
 
     def stash(self, on):
         """Полностью убрать интерфейс с экрана (пока открыто меню)."""
-        for n in (self.root, self.msg):
+        # unstash() без аргумента сбрасывает порядок отрисовки в 0 — тогда надписи
+        # оказываются ПОД затемнением и чёрными полосами, поэтому порядок задаём явно
+        for n, sort in ((self.root, 0), (self.msg, 10)):
             if on and not n.isStashed():
                 n.stash()
             elif not on and n.isStashed():
-                n.unstash()
+                n.unstash(sort)
 
     def show(self, on):
         self.visible = on
@@ -214,6 +220,10 @@ class Hud(object):
         self.big_t = dur
 
     def mission_title(self, text):
+        if not text:
+            self.title_text.setText('')
+            self.title_t = 0.0
+            return
         self.title_text.setText('«' + text + '»')
         self.title_t = 4.5
 
@@ -402,6 +412,9 @@ class Hud(object):
         if self.sub_t <= 0.0 and self.sub_queue:
             text, dur = self.sub_queue.pop(0)
             self.sub_text.setText(text)
+            tn = self.sub_text.textNode
+            rows = max(1, tn.getNumRows())
+            self.sub_text.setPos(0, self.sub_base + (rows - 1) * tn.getLineHeight() * self.sub_scale)
             self.sub_t = dur
         if self.help_t > 0.0:
             self.help_t -= dt

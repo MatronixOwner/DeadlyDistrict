@@ -389,3 +389,31 @@ def test_first_mission_like_a_player(game, world):
     harness.run(game, 1.0)
     assert ms.active is None and 'v1' not in ms.done
     assert ms.next_mission('vano')['id'] == 'v1'
+
+
+def test_hud_layers_keep_order_after_menu(game, world):
+    """После закрытия меню надписи остаются поверх затемнения и чёрных полос сценок."""
+    harness.press(game, 'escape')
+    harness.run(game, 0.2)
+    harness.press(game, 'escape')
+    harness.run(game, 0.2)
+    assert game.state == 'play'
+    world.missions.letterbox(True)
+    order = [c.getName() for c in game.base.aspect2d.getChildren()]
+    assert order.index('hud') < order.index('fade') < order.index('letterbox') < order.index('hud_msg')
+    world.missions.letterbox(False)
+
+
+def test_subtitles_stay_above_letterbox(game, world):
+    hud = world.hud
+    for text in ('Короткая реплика.', 'Очень длинная реплика, которая займёт несколько строк подряд: ' + 'слово ' * 40):
+        hud.subtitle(text, 2.0, clear=True)
+        harness.run(game, 0.2)
+        lo, hi = hud.sub_text.getTightBounds()
+        assert lo.z > -0.8                      # нижняя строка выше полосы (она начинается на -0.8)
+    hud.clear_subtitles()
+
+
+def test_no_floating_health_or_armor(game, world):
+    assert not [p for p in world.missions.pickups if p.kind in ('health', 'armor')]
+    assert [p for p in world.missions.pickups if p.kind == 'weapon']         # оружие на улицах осталось

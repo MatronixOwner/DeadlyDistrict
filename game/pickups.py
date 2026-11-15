@@ -233,7 +233,18 @@ class Pickup(object):
 
 
 def spot_pickup(index, hint):
-    """Что лежит в данной точке города: (kind, wid, amount)."""
+    """Что лежит в данной точке города: (kind, wid, amount) или None, если там пусто.
+
+    Аптечек и бронежилетов на улицах нет: здоровье восстанавливается в убежище,
+    броня продаётся в оружейном магазине.
+    """
+    res = _spot_pickup(index, hint)
+    if res[0] in ('health', 'armor'):
+        return None
+    return res
+
+
+def _spot_pickup(index, hint):
     r = random.Random(4242 + index * 97)
     v = r.random()
     if hint == 'alley':
