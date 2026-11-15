@@ -279,6 +279,8 @@ class Police(object):
         v.dismount_t = 0.0
         v.recover_t = 0.0
         v.panic_t = 0.0
+        if w.sky is not None and w.sky.lights_on:
+            v.set_lights(True)
         self.units.append(v)
 
     def _spawn_unit(self, px, py):
@@ -325,7 +327,7 @@ class Police(object):
         pl = w.player
         slow = pl.speed() < 3.5
         for v in self.units:
-            if v.removed or v.dead or v.crew <= 0:
+            if v.removed or v.dead or v.crew <= 0 or v.is_player:
                 continue
             dx, dy = v.x - px, v.y - py
             d2 = dx * dx + dy * dy

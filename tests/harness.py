@@ -66,3 +66,16 @@ def start_game(g):
     run(g, 0.5)
     assert w.missions.intro is None, 'intro not skipped'
     return w
+
+
+def quiet(w, peds=False):
+    """Убрать с улиц случайный транспорт (и прохожих), чтобы проверки были воспроизводимыми."""
+    w.traffic.enabled = False
+    for v in list(w.vehicles):
+        if not v.is_player:
+            w.remove_vehicle(v)
+    if peds:
+        w.crowd.enabled = False
+        for p in list(w.peds):
+            if p is not w.player.ped:
+                w.remove_ped(p)

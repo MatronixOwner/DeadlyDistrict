@@ -670,7 +670,7 @@ class Ped(object):
             return False
         w = self.world
         if self.is_player:
-            if w.player.invincible:
+            if w.player.invincible or w.player.state == 'busted':
                 return False
             amount *= w.player.damage_taken_k
         if self.armor > 0.0 and cause in ('bullet', 'melee', 'explosion'):
@@ -742,6 +742,8 @@ class Ped(object):
     def die(self, killer=None, cause='bullet'):
         if self.dead:
             return
+        if self.is_player and self.world.player.state == 'busted':
+            return                          # арестованного уже не убить
         self.dead = True
         self.health = 0.0
         self.aiming = False

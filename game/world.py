@@ -84,8 +84,6 @@ class World(object):
     def spawn_vehicle(self, kind, x, y, yaw, paint=None):
         v = Vehicle(self, kind, x, y, yaw, paint)
         self.vehicles.append(v)
-        if self.sky is not None and self.sky.night > 0.5:
-            v.set_lights(True)
         return v
 
     def spawn_ped(self, x, y, yaw, look, kind='civ'):
@@ -664,6 +662,12 @@ class World(object):
             return
         self.stats['busted'] += 1
         pl.bust()
+        pp = pl.ped
+        pp.fire_t = 0.0
+        for p in self.peds:                 # арест состоялся: прекратить огонь
+            if p.target is pp:
+                p.target = None
+                p.aiming = False
         self.respawn_kind = 'busted'
         self.respawn_t = 0.0
         self.audio.play('failed', 0.8)

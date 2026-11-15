@@ -120,12 +120,12 @@ class Sky(object):
         # облака
         self.clouds = []
         rnd = random.Random(7)
-        for i in range(12):
+        for i in range(16):
             c = self._card('cloud', 1.0, False)
             c.setTransparency(TransparencyAttrib.MAlpha)
-            az = rnd.uniform(0, 2 * math.pi)
-            el = rnd.uniform(0.12, 0.6)
-            sc = rnd.uniform(26.0, 52.0)
+            az = i * 2 * math.pi / 16 + rnd.uniform(-0.15, 0.15)
+            el = rnd.uniform(0.14, 0.75)
+            sc = rnd.uniform(38.0, 78.0)
             c.setScale(sc, 1, sc * 0.42)
             c.setBin('background', 4)
             self.clouds.append([c, az, el, rnd.uniform(0.6, 1.4)])
@@ -157,16 +157,18 @@ class Sky(object):
         mb = MeshBuilder()
         rnd = random.Random(11)
         self.rain_h = 14.0
-        for i in range(240):
+        for i in range(420):
             x, y = rnd.uniform(-13, 13), rnd.uniform(-13, 13)
+            if abs(x) < 0.8 and abs(y) < 0.8:
+                continue
             z = rnd.uniform(0, self.rain_h)
             a = rnd.uniform(0, math.pi)
-            w2 = 0.012
-            h = rnd.uniform(0.6, 1.1)
+            w2 = 0.011 + 0.0012 * math.hypot(x, y)       # дальние струи чуть толще, чтобы не пропадали
+            h = rnd.uniform(0.7, 1.3)
             dx, dy = math.cos(a) * w2, math.sin(a) * w2
             # слегка наклонённые струи
             mb.quad2(('rain', 'blend_c'), (x - dx, y - dy, z), (x + dx, y + dy, z), (x + dx + 0.08, y + dy, z + h),
-                     (x - dx + 0.08, y - dy, z + h), color=(0.8, 0.86, 0.95, 0.5))
+                     (x - dx + 0.08, y - dy, z + h), color=(0.82, 0.88, 0.97, 0.62))
         root = NodePath('rain')
         a = mb.build('r1', self.w.assets.apply_state)
         a.reparentTo(root)
@@ -278,7 +280,7 @@ class Sky(object):
         # положение солнца и луны
         day_t = (h - 6.0) / 14.0                   # 0 на восходе (6:00), 1 на закате (20:00)
         if 0.0 <= day_t <= 1.0:
-            az = math.pi * (1.0 - day_t)           # восток -> юг -> запад (юг: +X… условно)
+            az = math.pi * day_t                   # восход на востоке (+X), закат на западе
             el = math.sin(day_t * math.pi) * 1.05
             sx, sy, sz = math.cos(az) * math.cos(el), -0.35 * math.cos(el), math.sin(el)
             self.sun_card.show()
@@ -289,13 +291,13 @@ class Sky(object):
         else:
             self.sun_card.hide()
             nt = ((h - 20.0) % 24.0) / 10.0
-            az = math.pi * (1.0 - nt)
+            az = math.pi * nt
             el = math.sin(clamp(nt, 0, 1) * math.pi) * 0.9
             sx, sy, sz = math.cos(az) * math.cos(el), 0.3 * math.cos(el), math.sin(el)
             lx, ly, lz = sx, sy, max(0.3, sz)
         if night > 0.05:
             nt = ((h - 20.0) % 24.0) / 10.0
-            az = math.pi * (1.0 - nt)
+            az = math.pi * nt
             el = math.sin(clamp(nt, 0, 1) * math.pi) * 0.9
             mx, my, mz = math.cos(az) * math.cos(el), 0.3 * math.cos(el), math.sin(el)
             self.moon_card.show()
@@ -312,13 +314,13 @@ class Sky(object):
         self.fill_np.setPos(-lx * 10, -ly * 10, 6)
         self.fill_np.lookAt(0, 0, 0)
         # облака
-        cl = (0.55 + 0.45 * (1.0 - night)) * (1.0 - 0.3 * ck)
-        ccol = _mix((cl, cl, cl), hor, 0.35)
+        cl = (0.42 + 0.58 * (1.0 - night)) * (1.0 - 0.3 * ck)
+        ccol = _mix((cl, cl, cl), hor, 0.25)
         for c in self.clouds:
             c[1] += dt * 0.004 * c[3]
             az, el = c[1], c[2]
             c[0].setPos(math.cos(az) * math.cos(el) * 95, math.sin(az) * math.cos(el) * 95, math.sin(el) * 95)
-            c[0].setColorScale(ccol[0], ccol[1], ccol[2], 0.35 + 0.6 * ck)
+            c[0].setColorScale(ccol[0], ccol[1], ccol[2], (0.85 + 0.15 * ck) * (1.0 - 0.45 * night))
         # ночные огни города
         cmesh = self.w.citymesh
         if night > 0.3 and not self.night_on:

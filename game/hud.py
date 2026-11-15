@@ -171,6 +171,14 @@ class Hud(object):
         self.msg_br.setPos(asp, 0, -1)
         self.dmg_np.setScale(asp, 1, 1)
 
+    def stash(self, on):
+        """Полностью убрать интерфейс с экрана (пока открыто меню)."""
+        for n in (self.root, self.msg):
+            if on and not n.isStashed():
+                n.stash()
+            elif not on and n.isStashed():
+                n.unstash()
+
     def show(self, on):
         self.visible = on
         if on:

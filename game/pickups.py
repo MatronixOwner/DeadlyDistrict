@@ -29,7 +29,7 @@ def _marker_template(assets):
             p1 = (math.cos(a1), math.sin(a1), 0.0)
             p2 = (math.cos(a1), math.sin(a1), 1.0)
             p3 = (math.cos(a0), math.sin(a0), 1.0)
-            mb.quad2(key, p0, p1, p2, p3, (0.0, 0.0, 1.0, 1.0), (1, 1, 1, 0.75))
+            mb.quad2(key, p0, p1, p2, p3, (0.0, 0.0, 1.0, 1.0), (1, 1, 1, 0.5))
         np_ = mb.build('marker', assets.apply_state)
         np_.setTwoSided(True)
         _marker_proto[0] = np_

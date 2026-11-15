@@ -292,9 +292,8 @@ class Run(object):
             yield cond
         w.hud.clear_subtitles()
         w.cam.override = None
-        w.cam.yaw = -math.pi / 2
         w.cam.pitch = -0.2
-        w.cam.snap()
+        w.cam.face(p.x, p.y, -math.pi / 2)
         p.yaw = -math.pi / 2
         pl.freeze = False
         w.hud.show(True)
@@ -1086,7 +1085,7 @@ class Missions(object):
                     ch['units'].append(g)
             slow = pl.speed() < 4.0
             for v in ch['units']:
-                if v.crew <= 0:
+                if v.crew <= 0 or v.is_player:
                     continue
                 d2 = (v.x - px) ** 2 + (v.y - py) ** 2
                 if d2 > 200.0 ** 2:
@@ -1437,14 +1436,7 @@ class Missions(object):
             elif w.police.level > 0:
                 hud.help('Сначала избавься от полиции.', 3.0)
             else:
-                w.sky.advance(6.0)
-                p = pl.ped
-                p.health = p.max_health
-                ok = self.save_game()
-                hud.fade(1.0, 5.0, instant=True)
-                hud.fade(0.0, 0.8)
-                hud.big('Игра сохранена' if ok else 'Не удалось сохранить', BLUEC, 3.0, w.sky.clock_text())
-                w.audio.play('pickup', 0.8)
+                w.game.open_save()               # спросить подтверждение
         self.in_save = inside
         # оружейный магазин
         inside = False
@@ -1456,6 +1448,20 @@ class Missions(object):
         if inside and not self.in_shop and w.police.level == 0:
             w.game.open_shop()
         self.in_shop = inside
+
+    def sleep_and_save(self):
+        """Сохранение в убежище: проходит шесть часов, здоровье восстанавливается."""
+        w = self.w
+        hud = w.hud
+        w.sky.advance(6.0)
+        p = w.player.ped
+        p.health = p.max_health
+        ok = self.save_game()
+        hud.fade(1.0, 5.0, instant=True)
+        hud.fade(0.0, 0.8)
+        hud.big('Игра сохранена' if ok else 'Не удалось сохранить', BLUEC, 3.0, w.sky.clock_text())
+        w.audio.play('pickup', 0.8)
+        return ok
 
     def _hints(self, dt):
         w = self.w
@@ -1511,9 +1517,8 @@ class Missions(object):
                 w.player.freeze = False
                 self.letterbox(False)
                 w.cam.override = None
-                w.cam.yaw = w.city.start_pos[2]
                 w.cam.pitch = -0.22
-                w.cam.snap()
+                w.cam.face(w.city.start_pos[0], w.city.start_pos[1], w.city.start_pos[2])
                 w.hud.mission_title('Гиблый район')
                 return
             line = it['lines'][it['i']]

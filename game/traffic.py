@@ -134,6 +134,8 @@ class Traffic(object):
             v.persona = random.uniform(0.8, 1.08)
             v.speed = lane.speed * 0.7
             v.target_speed = v.speed
+            if w.sky is not None and w.sky.lights_on:
+                v.set_lights(True)
             return v
         return None
 

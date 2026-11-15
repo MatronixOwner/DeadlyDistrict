@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Deadly District — точка входа."""
+"""Deadly District — точка входа.
+
+    python main.py              обычный запуск
+    python main.py --selftest   быстрая самопроверка без окна (для сборочного конвейера)
+"""
 import os
 import sys
 import traceback
@@ -16,7 +20,53 @@ def _crash_log(text):
         return None
 
 
+def selftest():
+    """Прогнать игру без окна: меню, новая игра, пауза.  Возвращает код выхода."""
+    from panda3d.core import loadPrcFileData
+    loadPrcFileData('', 'window-type offscreen\nload-display p3tinydisplay\naudio-library-name null\n'
+                        'sync-video 0\nwin-size 640 360\ntextures-power-2 none\n')
+    from direct.showbase.ShowBase import ShowBase
+    from game.app import Game
+    game = Game(base=ShowBase(), headless=True)
+    w = game.world
+    dt = 1.0 / 30.0
+    for _ in range(30):
+        game.step(dt)
+    game.new_game()
+    for i in range(240):
+        if w.missions.intro is not None and i % 12 == 0:
+            game.inp._dn('enter')
+        else:
+            game.inp._up('enter')
+        game.step(dt)
+    assert w.missions.intro is None, 'intro did not finish'
+    game.inp._dn('w')
+    for _ in range(90):
+        game.step(dt)
+    game.inp._up('w')
+    game.pause()
+    for _ in range(5):
+        game.step(dt)
+    game.resume()
+    for _ in range(5):
+        game.step(dt)
+    game.base.graphicsEngine.renderFrame()
+    missing = sorted(set(game.assets.missing))
+    assert not missing, 'missing textures: %s' % missing
+    assert not game.audio._missing, 'missing sounds: %s' % sorted(game.audio._missing)
+    print('SELFTEST OK: vehicles=%d peds=%d root=%s' % (len(w.vehicles), len(w.peds), game.assets.root))
+    return 0
+
+
 def main():
+    if '--selftest' in sys.argv:
+        try:
+            code = selftest()
+        except Exception:
+            traceback.print_exc()
+            code = 1
+        sys.stdout.flush()
+        os._exit(code)
     try:
         from game.app import Game
         game = Game()

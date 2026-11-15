@@ -34,8 +34,22 @@ class Camera(object):
         self.cut = True
         self.override = None              # (x, y, z, tx, ty, tz) — «кинокамера»
         self.look_back = False
+        self.hid_player = False           # персонаж скрыт, потому что камера вплотную
 
     def snap(self):
+        self.cut = True
+
+    def face(self, x, y, yaw):
+        """Встать за спиной персонажа; если там стена — выбрать ближайшее свободное направление."""
+        st = self.w.static
+        need = (2.9, 3.9, 5.4)[self.zoom] + 0.4
+        best = yaw
+        for off in (0.0, -0.8, 0.8, -1.5708, 1.5708, -2.35, 2.35, 3.1416):
+            a = yaw + off
+            if st.raycast(x, y, 1.56, -math.cos(a), -math.sin(a), 0.0, need, F_CAM) is None:
+                best = a
+                break
+        self.yaw = wrap_angle(best)
         self.cut = True
 
     def forward(self):
@@ -56,6 +70,10 @@ class Camera(object):
             self.free_t += dt
         cam = self.base.camera
         if self.override is not None:
+            if self.hid_player:
+                self.hid_player = False
+                if pl.ped.vehicle is None:
+                    pl.ped.node.show()
             ox, oy, oz, tx, ty, tz = self.override
             cam.setPos(ox, oy, oz)
             cam.lookAt(tx, ty, tz)
@@ -71,10 +89,9 @@ class Camera(object):
             dist = (5.2, 7.0, 10.0)[self.zoom] + spec.L * 0.55
             sp = math.hypot(v.vx, v.vy)
             # камера сама возвращается за машину
-            if self.free_t > 1.6 and sp > 1.5:
-                back = v.yaw if v.speed > -2.0 else v.yaw + math.pi
+            if self.free_t > 1.6 and sp > 1.5 and v.speed > -1.0:
                 k = min(1.0, (self.free_t - 1.6) * 0.8) * (2.2 + min(sp, 30.0) * 0.07)
-                self.yaw = damp_angle(self.yaw, back, k, dt)
+                self.yaw = damp_angle(self.yaw, v.yaw, k, dt)
                 self.pitch = damp(self.pitch, -0.2, 1.5, dt)
             fov = 68.0 + min(14.0, sp * 0.3)
             side = 0.0
@@ -118,6 +135,17 @@ class Camera(object):
             self.dist = min(want, self.dist + dt * 6.0)
         d = self.dist
         cx, cy, cz = ox - dx * d, oy - dy * d, oz - dz * d
+        if v is None:
+            # камеру прижало к стене: персонаж закрыл бы весь экран — прячем его
+            hide = d < 1.6 and pl.state == 'foot'
+            if hide != self.hid_player:
+                self.hid_player = hide
+                if hide:
+                    pl.ped.node.hide()
+                elif pl.ped.vehicle is None:
+                    pl.ped.node.show()
+        else:
+            self.hid_player = False
         gz = w.city.ground_z(cx, cy)
         if gz < WATER_Z:
             gz = WATER_Z
@@ -221,10 +249,12 @@ class Player(object):
         p.x, p.y, p.yaw = sx, sy, syaw
         p.z = w.city.ground_z(sx, sy)
         p.sync()
-        w.cam.yaw = syaw
+        w.cam.hid_player = False
         w.cam.pitch = -0.22
         w.cam.look_back = False
-        w.cam.snap()
+        w.cam.face(sx, sy, syaw)
+        p.yaw = w.cam.yaw                   # герой смотрит туда же, куда камера
+        p.sync()
         if w.hud is not None:
             w.hud.weapon_changed()
 
@@ -252,12 +282,13 @@ class Player(object):
         p = self.ped
         p.x, p.y = x, y
         p.z = self.w.city.ground_z(x, y)
-        if yaw is not None:
-            p.yaw = yaw
-            self.w.cam.yaw = yaw
         self.mvx = self.mvy = 0.0
         p.sync()
-        self.w.cam.snap()
+        if yaw is not None:
+            p.yaw = yaw
+            self.w.cam.face(x, y, yaw)
+        else:
+            self.w.cam.snap()
 
     # ------------------------------------------------------------------
     # оружие
@@ -535,6 +566,10 @@ class Player(object):
         p = self.ped
         if v.npc or v.driver is not None:
             w.carjack(v, self.enter_side)
+        if v in w.police.units:
+            w.police.units.remove(v)        # угнали машину у самой полиции
+        v.crew = 0
+        v.siren = False
         w.traffic.take_over(v)
         v.set_mode(Vehicle.PHYS)
         v.driver = p
@@ -554,6 +589,8 @@ class Player(object):
         self.exit_wish = False
         self.mvx = self.mvy = 0.0
         w.cam.free_t = 5.0
+        if w.sky is not None:
+            v.set_lights(w.sky.lights_on)
         if not silent:
             w.audio.play('door', 0.8)
         w.on_player_enter_vehicle(v, stolen)

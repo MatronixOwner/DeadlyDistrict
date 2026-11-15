@@ -16,22 +16,21 @@ RESOLUTIONS = [(1024, 576), (1280, 720), (1366, 768), (1600, 900), (1920, 1080),
 
 CONTROLS_TEXT = (
     'ПЕШКОМ\n'
-    'W A S D — движение          Мышь — обзор\n'
-    'Shift — бег                 Пробел — прыжок\n'
-    'ЛКМ — удар / огонь          ПКМ — прицелиться\n'
-    'Колесо, Q / E — оружие      1…9 — выбрать оружие\n'
-    'F или Enter — сесть в машину / угнать\n'
+    'W A S D — движение, мышь — обзор\n'
+    'Shift — бег, пробел — прыжок\n'
+    'ЛКМ — удар или выстрел, ПКМ — прицел\n'
+    'Колесо мыши, Q / E, 1–9 — выбор оружия\n'
+    'F или Enter — сесть в машину (угнать)\n'
     '\n'
     'ЗА РУЛЁМ\n'
-    'W / S — газ, тормоз и задний ход\n'
-    'A / D — руль                Пробел — ручной тормоз\n'
+    'W / S — газ, тормоз и задний ход, A / D — руль\n'
+    'Пробел — ручной тормоз, B — взгляд назад\n'
     'ЛКМ — стрельба из окна (пистолет, «Узи»)\n'
-    'H — сигнал / сирена         R — радио\n'
-    'B — взгляд назад            T — подработка (такси)\n'
-    'F или Enter — выйти из машины\n'
+    'H — сигнал или сирена, R — радио\n'
+    'T — подработка в такси, F — выйти из машины\n'
     '\n'
     'ОБЩЕЕ\n'
-    'C — дальность камеры        Esc — пауза и карта\n'
+    'C — дальность камеры, Esc — пауза и карта\n'
     'F12 — снимок экрана')
 
 CREDITS_TEXT = (
@@ -244,6 +243,7 @@ class Game(object):
         w = self.world
         self.reset_world()
         self.state = 'menu'
+        w.hud.stash(False)
         pl = w.player
         pl.freeze = True
         pl.ped.node.hide()
@@ -283,6 +283,7 @@ class Game(object):
     def _begin(self):
         w = self.world
         self.reset_world()
+        w.hud.stash(False)
         self.ui.show_logo = False
         self.ui.close_all()
         self.audio.music(None)
@@ -303,10 +304,12 @@ class Game(object):
         self.state = 'pause'
         self.inp.capture_mouse(False)
         self.audio.pause_all(True)
+        self.world.hud.stash(True)
         self.ui.open(self.pause_menu())
 
     def resume(self):
         self.ui.close_all()
+        self.world.hud.stash(False)
         self.state = 'play'
         self.audio.pause_all(False)
         self.inp.clear()
@@ -506,9 +509,11 @@ class Game(object):
         self.state = 'shop'
         self.inp.capture_mouse(False)
         self.audio.pause_all(True)
+        w.hud.stash(True)
 
         def close():
             self.ui.close_all()
+            w.hud.stash(False)
             self.state = 'play'
             self.audio.pause_all(False)
             self.inp.clear()
@@ -556,6 +561,36 @@ class Game(object):
                  scale=0.075, wide=True)
         self.ui.open(m)
 
+    def open_save(self):
+        """Синий маркер у убежища: спросить, сохранять ли игру."""
+        from .menu import Menu, Item
+        if self.state != 'play':
+            return
+        w = self.world
+        self.state = 'shop'
+        self.inp.capture_mouse(False)
+        self.audio.pause_all(True)
+        w.hud.stash(True)
+
+        def close():
+            self.ui.close_all()
+            w.hud.stash(False)
+            self.state = 'play'
+            self.audio.pause_all(False)
+            self.inp.clear()
+            self.inp.capture_mouse(True)
+
+        def save():
+            close()
+            w.missions.sleep_and_save()
+        text = 'Макс отоспится в общаге: пройдёт шесть часов,\nздоровье восстановится, игра будет сохранена.'
+        if settings_mod.load_save() is not None:
+            text += '\n\nПрежнее сохранение будет заменено.'
+        m = Menu(self.ui, 'Убежище', [Item('Сохранить игру', save), Item('Уйти', close)], text=text, back=close,
+                 top=0.44)
+        m.text_scale = 0.058
+        self.ui.open(m)
+
     def show_credits(self):
         self.credits_pending = True
 
@@ -565,6 +600,7 @@ class Game(object):
         if self.state != 'play':
             return
         self.state = 'pause'
+        self.world.hud.stash(True)
         self.inp.capture_mouse(False)
         self.audio.pause_all(True)
         self.audio.music('theme', 0.9, random_start=False)

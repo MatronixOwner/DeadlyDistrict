@@ -176,5 +176,5 @@ def gang_look(gang='reds', r=None):
 
 
 def player_look():
-    return make_look(skin=SKINS[1], hair=(0.20, 0.13, 0.08), shirt=(0.40, 0.24, 0.13), pants=(0.22, 0.30, 0.50),
+    return make_look(skin=SKINS[1], hair=(0.20, 0.13, 0.08), shirt=(0.62, 0.33, 0.16), pants=(0.26, 0.37, 0.62),
                      shoes=SHOES[1], torso='leather')
