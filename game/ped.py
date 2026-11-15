@@ -293,6 +293,7 @@ class Ped(object):
         self._punch_prev = 0.0
         self._shot_prev = 0.0
         self._was_lying = False
+        self._lod_n = random.randrange(4)
         self.vis = None             # модель со скелетной анимацией (pedvisual.PedVisual)
         self._build()
 
@@ -906,7 +907,7 @@ class Ped(object):
                 self._was_lying = True
                 self.lie = 1.0
                 vis.play('Death', False, 1.35, 0.08)
-            if vis.fade > 0.0:
+            if not vis.done or vis.fade > 0.0:
                 vis.update(dt)
             return
         if self._was_lying:
@@ -921,7 +922,11 @@ class Ped(object):
         if self.hit_t > 0.0:
             self.hit_t -= dt
         if self.lod_far:
-            return
+            # вдали позу обновляем через три кадра на четвёртый
+            self._lod_n = (self._lod_n + 1) & 3
+            if self._lod_n:
+                return
+            dt *= 4.0
         sp = self.speed
         w = self.weapon
         gun = w.kind == 'gun' or w.kind == 'rocket'
@@ -942,5 +947,4 @@ class Ped(object):
             vis.play('Idle', True, 1.0)
         self._punch_prev = self.punch_t
         self._shot_prev = self.shot_t
-        if vis.fade > 0.0:
-            vis.update(dt)
+        vis.update(dt)

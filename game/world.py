@@ -60,6 +60,7 @@ class World(object):
                                  progress=(lambda f: step(0.15 + 0.6 * f, 'Возводим кварталы…')))
         step(0.8, 'Заселяем улицы…')
         self.models = Models(self.assets, self.base.loader)
+        self.models.preload()
         self.fx = Fx(self)
         self.sky = None
         self.hud = None

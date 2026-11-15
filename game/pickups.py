@@ -180,7 +180,10 @@ class Pickup(object):
                 # настоящая модель оружия вместо плоского значка
                 model = root.attachNewNode('spin')
                 g = t.copyTo(model)
-                g.setScale(1.7)
+                mn, mx = g.getTightBounds(model)
+                size = max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z, 0.05)
+                # пистолет и граната покрупнее, длинные стволы — в натуральную величину
+                g.setScale(min(3.0, max(0.9, 0.78 / size)))
                 mn, mx = g.getTightBounds(model)
                 g.setPos(-(mn.x + mx.x) * 0.5, -(mn.y + mx.y) * 0.5, -(mn.z + mx.z) * 0.5)
                 model.setP(18.0)

@@ -141,6 +141,24 @@ class Models(object):
             self._files[key] = np_
         return np_
 
+    def preload(self):
+        """Загрузить все файлы заранее (на экране загрузки), чтобы игра не «запиналась», когда на улице
+        впервые появляется новый персонаж или машина."""
+        if not self.ok:
+            return
+        try:
+            for key in sorted(self.meta['chars']):
+                self._load('chars', key + '.bam')
+            for sex in sorted(self.meta['anims']):
+                for name in self.meta['anims'][sex]:
+                    self.loader.loadModel(self.path('anims', '%s_%s.bam' % (sex, name)))
+            for name in sorted(self.meta['vehicles']):
+                self._load('veh', name + '.bam')
+            for wid in sorted(WEAPON_MODELS):
+                self.weapon(wid)
+        except Exception:
+            self.ok = self.chars_ok = False
+
     # ------------------------------------------------------------------
     # машины
     # ------------------------------------------------------------------

@@ -49,6 +49,12 @@ class PedVisual(object):
         self.fade = 0.0
         self.fade_len = FADE
         self.rate = 1.0
+        self.loop = True
+        self.time = 0.0
+        self.nframes = 1
+        self.fps = 30.0
+        self.frame = 0
+        self.done = False
         self.walk_ref = WALK_REF[self.sex] * s
         self.run_ref = RUN_REF[self.sex] * s
         self.grip = None
@@ -67,27 +73,18 @@ class PedVisual(object):
 
     def play(self, name, loop=True, rate=1.0, fade=FADE, restart=False):
         """Включить клип.  Повторный вызов с тем же именем только подправляет темп."""
-        c = self.cur_ctrl
         if name == self.cur and not restart:
-            if c is not None and abs(self.rate - rate) > 0.04:
-                c.setPlayRate(rate)
-                self.rate = rate
+            self.rate = rate
             return
         n = self._ctrl(name)
         if n is None:
             return
-        n.setPlayRate(rate)
-        self.rate = rate
-        if loop:
-            n.loop(True)
-        else:
-            n.play()
+        c = self.cur_ctrl
         b = self.bundle
         p = self.prev_ctrl
         if c is not None and c is not n and fade > 0.0:
             if p is not None and p is not n and p is not c:
                 b.setControlEffect(p, 0.0)
-                p.stop()
             self.prev_ctrl = c
             self.fade = self.fade_len = fade
             b.setControlEffect(n, 0.02)
@@ -95,39 +92,54 @@ class PedVisual(object):
         else:
             if c is not None and c is not n:
                 b.setControlEffect(c, 0.0)
-                c.stop()
             if p is not None and p is not n:
                 b.setControlEffect(p, 0.0)
-                p.stop()
             self.prev_ctrl = None
             self.fade = 0.0
             b.setControlEffect(n, 1.0)
         self.cur = name
         self.cur_ctrl = n
+        self.loop = loop
+        self.rate = rate
+        self.time = 0.0
+        self.nframes = max(1, n.getNumFrames())
+        self.fps = n.getFrameRate()
+        self.frame = 0
+        self.done = False
+        n.pose(0)
 
     def update(self, dt):
-        """Довести плавный переход между клипами."""
-        if self.fade <= 0.0:
-            return
-        self.fade -= dt
-        k = self.fade / self.fade_len
-        b = self.bundle
-        p = self.prev_ctrl
-        if k <= 0.0:
-            self.fade = 0.0
-            b.setControlEffect(self.cur_ctrl, 1.0)
-            if p is not None:
-                b.setControlEffect(p, 0.0)
-                p.stop()
-                self.prev_ctrl = None
-            return
-        b.setControlEffect(self.cur_ctrl, 1.0 - k)
-        if p is not None:
-            b.setControlEffect(p, k)
+        """Продвинуть клип на dt секунд игрового времени и довести плавный переход.
 
-    def playing(self):
-        c = self.cur_ctrl
-        return c is not None and c.isPlaying()
+        Кадр выставляется вручную, а не часами движка: так анимация замирает на паузе,
+        замедляется вместе с миром и одинаково идёт в тестах."""
+        if not self.done:
+            self.time += dt * self.rate
+            f = self.time * self.fps
+            if self.loop:
+                f %= self.nframes
+            elif f >= self.nframes - 1:
+                f = self.nframes - 1
+                self.done = True
+            fi = int(f)
+            if fi != self.frame:
+                self.frame = fi
+                self.cur_ctrl.pose(fi)
+        if self.fade > 0.0:
+            self.fade -= dt
+            k = self.fade / self.fade_len
+            b = self.bundle
+            p = self.prev_ctrl
+            if k <= 0.0:
+                self.fade = 0.0
+                b.setControlEffect(self.cur_ctrl, 1.0)
+                if p is not None:
+                    b.setControlEffect(p, 0.0)
+                    self.prev_ctrl = None
+            else:
+                b.setControlEffect(self.cur_ctrl, 1.0 - k)
+                if p is not None:
+                    b.setControlEffect(p, k)
 
     # ------------------------------------------------------------------
     def move_anim(self, speed, armed_aim=False):

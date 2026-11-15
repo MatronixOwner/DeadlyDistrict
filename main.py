@@ -64,8 +64,13 @@ def selftest():
     game.base.graphicsEngine.renderFrame()
     missing = sorted(set(game.assets.missing))
     assert not missing, 'missing textures: %s' % missing
+    mdl = w.models
+    assert mdl.ok and mdl.chars_ok and not mdl.failed, 'models not loaded: %s' % sorted(mdl.failed)
+    assert w.player.ped.vis is not None, 'player has no skeletal model'
+    assert all(v.minfo is not None for v in w.vehicles), 'vehicle without a model'
     assert not game.audio._missing, 'missing sounds: %s' % sorted(game.audio._missing)
-    print('SELFTEST OK: vehicles=%d peds=%d root=%s' % (len(w.vehicles), len(w.peds), game.assets.root))
+    print('SELFTEST OK: vehicles=%d peds=%d models=%d root=%s' % (
+        len(w.vehicles), len(w.peds), len(mdl.meta['chars']) + len(mdl.meta['vehicles']), game.assets.root))
     return 0
 
 
