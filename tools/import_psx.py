@@ -582,8 +582,361 @@ def do_chars(meta):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# машины
+# ---------------------------------------------------------------------------
+# имя в игре -> (папка, файл модели, варианты окраски, по которым ищем окрашенные места)
+CARS = {
+    'wagon': ('Car 01', 'Car.obj', ['car.png', 'car_blue.png', 'car_gray.png', 'car_red.png']),
+    'sleek': ('Car 02', 'Car2.obj', ['car2.png', 'car2_black.png', 'car2_red.png']),
+    'hatch': ('Car 03', 'Car3.obj', ['car3.png', 'car3_red.png', 'car3_yellow.png']),
+    'minivan': ('Car 04', 'Car4.obj', ['car4.png', 'car4_grey.png', 'car4_lightgrey.png', 'car4_lightorange.png']),
+    'caprice': ('Car 05', 'Car5.obj', ['car5.png', 'car5_green.png', 'car5_grey.png']),
+    'vintage': ('Car 07', 'Car7.obj', ['car7.png', 'car7_black.png', 'car7_brown.png', 'car7_green.png',
+                                       'car7_grey.png', 'car7_red.png']),
+    'stepvan': ('Car 08', 'Car8.obj', ['Car8.png', 'Car8_grey.png', 'Car8_purple.png']),
+}
+# модели с готовой раскраской: имя -> (папка, файл модели, текстура)
+CARS_FIXED = {
+    'police': ('Car 05', 'Car5_Police.obj', 'car5_police.png'),
+    'taxi': ('Car 05', 'Car5_Taxi.obj', 'car5_taxi.png'),
+    'wreck': ('Car 06', 'Car6.obj', 'car6.png'),
+}
+# фары и задние фонари (в единицах модели, для правого борта): (x, y, z)
+CAR_LIGHTS = {
+    'wagon': dict(head=(0.80, 2.96, 0.96), tail=(0.92, -2.98, 1.00)),
+    'sleek': dict(head=(0.86, 3.20, 0.97), tail=(0.90, -3.30, 1.14)),
+    'hatch': dict(head=(0.78, 2.78, 1.00), tail=(0.72, -2.74, 0.98)),
+    'minivan': dict(head=(0.92, 3.12, 1.18), tail=(1.30, -2.98, 1.34)),
+    'caprice': dict(head=(0.86, 3.66, 1.02), tail=(0.80, -3.64, 1.00)),
+    'vintage': dict(head=(0.57, 2.44, 1.44), tail=(0.99, -2.70, 1.28)),
+    'stepvan': dict(head=(0.95, 3.00, 1.06), tail=(1.20, -3.78, 0.86)),
+}
+CAR_LIGHTS['police'] = dict(CAR_LIGHTS['caprice'], siren=(0.52, -0.28, 2.26))
+CAR_LIGHTS['taxi'] = CAR_LIGHTS['caprice']
+CAR_LIGHTS['stepvan']['siren'] = (0.62, 1.72, 3.36)
+
+
+def read_obj(path):
+    """Вершины, текстурные координаты и грани OBJ; оси сразу переводятся в игровые (Z вверх, нос к +Y)."""
+    V, VT, faces = [], [], []
+    with open(path, encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            p = line.split()
+            if not p:
+                continue
+            if p[0] == 'v':
+                x, y, z = float(p[1]), float(p[2]), float(p[3])
+                V.append((-x, z, y))                    # поворот, а не отражение: обход граней сохраняется
+            elif p[0] == 'vt':
+                VT.append((float(p[1]), float(p[2])))
+            elif p[0] == 'f':
+                face = []
+                for tok in p[1:]:
+                    a = tok.split('/')
+                    vi = int(a[0])
+                    ti = int(a[1]) if len(a) > 1 and a[1] else 1
+                    face.append((vi - 1 if vi > 0 else len(V) + vi, ti - 1 if ti > 0 else len(VT) + ti))
+                faces.append(face)
+    return np.array(V), np.array(VT if VT else [(0.0, 0.0)]), faces
+
+
+def components(V, faces):
+    """Связные части модели (списки номеров граней): так находятся колёса, зеркала, бамперы."""
+    key = {}
+    rep = [key.setdefault(tuple(np.round(v, 4)), i) for i, v in enumerate(V)]
+    parent = list(range(len(V)))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+    for f in faces:
+        r0 = find(rep[f[0][0]])
+        for vi, _ in f[1:]:
+            r = find(rep[vi])
+            if r != r0:
+                parent[r] = r0
+    comps = {}
+    for fi, f in enumerate(faces):
+        comps.setdefault(find(rep[f[0][0]]), []).append(fi)
+    return sorted(comps.values(), key=lambda c: -len(c))
+
+
+def face_normal(pts):
+    n = np.zeros(3)
+    for k in range(len(pts)):
+        a, b = pts[k], pts[(k + 1) % len(pts)]
+        n += ((a[1] - b[1]) * (a[2] + b[2]), (a[2] - b[2]) * (a[0] + b[0]), (a[0] - b[0]) * (a[1] + b[1]))
+    l = np.linalg.norm(n)
+    return n / l if l > 1e-12 else np.array((0.0, 0.0, 1.0))
+
+
+class GeomOut(object):
+    """Накопитель треугольников с нормалями и текстурными координатами (или цветом) -> GeomNode."""
+
+    def __init__(self, colored=False):
+        self.colored = colored
+        self.v = []
+        self.tris = []
+
+    def face(self, pts, uvs=None, color=None, two_sided=False):
+        n = face_normal(np.asarray(pts, float))
+        base = len(self.v)
+        for k, p in enumerate(pts):
+            self.v.append((tuple(float(c) for c in p), tuple(float(c) for c in n),
+                           tuple(uvs[k]) if uvs is not None else color))
+        for k in range(1, len(pts) - 1):
+            self.tris.append((base, base + k, base + k + 1))
+        if two_sided:
+            base = len(self.v)
+            for k, p in enumerate(pts):
+                self.v.append((tuple(float(c) for c in p), tuple(float(-c) for c in n),
+                               tuple(uvs[k]) if uvs is not None else color))
+            for k in range(1, len(pts) - 1):
+                self.tris.append((base, base + k + 1, base + k))
+
+    def box(self, x0, x1, y0, y1, z0, z1, color, top=None):
+        c = color
+        t = top or color
+        self.face([(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)], color=c)
+        self.face([(x1, y1, z0), (x0, y1, z0), (x0, y1, z1), (x1, y1, z1)], color=c)
+        self.face([(x0, y1, z0), (x0, y0, z0), (x0, y0, z1), (x0, y1, z1)], color=c)
+        self.face([(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)], color=c)
+        self.face([(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)], color=t)
+
+    def node(self, name):
+        from panda3d.core import (GeomVertexFormat, GeomVertexData, Geom, GeomTriangles, GeomVertexWriter,
+                                  GeomNode)
+        fmt = GeomVertexFormat.getV3n3c4() if self.colored else GeomVertexFormat.getV3n3t2()
+        vd = GeomVertexData(name, fmt, Geom.UHStatic)
+        vd.setNumRows(len(self.v))
+        vw = GeomVertexWriter(vd, 'vertex')
+        nw = GeomVertexWriter(vd, 'normal')
+        xw = GeomVertexWriter(vd, 'color' if self.colored else 'texcoord')
+        for p, n, x in self.v:
+            vw.addData3(*p)
+            nw.addData3(*n)
+            if self.colored:
+                xw.addData4(x[0], x[1], x[2], 1.0)
+            else:
+                xw.addData2(x[0], x[1])
+        tr = GeomTriangles(Geom.UHStatic)
+        for a, b, c in self.tris:
+            tr.addVertices(a, b, c)
+        g = Geom(vd)
+        g.addPrimitive(tr)
+        gn = GeomNode(name)
+        gn.addGeom(g)
+        return gn
+
+
+def convert_car(name, obj_path, lights):
+    """OBJ -> veh/<имя>.bam: узел body/skin (кузов) и узел wheel (одно колесо в начале координат)."""
+    from panda3d.core import NodePath
+    _panda()
+    V, VT, faces = read_obj(obj_path)
+    comps = components(V, faces)
+    zmin = V[:, 2].min()
+    wheels = []
+    body_faces = []
+    for comp in comps:
+        pts = np.array([V[vi] for fi in comp for vi, _ in faces[fi]])
+        a, b = pts.min(0), pts.max(0)
+        ext = b - a
+        round_ = abs(ext[1] - ext[2]) < 0.12 * max(ext[1], ext[2])
+        if len(comp) == 16 and round_ and ext[0] < ext[1] * 0.8 and a[2] < zmin + 0.06:
+            wheels.append((comp, (a + b) * 0.5, (ext[1] + ext[2]) * 0.25))
+        else:
+            body_faces += comp
+    main = np.array([V[vi] for fi in comps[0] for vi, _ in faces[fi]])
+    allp = np.array([V[vi] for fi in body_faces for vi, _ in faces[fi]])
+    if name == 'vintage':
+        main = allp                                     # у «старинной» самая большая часть — рама с крыльями
+    width = max(main[:, 0].max(), -main[:, 0].min()) * 2.0
+    y0, y1 = allp[:, 1].min(), allp[:, 1].max()
+    yc = (y0 + y1) * 0.5
+    off = np.array((0.0, -yc, -zmin))                   # середина длины — в начало координат, колёса — на земле
+    out = GeomOut()
+    for fi in body_faces:
+        f = faces[fi]
+        out.face([V[vi] + off for vi, _ in f], [VT[ti] for _, ti in f])
+    root = NodePath('car')
+    body = root.attachNewNode('body')
+    body.attachNewNode(out.node('skin'))
+    info = dict(W=round(float(width), 3), L=round(float(y1 - y0), 3), H=round(float(allp[:, 2].max() - zmin), 3),
+                tex=True, wheels=[])
+    if wheels:
+        # колесо-образец: правое переднее, наружной стороной к +X
+        comp, c, r = sorted(wheels, key=lambda w: (0 if w[1][0] > 0 else 1, -w[1][1]))[0]
+        wo = GeomOut()
+        for fi in comp:
+            f = faces[fi]
+            wo.face([V[vi] - c for vi, _ in f], [VT[ti] for _, ti in f])
+        root.attachNewNode(wo.node('wheel'))
+        # порядок: переднее левое, переднее правое, заднее левое, заднее правое
+        for comp, c, r in sorted(wheels, key=lambda w: (0 if w[1][1] > yc else 1, w[1][0])):
+            info['wheels'].append(dict(x=round(float(c[0]), 3), y=round(float(c[1] - yc), 3), r=round(float(r), 3)))
+    for key in ('head', 'tail', 'siren'):
+        p = lights.get(key)
+        if p:
+            info[key] = [[-p[0], round(p[1] - yc, 3), round(p[2] - zmin, 3)],
+                         [p[0], round(p[1] - yc, 3), round(p[2] - zmin, 3)]]
+    if name == 'stepvan':
+        # маячки на крыше для «скорой» и спецназа (узел siren; у обычных фургонов игра его убирает)
+        bar = GeomOut(colored=True)
+        sx, sy, sz = lights['siren']
+        y, z = sy - yc, sz - zmin - 0.16
+        bar.box(-0.95, 0.95, y - 0.16, y + 0.16, z - 0.07, z, (0.10, 0.10, 0.11))
+        bar.box(-0.92, -0.30, y - 0.13, y + 0.13, z, z + 0.16, (0.85, 0.08, 0.06))
+        bar.box(0.30, 0.92, y - 0.13, y + 0.13, z, z + 0.16, (0.10, 0.22, 0.90))
+        bar.box(-0.30, 0.30, y - 0.13, y + 0.13, z, z + 0.12, (0.80, 0.80, 0.82))
+        body.attachNewNode(bar.node('siren'))
+    dst = os.path.join(OUT, 'veh', name + '.bam')
+    root.writeBamFile(dst)
+    return info
+
+
+def texel_map(V, VT, faces, size):
+    """Для каждого текселя — точка на модели и нормаль грани (чтобы рисовать на текстуре «по месту»)."""
+    pos = np.zeros((size, size, 3))
+    nrm = np.zeros((size, size, 3))
+    ok = np.zeros((size, size), bool)
+    ys, xs = np.mgrid[0:size, 0:size]
+    cx, cy = xs + 0.5, ys + 0.5
+    for f in faces:
+        pts = np.array([V[vi] for vi, _ in f])
+        uv = np.array([VT[ti] for _, ti in f])
+        n = face_normal(pts)
+        for k in range(1, len(f) - 1):
+            t3 = pts[[0, k, k + 1]]
+            tu = uv[[0, k, k + 1]] * size
+            tu[:, 1] = size - tu[:, 1]
+            d = (tu[1, 0] - tu[0, 0]) * (tu[2, 1] - tu[0, 1]) - (tu[2, 0] - tu[0, 0]) * (tu[1, 1] - tu[0, 1])
+            if abs(d) < 1e-9:
+                continue
+            w1 = ((cx - tu[0, 0]) * (tu[2, 1] - tu[0, 1]) - (tu[2, 0] - tu[0, 0]) * (cy - tu[0, 1])) / d
+            w2 = ((tu[1, 0] - tu[0, 0]) * (cy - tu[0, 1]) - (cx - tu[0, 0]) * (tu[1, 1] - tu[0, 1])) / d
+            w0 = 1.0 - w1 - w2
+            m = (w0 >= -0.02) & (w1 >= -0.02) & (w2 >= -0.02) & ~ok
+            if m.any():
+                ok |= m
+                pos[m] = w0[m][:, None] * t3[0] + w1[m][:, None] * t3[1] + w2[m][:, None] * t3[2]
+                nrm[m] = n
+    return pos, nrm, ok
+
+
+def _lum(a):
+    return a[..., 0] * 0.30 + a[..., 1] * 0.59 + a[..., 2] * 0.11
+
+
+def car_textures(name, folder, variants):
+    """Раскладывает раскраску на два слоя, чтобы игра красила кузов в любой цвет:
+
+      veh/<имя>.png        RGBA: всё, что не красится (стёкла, шины, фары, хром); на месте краски — прозрачно
+      veh/<имя>_shade.png  оттенки серого: светотень краски (128 — «как есть», светлее — блик, темнее — тень)
+    Окрашенные места — те, что различаются у вариантов набора."""
+    from PIL import Image
+    arrs = [np.asarray(Image.open(os.path.join(folder, v)).convert('RGB')).astype(float) for v in variants]
+    diff = np.zeros(arrs[0].shape[:2])
+    for a in arrs[1:]:
+        diff = np.maximum(diff, np.abs(a - arrs[0]).sum(2))
+    mask = diff > 24
+    shade = np.zeros(mask.shape)
+    wsum = 0.0
+    for a in arrs:
+        ref = np.median(a[mask], axis=0)
+        l = float(_lum(ref))
+        if l < 40.0:
+            continue                                    # на чёрном варианте светотени почти не видно
+        shade += _lum(a) / l
+        wsum += 1.0
+    shade /= wsum
+    sh = np.where(mask, np.clip(shade * 127.5, 0, 255), 128.0)
+    rgba = np.zeros(mask.shape + (4,), np.uint8)
+    rgba[..., :3] = np.where(mask[..., None], np.clip(sh, 0, 255)[..., None], arrs[0]).astype(np.uint8)
+    rgba[..., 3] = np.where(mask, 0, 255)
+    Image.fromarray(rgba, 'RGBA').save(os.path.join(OUT, 'veh', name + '.png'), optimize=True)
+    Image.fromarray(sh.astype(np.uint8), 'L').save(os.path.join(OUT, 'veh', name + '_shade.png'), optimize=True)
+    return mask
+
+
 def do_cars(meta):
-    pass
+    from PIL import Image
+    src = cars_dir()
+    vdir = os.path.join(OUT, 'veh')
+    if os.path.isdir(vdir):
+        shutil.rmtree(vdir)
+    os.makedirs(vdir)
+    veh = {}
+    masks = {}
+    for name, (folder, obj, variants) in CARS.items():
+        veh[name] = convert_car(name, os.path.join(src, folder, obj), CAR_LIGHTS.get(name, {}))
+        masks[name] = car_textures(name, os.path.join(src, folder), variants)
+    for name, (folder, obj, tex) in CARS_FIXED.items():
+        veh[name] = convert_car(name, os.path.join(src, folder, obj), CAR_LIGHTS.get(name, {}))
+        veh[name]['fixed'] = True
+        Image.open(os.path.join(src, folder, tex)).convert('RGB').save(os.path.join(vdir, name + '.png'),
+                                                                        optimize=True)
+    car_overlays(src, masks)
+    import gen_bus                                      # автобуса в наборе нет — он свой, в том же стиле
+    veh['bus'] = gen_bus.build(src)
+    meta['vehicles'] = veh
+    size = sum(os.path.getsize(os.path.join(vdir, f)) for f in os.listdir(vdir))
+    print('  машины: %d моделей, %d КБ' % (len(veh), size // 1024))
+    for name in sorted(veh):
+        v = veh[name]
+        print('    %-8s Ш %.2f  Д %.2f  В %.2f  колёс %d' % (name, v['W'], v['L'], v['H'], len(v['wheels'])))
+
+
+def car_overlays(src, masks):
+    """Накладки поверх краски (RGBA): ржавчина, почтовая и медицинская раскраска фургона."""
+    from PIL import Image
+    vdir = os.path.join(OUT, 'veh')
+    rng = np.random.RandomState(7)
+    # --- ржавчина для «Ржавчины»: настоящая ржавая текстура из набора, пятнами, гуще — понизу
+    V, VT, faces = read_obj(os.path.join(src, 'Car 01', 'Car.obj'))
+    pos, nrm, ok = texel_map(V, VT, faces, 128)
+    rust = np.asarray(Image.open(os.path.join(src, 'Car 06', 'car6.png')).convert('RGB')).astype(float)
+    rust = rust[90:122, 0:64]
+    rust = np.tile(rust, (4, 2, 1))[:128, :128]
+    n = rng.rand(16, 16)
+    n = np.asarray(Image.fromarray((n * 255).astype(np.uint8)).resize((128, 128), Image.BICUBIC)).astype(float) / 255
+    n = n * 0.75 + rng.rand(128, 128) * 0.25
+    z = pos[..., 2] - V[:, 2].min()
+    low = np.clip(1.25 - z / 1.0, 0.25, 1.0)
+    alpha = np.clip((n * low - 0.30) * 5.0, 0.0, 1.0) * 0.92
+    alpha = np.where(masks['wagon'] & ok, alpha, 0.0)
+    out = np.zeros((128, 128, 4), np.uint8)
+    out[..., :3] = np.clip(rust * 0.9, 0, 255).astype(np.uint8)
+    out[..., 3] = (alpha * 255).astype(np.uint8)
+    Image.fromarray(out, 'RGBA').save(os.path.join(vdir, 'wagon_rust.png'), optimize=True)
+    # --- фургон: почта (как в наборе) и «скорая» (красные полосы и крест)
+    base = np.asarray(Image.open(os.path.join(src, 'Car 08', 'Car8.png')).convert('RGB')).astype(int)
+    mail = np.asarray(Image.open(os.path.join(src, 'Car 08', 'Car8_mail.png')).convert('RGB')).astype(int)
+    d = np.abs(base - mail).sum(2) > 30
+    out = np.zeros((128, 128, 4), np.uint8)
+    out[..., :3] = mail.astype(np.uint8)
+    out[..., 3] = np.where(d, 255, 0)
+    Image.fromarray(out, 'RGBA').save(os.path.join(vdir, 'stepvan_mail.png'), optimize=True)
+    red = (200, 24, 24)
+    amb = np.zeros((128, 128, 4), np.uint8)
+    ys, xs = np.nonzero(d)
+    stripe = d & (np.arange(128)[:, None] >= 100)
+    small = d & (np.arange(128)[:, None] < 40)
+    for m in (stripe, small):
+        amb[m, :3] = red
+        amb[m, 3] = 255
+    # крест на месте конверта
+    cx, cy = 43, 89
+    for y in range(128):
+        for x in range(128):
+            dx, dy = abs(x - cx), abs(y - cy)
+            if (dx <= 2 and dy <= 7) or (dy <= 2 and dx <= 7):
+                amb[y, x, :3] = red
+                amb[y, x, 3] = 255
+    Image.fromarray(amb, 'RGBA').save(os.path.join(vdir, 'stepvan_ambulance.png'), optimize=True)
 
 
 # ---------------------------------------------------------------------------

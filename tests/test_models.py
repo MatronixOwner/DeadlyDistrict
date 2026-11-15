@@ -56,7 +56,7 @@ def test_vehicle_model_fits_its_spec(world, kind):
     assert v.minfo is not None, 'нет модели для %s' % kind
     mn, mx = v.body.getTightBounds(v.tilt)
     assert abs((mx.y - mn.y) - spec.L) < 0.05 * spec.L           # длина — вдоль +Y
-    assert (mx.x - mn.x) <= spec.W * 1.02                         # кузов не шире зоны столкновений
+    assert (mx.x - mn.x) <= spec.W * 1.25                         # за зону столкновений торчат только зеркала
     assert len(v.wheels) == 4
     fl, fr, rl, rr = [piv.getPos() for piv, _ in v.wheels]
     assert fl.x < 0 < fr.x and rl.x < 0 < rr.x                    # левые слева, правые справа

@@ -1,44 +1,49 @@
 # -*- coding: utf-8 -*-
 """Готовые модели: персонажи со скелетной анимацией, машины, оружие.
 
-Файлы лежат в assets/models и получены скриптом tools/import_models.py из свободных
-наборов Quaternius (CC0).  Здесь — только то, как игра их использует: какую модель
-взять для машины или человека, как её перекрасить и какие клипы анимации проигрывать.
+Файлы лежат в assets/models и получены скриптами tools/import_psx.py (люди и машины в стиле
+PlayStation 1) и tools/import_models.py (оружие).  Здесь — только то, как игра их использует:
+какую модель взять для машины или человека, как её покрасить и какие клипы анимации проигрывать.
 Чтобы подставить другие модели, достаточно положить свои .bam и поправить таблицы ниже.
 """
 import json
 import os
 
-from panda3d.core import Filename, NodePath, LMatrix4, BoundingSphere, LPoint3
+from panda3d.core import Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture
 
 from .defs import (W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV)
 
 # ---------------------------------------------------------------------------
-# машины: тип из vehicle.SPECS -> (файл модели, особенности)
-#   trim   — цвет второй группы деталей: 'dark' (темнее кузова) или готовый цвет
-#   siren  — оставить ли на крыше маячки
+# машины: тип из vehicle.SPECS -> (модель, особенности)
+#   overlay — накладка поверх краски (ржавчина, красный крест); словарь — по номеру цвета
+#   siren   — оставить ли на крыше маячки
+#   wheel_k — колёса крупнее обычных (и кузов выше), для внедорожника
+#   dull    — множитель яркости краски
 # ---------------------------------------------------------------------------
 VEHICLE_MODELS = {
-    'sedan': ('sedan', {}),
+    'sedan': ('wagon', {}),
     'hatch': ('hatch', {}),
-    'sports': ('coupe', {}),
-    'muscle': ('muscle', {}),
-    'suv': ('suv', {}),
-    'pickup': ('pickup', {}),
-    'van': ('box', {'trim': 'dark'}),
+    'sports': ('sleek', {}),
+    'muscle': ('caprice', {}),
+    'suv': ('minivan', {'wheel_k': 1.17}),
+    'pickup': ('minivan', {}),
+    'van': ('stepvan', {'overlay': {12: 'stepvan_mail'}}),
     'taxi': ('taxi', {}),
     'police': ('police', {'siren': True}),
-    'ambulance': ('box', {'trim': (0.80, 0.10, 0.10), 'siren': True}),
-    'bus': ('bus', {'trim': 'dark'}),
-    'truck': ('truck', {}),
-    'enforcer': ('box', {'trim': (0.86, 0.86, 0.90), 'siren': True}),
-    'fbi': ('sport4', {}),
-    'army': ('truck', {}),
-    'beater': ('sedan', {}),
-    'lowrider': ('sport4', {}),
+    'ambulance': ('stepvan', {'overlay': 'stepvan_ambulance', 'siren': True}),
+    'bus': ('bus', {}),
+    'truck': ('stepvan', {'overlay': {2: 'stepvan_mail'}}),
+    'enforcer': ('stepvan', {'siren': True}),
+    'fbi': ('sleek', {}),
+    'army': ('stepvan', {}),
+    'beater': ('wagon', {'overlay': 'wagon_rust'}),
+    'lowrider': ('vintage', {}),
 }
 
-WRECK = (0.13, 0.12, 0.11)
+WRECK = (0.20, 0.18, 0.16)
+# Текстуры набора нарисованы приглушёнными красками; цвета игры приводим к тому же виду.
+PAINT_GAIN = 0.74
+PAINT_SAT = 0.86
 
 # ---------------------------------------------------------------------------
 # персонажи.  Все модели — на одном скелете, клипы анимации общие; внешность задаёт текстура.
@@ -96,6 +101,9 @@ class Models(object):
         self._weapons = {}
         self._hand = {}
         self._ctex = {}
+        self._vinfo = {}
+        self._vtex = {}
+        self._images = {}
         self.failed = set()
         self.chars_ok = self.ok
 
@@ -139,31 +147,92 @@ class Models(object):
         """Сведения о модели машины, подогнанной под габариты spec, или None."""
         if not self.ok or kind in self.failed:
             return None
+        res = self._vinfo.get(kind)
+        if res is not None:
+            return res
         ent = VEHICLE_MODELS.get(kind)
         if ent is None:
             return None
         info = self.meta['vehicles'].get(ent[0])
         if info is None:
             return None
+        opt = ent[1]
         height = spec.H
         if spec.box:
             height = max(height, spec.box[1])
         sx, sy, sz = spec.W / info['W'], spec.L / info['L'], height / info['H']
         ws = (sy * sz) ** 0.5                        # колёса остаются круглыми
+        wk = opt.get('wheel_k', 1.0)
+        lift = 0.0
         wheels = []
         for w in info['wheels']:
             r = w['r'] * ws
-            wheels.append((w['x'] * sx, w['y'] * sy, r, w['x'] < 0))
+            lift = r * (wk - 1.0)
+            wheels.append((w['x'] * sx, w['y'] * sy, r * wk, w['x'] < 0))
 
         def pts(name):
-            return [(p[0] * sx, p[1] * sy, p[2] * sz) for p in info.get(name, [])]
-        return dict(model=ent[0], opt=ent[1], scale=(sx, sy, sz), wheel_scale=ws, wheels=wheels,
-                    wheel_r=(wheels[0][2] if wheels else spec.wheel_r), head=pts('head'), tail=pts('tail'),
-                    siren=pts('siren'), height=height)
+            return [(p[0] * sx, p[1] * sy, p[2] * sz + lift) for p in info.get(name, [])]
+        res = dict(model=ent[0], opt=opt, scale=(sx, sy, sz), wheel_scale=ws * wk, wheels=wheels, lift=lift,
+                   wheel_r=(wheels[0][2] if wheels else spec.wheel_r), head=pts('head'), tail=pts('tail'),
+                   siren=pts('siren') if opt.get('siren') else [], height=height + lift,
+                   fixed=bool(info.get('fixed')))
+        self._vinfo[kind] = res
+        return res
 
-    def vehicle_body(self, kind, spec, paint, wreck=False):
+    def _pnm(self, name):
+        img = self._images.get(name)
+        if img is None:
+            img = PNMImage()
+            if not img.read(Filename.fromOsSpecific(os.path.join(self.dir, 'veh', name + '.png'))):
+                raise IOError(name)
+            if img.isGrayscale():
+                img.makeRgb()                # у серой картинки значение лежит только в одном канале
+            self._images[name] = img
+        return img
+
+    def vehicle_texture(self, kind, spec, paint, idx=0):
+        """Текстура кузова, окрашенная в цвет paint (idx — номер цвета: от него зависят накладки).
+
+        Краска собирается из слоёв: цвет × светотень, сверху накладка (ржавчина, эмблема), сверху всё,
+        что не красится, — стёкла, шины, фары, хром."""
+        info = self.vehicle_info(kind, spec)
+        if info is None:
+            return None
+        model = info['model']
+        opt = info['opt']
+        overlay = opt.get('overlay')
+        if isinstance(overlay, dict):
+            overlay = overlay.get(idx)
+        if info['fixed']:
+            key = (model,)
+        else:
+            key = (model, int(paint[0] * 255), int(paint[1] * 255), int(paint[2] * 255), overlay)
+        tex = self._vtex.get(key)
+        if tex is not None:
+            return tex
+        if info['fixed']:
+            img = self._pnm(model)
+        else:
+            detail = self._pnm(model)
+            w, h = detail.getXSize(), detail.getYSize()
+            g = (paint[0] * 0.30 + paint[1] * 0.59 + paint[2] * 0.11)
+            k = PAINT_GAIN * opt.get('dull', 1.0)
+            img = PNMImage(w, h, 3)
+            img.fill(min(1.0, (g + (paint[0] - g) * PAINT_SAT) * k), min(1.0, (g + (paint[1] - g) * PAINT_SAT) * k),
+                     min(1.0, (g + (paint[2] - g) * PAINT_SAT) * k))
+            img.multSubImage(self._pnm(model + '_shade'), 0, 0, 0, 0, w, h, 2.0)
+            if overlay:
+                img.blendSubImage(self._pnm(overlay), 0, 0, 0, 0, w, h)
+            img.blendSubImage(detail, 0, 0, 0, 0, w, h)
+        tex = Texture('veh-%s' % '-'.join(str(x) for x in key))
+        tex.load(img)
+        self.assets.setup_filter(tex)
+        self._vtex[key] = tex
+        return tex
+
+    def vehicle_body(self, kind, spec, paint, wreck=False, idx=0):
         """Кузов нужного цвета (NodePath-шаблон, его копируют) или None, если модели нет."""
-        key = (kind, tuple(paint), wreck)
+        key = (kind, tuple(paint), wreck, idx)
         np_ = self._bodies.get(key)
         if np_ is not None:
             return np_
@@ -175,19 +244,12 @@ class Models(object):
             root = NodePath('body')
             m = src.copyTo(root)
             m.setScale(*info['scale'])
-            opt = info['opt']
-            pn = m.find('paint')
-            if not pn.isEmpty():
-                pn.setColorScale(paint[0], paint[1], paint[2], 1.0)
-            tn = m.find('trim')
-            if not tn.isEmpty():
-                tc = opt.get('trim', 'dark')
-                if tc == 'dark':
-                    tc = _mul(paint, 0.62)
-                tn.setColorScale(tc[0], tc[1], tc[2], 1.0)
+            m.setZ(info['lift'])
             sn = m.find('siren')
-            if not sn.isEmpty() and not opt.get('siren'):
+            if not sn.isEmpty() and not info['opt'].get('siren'):
                 sn.removeNode()
+            skin = m.find('skin')
+            skin.setTexture(self.vehicle_texture(kind, spec, paint, idx), 1)
             if wreck:
                 m.setColorScale(WRECK[0], WRECK[1], WRECK[2], 1.0)
             root.flattenStrong()                     # масштаб и цвета — прямо в вершины
@@ -198,7 +260,7 @@ class Models(object):
         return root
 
     def vehicle_wheel(self, kind, spec, left=False):
-        """Колесо (ось вращения — X).  У левого наружная сторона смотрит в -X."""
+        """Колесо (ось вращения — X).  У левого наружная сторона смотрит в -X.  Текстуру ставит машина."""
         key = (kind, left)
         np_ = self._wheels.get(key)
         if np_ is not None:

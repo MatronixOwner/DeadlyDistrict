@@ -77,45 +77,45 @@ def _add(spec):
     SPECS[spec.name] = spec
 
 
-_add(Spec('sedan', 'Волна', 4.5, 1.8, 1.42))
-_add(Spec('hatch', 'Кроха', 3.7, 1.65, 1.45, trunk=0.02, rw_rake=0.35, hood=0.9, top=31.0, accel=5.0,
+_add(Spec('sedan', 'Волна', 4.5, 1.8, 1.5))
+_add(Spec('hatch', 'Кроха', 3.9, 1.65, 1.45, trunk=0.02, rw_rake=0.35, hood=0.9, top=31.0, accel=5.0,
           mass=950.0, value=250))
-_add(Spec('sports', 'Комета', 4.3, 1.86, 1.16, hood=1.4, ws_rake=0.8, rw_rake=0.9, trunk=0.5, nose_drop=0.2,
+_add(Spec('sports', 'Комета', 4.6, 1.86, 1.3, hood=1.4, ws_rake=0.8, rw_rake=0.9, trunk=0.5, nose_drop=0.2,
           belt=0.68, clear=0.16, top=56.0, accel=9.5, grip=9.5, extras=('spoiler',), value=2500, mass=1200.0))
-_add(Spec('muscle', 'Бизон', 4.9, 1.9, 1.32, hood=1.7, trunk=1.0, top=48.0, accel=8.2, grip=6.2, value=1200,
+_add(Spec('muscle', 'Бизон', 5.2, 1.9, 1.42, hood=1.7, trunk=1.0, top=48.0, accel=8.2, grip=6.2, value=1200,
           mass=1500.0))
-_add(Spec('suv', 'Хозяин', 4.8, 1.95, 1.82, belt=1.0, clear=0.36, wheel_r=0.40, trunk=0.02, rw_rake=0.3,
+_add(Spec('suv', 'Хозяин', 4.6, 1.95, 1.8, belt=1.0, clear=0.36, wheel_r=0.40, trunk=0.02, rw_rake=0.3,
           mass=2200.0, top=37.0, accel=5.6, health=1300.0, value=1500))
-_add(Spec('pickup', 'Трудяга', 5.2, 1.9, 1.7, belt=0.95, clear=0.34, hood=1.25, trunk=2.1, rw_rake=0.1,
+_add(Spec('pickup', 'Трудяга', 4.6, 1.9, 1.74, belt=0.95, clear=0.34, hood=1.25, trunk=2.1, rw_rake=0.1,
           wheel_r=0.38, mass=1900.0, top=34.0, accel=5.2, health=1200.0, extras=('bed',), value=600))
-_add(Spec('van', 'Грузовичок', 5.0, 1.95, 2.1, hood=0.7, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
+_add(Spec('van', 'Грузовичок', 5.2, 1.95, 2.36, hood=0.7, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
           cargo=0.6, mass=2300.0, top=32.0, accel=4.6, health=1300.0, value=500, wheel_r=0.34))
-_add(Spec('taxi', 'Такси', 4.5, 1.8, 1.42, extras=('taxi',), paints=[(0.95, 0.74, 0.08)], value=450))
-_add(Spec('police', 'Патруль', 4.6, 1.84, 1.42, extras=('police',), paints=[(0.92, 0.92, 0.94)], top=47.0,
+_add(Spec('taxi', 'Такси', 5.0, 1.8, 1.56, extras=('taxi',), paints=[(0.95, 0.74, 0.08)], value=450))
+_add(Spec('police', 'Патруль', 5.1, 1.84, 1.6, extras=('police',), paints=[(0.92, 0.92, 0.94)], top=47.0,
           accel=8.4, grip=8.5, health=1400.0, value=0, radio=False))
-_add(Spec('ambulance', 'Скорая', 5.4, 2.0, 2.3, hood=0.75, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
+_add(Spec('ambulance', 'Скорая', 5.4, 2.05, 2.5, hood=0.75, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
           cargo=0.62, mass=2600.0, top=36.0, accel=5.6, health=1500.0, extras=('ambulance',),
           paints=[(0.94, 0.94, 0.94)], value=0, wheel_r=0.36, radio=False))
 _add(Spec('bus', 'Автобус', 10.5, 2.5, 3.0, belt=1.1, hood=0.1, ws_rake=0.12, trunk=0.02, rw_rake=0.05,
           clear=0.36, wheel_r=0.48, wheel_w=0.3, mass=9000.0, top=25.0, accel=3.0, steer=0.5, health=2600.0,
           front_axle=3.3, rear_axle=-2.9, seats=8, value=800, engine='truck',
           paints=[(0.86, 0.52, 0.10), (0.16, 0.42, 0.70), (0.86, 0.86, 0.84)]))
-_add(Spec('truck', 'Тягач', 7.4, 2.4, 2.5, hood=0.35, ws_rake=0.2, trunk=4.9, rw_rake=0.05, belt=1.25,
+_add(Spec('truck', 'Тягач', 6.8, 2.4, 2.5, hood=0.35, ws_rake=0.2, trunk=4.9, rw_rake=0.05, belt=1.25,
           clear=0.45, wheel_r=0.48, wheel_w=0.3, mass=7000.0, top=28.0, accel=3.3, steer=0.5, health=2200.0,
-          front_axle=2.6, rear_axle=-2.2, seats=2, box=(4.7, 3.3, (0.86, 0.86, 0.84)), value=700,
+          front_axle=2.4, rear_axle=-2.1, seats=2, box=(4.4, 3.1, (0.86, 0.86, 0.84)), value=700,
           engine='truck', tail_drop=0.35))
-_add(Spec('enforcer', 'Спецназ', 5.8, 2.2, 2.45, hood=0.8, ws_rake=0.4, trunk=0.02, rw_rake=0.04, belt=1.1,
+_add(Spec('enforcer', 'Спецназ', 5.8, 2.2, 2.7, hood=0.8, ws_rake=0.4, trunk=0.02, rw_rake=0.04, belt=1.1,
           cargo=0.66, mass=3800.0, top=41.0, accel=6.8, health=2600.0, extras=('lightbar',),
           paints=[(0.10, 0.13, 0.24)], value=0, wheel_r=0.4, clear=0.38, radio=False, engine='truck'))
-_add(Spec('fbi', 'Агент', 4.7, 1.86, 1.4, paints=[(0.05, 0.05, 0.06)], top=53.0, accel=9.4, grip=9.0,
+_add(Spec('fbi', 'Агент', 4.7, 1.86, 1.46, paints=[(0.05, 0.05, 0.06)], top=53.0, accel=9.4, grip=9.0,
           health=1600.0, value=0, radio=False))
-_add(Spec('army', 'Барракуда', 7.2, 2.4, 2.6, hood=0.4, ws_rake=0.2, trunk=4.7, rw_rake=0.05, belt=1.3,
+_add(Spec('army', 'Барракуда', 6.8, 2.4, 2.6, hood=0.4, ws_rake=0.2, trunk=4.7, rw_rake=0.05, belt=1.3,
           clear=0.5, wheel_r=0.52, wheel_w=0.32, mass=8000.0, top=34.0, accel=4.6, steer=0.5, health=3200.0,
-          front_axle=2.5, rear_axle=-2.2, seats=2, box=(4.5, 3.2, (0.26, 0.31, 0.2)),
+          front_axle=2.4, rear_axle=-2.1, seats=2, box=(4.3, 3.1, (0.26, 0.31, 0.2)),
           paints=[(0.26, 0.31, 0.2)], value=0, radio=False, engine='truck', tail_drop=0.35))
-_add(Spec('beater', 'Ржавчина', 4.4, 1.76, 1.44, paints=RUST_PAINTS, top=29.0, accel=4.2, health=750.0,
+_add(Spec('beater', 'Ржавчина', 4.4, 1.76, 1.5, paints=RUST_PAINTS, top=29.0, accel=4.2, health=750.0,
           value=120, grip=6.5))
-_add(Spec('lowrider', 'Барон', 5.0, 1.9, 1.3, hood=1.6, trunk=1.2, clear=0.14, top=42.0, accel=6.5,
+_add(Spec('lowrider', 'Барон', 4.3, 1.8, 2.0, hood=1.6, trunk=1.2, clear=0.14, top=42.0, accel=6.5,
           paints=[(0.42, 0.10, 0.44), (0.10, 0.42, 0.22), (0.60, 0.08, 0.20)], value=900, grip=6.8))
 
 # какие машины встречаются в каком районе (тип, вес)
@@ -555,12 +555,16 @@ class Vehicle(object):
         pal = self.spec.paints or PAINTS
         return pal[self.paint % len(pal)]
 
+    def _paint_idx(self):
+        pal = self.spec.paints or PAINTS
+        return self.paint % len(pal)
+
     def _new_body(self, wreck=False):
         """Кузов: готовая модель, перекрашенная в цвет машины; если её нет — собранный из плоскостей."""
         w = self.world
         mdl = getattr(w, 'models', None)
         if self.minfo is not None:
-            t = mdl.vehicle_body(self.kind, self.spec, self._paint_rgb(), wreck)
+            t = mdl.vehicle_body(self.kind, self.spec, self._paint_rgb(), wreck, self._paint_idx())
             if t is not None:
                 return t.copyTo(self.tilt)
         return body_template(w.assets, self.kind, 0 if wreck else self.paint, wreck=wreck).copyTo(self.tilt)
@@ -587,6 +591,7 @@ class Vehicle(object):
                     wn = (tl if left else tr).copyTo(piv)
                     self.wheels.append((piv, wn))
                 self.wheel_r_vis = self.minfo['wheel_r']
+                self._texture_wheels()
                 made = True
         if not made:
             wt = wheel_template(w.assets, self.kind)
@@ -606,10 +611,19 @@ class Vehicle(object):
         self.siren_np = None
         self.sync()
 
+    def _texture_wheels(self):
+        """Колёса модели нарисованы на той же текстуре, что и кузов (у старинных машин они ещё и в цвет)."""
+        tex = self.world.models.vehicle_texture(self.kind, self.spec, self._paint_rgb(), self._paint_idx())
+        if tex is not None:
+            for piv, wn in self.wheels:
+                wn.setTexture(tex, 1)
+
     def set_paint(self, idx):
         self.paint = idx
         self.body.removeNode()
         self.body = self._new_body()
+        if self.minfo is not None and len(self.minfo['wheels']) == 4:
+            self._texture_wheels()
 
     def _ensure_lights(self):
         if self.lights is None:
