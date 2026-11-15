@@ -501,6 +501,7 @@ class Vehicle(object):
         self.s = 0.0
         self.target_speed = 0.0
         self.rush = False                # на «рельсах»: спешит и не ждёт на светофорах (беглец)
+        self.scripted = False            # положение и скорость задаёт сценка (режим PARKED)
         self.persona = 1.0
         self.wait_t = 0.0
         self.creep_t = 0.0
@@ -731,7 +732,7 @@ class Vehicle(object):
             h = dt / n
             for _ in range(n):
                 self._update_phys(h)
-        else:
+        elif not self.scripted:
             self.speed = 0.0
             self.vx = self.vy = 0.0
         self._update_damage(dt)

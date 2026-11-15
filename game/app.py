@@ -236,6 +236,8 @@ class Game(object):
         w.traffic.spot_block = {}
         w.traffic.density = 1.0
         w.crowd.density = 1.0
+        w.traffic.enabled = True
+        w.crowd.enabled = True
         w.police.locked = None
         w.police.clear()
         w.police.units = []
@@ -868,7 +870,8 @@ class Game(object):
                     self.pause()
                     inp.end_frame()
                     return
-            if (inp.hit('escape') or inp.hit('p')) and w.respawn_kind is None and w.missions.intro is None:
+            # порядок важен: hit() «съедает» нажатие, а в прологе Esc нужен самой сценке (пропуск)
+            if w.respawn_kind is None and w.missions.intro is None and (inp.hit('escape') or inp.hit('p')):
                 self.pause()
             else:
                 wdt = dt * (0.45 if (w.respawn_kind == 'wasted' and w.respawn_t < 3.6) else 1.0)

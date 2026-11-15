@@ -1406,6 +1406,9 @@ class Missions(object):
                 self._finish(False, '', True)
             except Exception:
                 self.active = None
+        if self.intro is not None:
+            self.intro = None
+            self._intro_off()
         hud = w.hud
         for mk in self.markers:
             mk.remove()
@@ -2043,54 +2046,311 @@ class Missions(object):
             hud.help('Тебя ищет полиция! Скройся из виду, найди взятку-звезду или перекрась машину.', 9.0)
         elif 'start' not in h and self.active is None and pl.state == 'foot':
             h.add('start')
-            hud.help('WASD — движение, мышь — обзор, Shift — бег, пробел — прыжок, F — сесть в машину.', 10.0)
-        elif 'goal' not in h and w.time > 14.0 and self.active is None and not self.done:
+            self.hint_t = 11.0
+            if pl.indoors:
+                hud.help('Это твоя комната: у кровати можно сохранить игру. WASD — движение, мышь — обзор. '
+                         'Выход — дверь с жёлтой стрелкой.', 10.0)
+            else:
+                hud.help('WASD — движение, мышь — обзор, Shift — бег, пробел — прыжок, F — сесть в машину.', 10.0)
+        elif 'goal' not in h and self.active is None and not self.done and not pl.indoors:
             h.add('goal')
-            hud.help('Иди к Вано: розовая метка «В» на радаре. Его гараж — к западу от убежища.', 10.0)
+            hud.help('Вано ждёт в гараже к западу от дома: розовая метка «В» на радаре. '
+                     'Shift — бег, F — сесть в машину.', 10.0)
 
     # ------------------------------------------------------------------
     def start_intro(self):
+        """Пролог — сценка на движке: ночной автобус привозит Макса в город.
+
+        Enter, пробел или щелчок мыши — следующий кадр, Esc — пропустить целиком."""
         w = self.w
-        self.intro = dict(t=0.0, i=-1, lines=[
-            'Порт-Глухов. Город, в который не приезжают — в него попадают.',
-            'Тебя зовут Макс. Три года за рулём у чужих людей, одно неудачное дело — и вот ты здесь.',
-            'Из имущества — ключ от комнаты в Старом городе и номер человека по имени Вано.',
-            'Пора напомнить этому городу, кто здесь лучший водитель.'], dur=0.0)
+        pl = w.player
+        it = dict(t=0.0, wait=0.0, tick=None, bus=None, hint=None)
+        it['gen'] = self._intro_script(it)
+        self.intro = it
         w.hud.fade(1.0, instant=True)
         w.hud.show(False)
-        w.player.freeze = True
+        w.hud.mission_title('')
+        pl.freeze = True
+        pl.invincible = True
         self.letterbox(True)
+        w.traffic.enabled = False              # улицы пустые: сценке не мешает случайный транспорт
+        w.sky.time_scale = 0.0
+        w.interiors.cinema = True
+        for mk in self.markers:
+            mk.show(False)
+        # подсказка на нижней чёрной полосе
+        from direct.gui.OnscreenText import OnscreenText
+        from panda3d.core import TextNode
+        it['hint'] = OnscreenText(text='Enter — дальше      Esc — пропустить', parent=self.letter, pos=(0, -0.915),
+                                  scale=0.042, fg=(0.62, 0.62, 0.62, 1.0), font=w.hud.f_txt, align=TextNode.ACenter)
+
+    def _intro_script(self, it):
+        w = self.w
+        c = w.city
+        pl = w.player
+        p = pl.ped
+        hud = w.hud
+        sky = w.sky
+        cam = w.cam
+        rn = w.roadnet
+        sx, sy = c.landmarks['safehouse']['door']
+
+        def stage(x, y):
+            """Перенести (пока невидимого) героя к месту съёмки и убрать оттуда едущие машины."""
+            pl.script_move = None
+            p.stop_act()
+            pl.teleport(x, y)
+            for v in list(w.vehicles):
+                if v is not it['bus'] and not v.keep and v.mode != Vehicle.PARKED and \
+                        (v.x - x) ** 2 + (v.y - y) ** 2 < 300.0 ** 2:
+                    w.remove_vehicle(v)
+
+        def bus_at(x, y, yaw, speed=0.0):
+            b = it['bus']
+            if b is None or b.removed:
+                b = w.spawn_vehicle('bus', x, y, yaw, 0)
+                b.keep = True
+                b.locked = True
+                b.scripted = True
+                b.mode = Vehicle.PARKED
+                it['bus'] = b
+            b.x, b.y, b.yaw = x, y, yaw
+            b.z = c.ground_z(x, y)
+            b.speed = speed
+            b.sync()
+            b.set_lights(True)
+            return b
+
+        def say(text, extra=0.0):
+            dur = 2.3 + len(text) * 0.055 + extra
+            hud.subtitle(text, dur + 0.6, clear=True)
+            return dur
+
+        def engine(b):
+            """Мотор автобуса: громче вблизи камеры, выше на ходу."""
+            o = cam.override
+            d = math.hypot(b.x - o[0], b.y - o[1]) if o else 60.0
+            w.scene_engine = ('engine_truck', clamp(1.0 - d / 70.0, 0.0, 1.0) * 0.6,
+                              0.62 + 0.03 * min(abs(b.speed), 16.0))
+
+        # --- 1. ночная трасса на материке: автобус идёт к городу
+        sky.set_weather('rain')
+        sky.set_time(23.4)
+        p.node.hide()
+        lane, s0, d0 = rn.nearest_lane(640.0, 825.0, 30.0)
+        hy = lane.y0 if lane is not None else 824.8
+        stage(604.0, hy + 16.0)
+        bus = bus_at(668.0, hy, math.pi, 16.0)
+
+        def tick(dt):
+            bus.x -= 16.0 * dt
+            cam.override = (606.0, hy + 7.4, 1.25, bus.x, bus.y, 1.8)
+            engine(bus)
+        it['tick'] = tick
+        tick(0.0)
+        hud.fade(0.0, 0.6)
+        yield say('Порт-Глухов. Город, в который не приезжают — в него попадают.', 0.8)
+
+        # --- 2. Большой мост: впереди огни острова
+        lane, s0, d0 = rn.nearest_lane(66.0, 520.0, 30.0)
+        bx = lane.x0 if lane is not None else 68.2
+        stage(bx + 14.0, 560.0)
+        bus = bus_at(bx, 584.0, -math.pi / 2, 15.0)
+
+        def tick(dt):
+            bus.y -= 15.0 * dt
+            bus.z = c.ground_z(bus.x, bus.y)
+            cam.override = (bus.x + 13.0, bus.y + 30.0, bus.z + 9.5, bus.x - 3.0, bus.y - 20.0, bus.z + 1.0)
+            engine(bus)
+        it['tick'] = tick
+        tick(0.0)
+        yield say('Три года я крутил баранку для чужих людей. Одно неудачное дело — и не стало ни людей, ни баранки.')
+
+        # --- 3. рассвет, Старый город: автобус подходит к остановке у дома
+        sky.set_weather('cloudy')
+        sky.set_time(6.1)
+        lane, s0, d0 = rn.nearest_lane(sx, sy - 5.0, 12.0)
+        ly = lane.y0 if lane is not None else sy - 5.6
+        stop_x = sx - 9.0
+        stage(sx - 4.0, sy + 0.5)
+        v0, dist = 8.0, 36.0
+        acc = v0 * v0 / (2.0 * dist)
+        total = 2.0 * dist / v0
+        bus = bus_at(stop_x + dist, ly, math.pi, v0)
+        t = [0.0]
+
+        def tick(dt):
+            t[0] = min(total, t[0] + dt)
+            bus.x = stop_x + dist - (v0 * t[0] - 0.5 * acc * t[0] * t[0])
+            bus.speed = v0 - acc * t[0]
+            cam.override = (stop_x - 12.5, sy - 1.5, 1.45, bus.x - 2.0, bus.y + 0.8, 1.6)
+            engine(bus)
+        it['tick'] = tick
+        tick(0.0)
+        say('Из имущества — сумка, ключ от комнаты и номер человека по имени Вано.', 2.0)
+        yield lambda: t[0] >= total
+
+        # --- 4. конечная: Макс выходит, автобус уезжает
+        bus = bus_at(stop_x, ly, math.pi, 0.0)
+        w.audio.play_at('door', bus.x, bus.y, 0.9)
+        p.node.show()
+        pl.teleport(stop_x - 3.3, ly + 2.3, math.pi / 2)
+        pl.script_move = (stop_x - 2.9, sy - 1.3, 1.35)
+        cam.override = (stop_x + 1.6, sy - 0.2, 1.55, stop_x - 3.4, sy - 2.2, 1.25)
+        t = [0.0]
+
+        def tick(dt):
+            t[0] += dt
+            if t[0] > 2.4:
+                bus.speed = min(9.0, bus.speed + 1.8 * dt)
+                bus.x -= bus.speed * dt
+            engine(bus)
+        it['tick'] = tick
+        yield say('Водитель: Конечная, парень. Дальше — только море.', 1.6)
+
+        # --- 5. звонок
+        it['tick'] = None
+        w.scene_engine = None
+        if not bus.removed:
+            bus.keep = False
+            w.remove_vehicle(bus)
+        it['bus'] = None
+        px, py = stop_x - 2.9, sy - 1.3
+        pl.script_move = None
+        pl.teleport(px, py, -math.pi / 2)
+        p.play('phone', True)
+        w.audio.play('pager', 0.8)
+        cam.override = (px + 0.55, py - 2.0, 1.62, px, py, 1.5)
+        yield say('Вано: Макс? Вано говорит. Добрался? Комната твоя, ключ под ковриком.')
+        cam.override = (px + 2.0, py - 1.1, 1.5, px - 0.2, py, 1.45)
+        yield say('Вано: Отоспись. А утром — ко мне в гараж. Есть работа для того, кто умеет ездить.')
+        cam.override = (px + 0.35, py - 1.25, 1.66, px, py, 1.56)
+        yield say('Макс: Умею.', 0.5)
+
+        # --- 6. к двери
+        p.stop_act()
+        pl.teleport(sx - 5.5, sy - 0.9, 0.0)
+        pl.script_move = (sx, sy + 0.75, 1.45)
+        cam.override = (sx + 4.2, sy - 5.2, 1.7, sx - 1.0, sy + 0.6, 1.35)
+        hud.clear_subtitles()
+        yield lambda: pl.script_move is None
+        p.yaw = math.pi / 2
+        p.play('door', False)
+        w.audio.play('door', 0.6, 0.9)
+        yield 0.8
+        hud.fade(1.0, 3.5)
+        yield 0.45
+
+        # --- 7. комната
+        room = w.interiors.rooms.get('safehouse')
+        if room is not None:
+            p.stop_act()
+            w.interiors.enter('safehouse', instant=True)
+            ox, oy = room.ox, room.oy
+            pl.script_move = (ox + 4.9, oy + 3.3, 1.2)
+            cam.override = (ox + 0.75, oy + 4.3, 2.05, ox + 4.6, oy + 2.9, 0.85)
+            hud.fade(0.0, 2.5)
+            yield say('Не дворец. Но в этом городе всё начинается с малого.', 1.2)
+            # лёг, не раздеваясь (через короткое затемнение: поза меняется за кадром)
+            hud.clear_subtitles()
+            hud.fade(1.0, 4.0)
+            yield 0.4
+            pl.script_move = None
+            pl.teleport(ox + 6.3, oy + 4.35, -math.pi / 2)
+            p.z = 0.5
+            p.play('sleep', True)
+            cam.override = (ox + 4.2, oy + 2.5, 2.1, ox + 6.2, oy + 4.5, 0.6)
+            yield 0.35
+            hud.fade(0.0, 2.5)
+            yield 2.6
+        hud.fade(1.0, 1.4)
+        yield 0.9
 
     def _step_intro(self, dt):
         w = self.w
         it = self.intro
         it['t'] += dt
         inp = w.game.inp
-        skip = it['t'] > 0.25 and (inp.hit('enter') or inp.hit('space') or inp.hit('mouse1') or inp.hit('escape'))
-        if it['t'] >= it['dur'] or skip:
-            it['i'] += 1
-            it['t'] = 0.0
-            if it['i'] == 1:
-                w.hud.fade(0.0, 0.5)
-            if it['i'] >= len(it['lines']):
-                self.intro = None
-                w.hud.clear_subtitles()
-                w.hud.fade(0.0, 1.0)
-                w.hud.show(True)
-                w.player.freeze = False
-                self.letterbox(False)
-                w.cam.override = None
-                w.cam.pitch = -0.22
-                w.cam.face(w.city.start_pos[0], w.city.start_pos[1], w.city.start_pos[2])
-                w.hud.mission_title('Гиблый район')
-                return
-            line = it['lines'][it['i']]
-            it['dur'] = 2.4 + len(line) * 0.055
-            w.hud.subtitle(line, it['dur'] + 0.5, clear=True)
-        # облёт: камера медленно кружит над убежищем
+        if inp.hit('escape'):
+            self._end_intro()
+            return
+        nxt = it['t'] > 0.3 and (inp.hit('enter') or inp.hit('space') or inp.hit('mouse1'))
+        try:
+            if it['tick'] is not None:
+                it['tick'](dt)
+            for _ in range(4):
+                wt = it['wait']
+                if nxt:
+                    ready = True
+                    nxt = False
+                elif isinstance(wt, (int, float)):
+                    it['wait'] = wt - dt
+                    ready = it['wait'] <= 0.0
+                else:
+                    ready = bool(wt())
+                if not ready:
+                    return
+                it['wait'] = next(it['gen'])
+                it['t'] = 0.0
+                dt = 0.0
+        except StopIteration:
+            self._end_intro()
+        except Exception:
+            # сбой в сценке не должен оставить игрока перед чёрным экраном
+            w.game.report_error()
+            self._end_intro()
+
+    def _intro_off(self):
+        """Вернуть миру то, что пролог выключал (в конце сценки и если её прервали выходом в меню)."""
+        w = self.w
+        w.traffic.enabled = True
+        w.sky.time_scale = 1.0
+        w.scene_engine = None
+
+    def _end_intro(self):
+        """Конец пролога (или пропуск): убрать декорации, утро, герой у кровати в своей комнате."""
+        w = self.w
+        it = self.intro
+        if it is None:
+            return
+        self.intro = None
+        pl = w.player
+        p = pl.ped
+        hud = w.hud
+        bus = it.get('bus')
+        if bus is not None and not bus.removed:
+            bus.keep = False
+            w.remove_vehicle(bus)
+        self._intro_off()
+        w.interiors.cinema = False
+        for mk in self.markers:
+            mk.show(True)
+        if it.get('hint') is not None:
+            it['hint'].destroy()
+        pl.invincible = False
+        pl.script_move = None
+        p.stop_act()
+        p.node.show()
+        w.sky.set_weather('clear')
+        w.sky.set_time(8.0)
+        w.cam.override = None
+        hud.clear_subtitles()
+        hud.show(True)
+        self.letterbox(False)
+        pl.freeze = False
+        # пока шла сценка, героя носило по всей карте и улицу у дома «разобрали»: заселяем её заново
         sx, sy, syaw = w.city.start_pos
-        a = w.time * 0.12
-        w.cam.override = (sx + math.cos(a) * 26.0, sy - 14.0 + math.sin(a) * 8.0, 15.0, sx, sy, 2.0)
+        pl.teleport(sx, sy, syaw)
+        w.cam.pitch = -0.22
+        w.traffic.populate()
+        w.crowd.populate()
+        if 'safehouse' in w.interiors.rooms:
+            w.interiors.enter('safehouse', instant=True, spot='wake')
+            self.in_save = True
+        hud.fade(1.0, instant=True)
+        hud.fade(0.0, 0.9)
+        hud.mission_title('Гиблый район')
+        self.hint_t = 2.5
 
     # ------------------------------------------------------------------
     # возрождение после гибели / ареста

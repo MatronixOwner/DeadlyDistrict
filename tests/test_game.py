@@ -501,3 +501,143 @@ def test_graphics_settings_menu(game, world):
     harness.press(g, 'escape')
     g.ui.close_all()
     g.resume()
+
+
+# ----------------------------------------------------------------------
+# пролог
+# ----------------------------------------------------------------------
+def _after_intro(g, w, errors):
+    """После пролога (досмотренного или пропущенного) игра в рабочем состоянии: герой проснулся у себя."""
+    ms = w.missions
+    pl = w.player
+    assert ms.intro is None and g.state == 'play' and not g.ui.active
+    assert w.interiors.current is not None and w.interiors.current.name == 'safehouse'
+    assert not pl.freeze and pl.script_move is None and pl.ped.act is None and not pl.invincible
+    assert not pl.ped.node.isHidden() and abs(pl.ped.z) < 0.05
+    assert w.hud.visible and w.cam.override is None and ms.letter.isHidden()
+    assert w.traffic.enabled and w.sky.time_scale == 1.0 and w.scene_engine is None
+    assert not w.interiors.cinema
+    assert not any(v.scripted for v in w.vehicles)
+    assert ms.markers and all(not mk.np.isHidden() for mk in ms.markers)
+    assert abs(w.sky.hour - 8.0) < 0.3 and w.sky.weather == 'clear'
+    assert g._errors_total == errors
+    # управление вернулось: герой идёт
+    x0, y0 = pl.pos()
+    w.cam.yaw = math.pi
+    harness.run(g, 0.8, keys=('w',))
+    x1, y1 = pl.pos()
+    assert math.hypot(x1 - x0, y1 - y0) > 1.0
+
+
+def test_intro_plays_to_the_end(game):
+    """Пролог без единого нажатия: автобус, остановка, звонок, комната — и игра начинается."""
+    g = game
+    random.seed(7)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    ms = w.missions
+    pl = w.player
+    assert ms.intro is not None and pl.freeze
+    lines = []
+    seen = dict(bus=False, hidden=False, walked=False, phone=False, room=False, bed=False, paused=False)
+    t = 0.0
+    while ms.intro is not None and t < 120.0:
+        g.step(DT)
+        t += DT
+        text = w.hud.sub_text.getText()
+        if text and (not lines or lines[-1] != text):
+            lines.append(text)
+        it = ms.intro
+        if it is None:
+            break
+        seen['bus'] |= it['bus'] is not None and abs(it['bus'].speed) > 5.0
+        seen['hidden'] |= pl.ped.node.isHidden()
+        seen['walked'] |= pl.script_move is not None and pl.ped.speed > 0.5
+        seen['phone'] |= pl.ped.act is not None and pl.ped.act[0] == 'phone'
+        seen['room'] |= w.interiors.current is not None
+        seen['bed'] |= pl.ped.act is not None and pl.ped.act[0] == 'sleep' and pl.ped.z > 0.3
+        seen['paused'] |= g.state != 'play'
+        assert pl.freeze and not w.hud.visible
+        assert w.police.level == 0 and pl.ped.health == 100
+    assert 40.0 < t < 90.0, t
+    assert len(lines) >= 8 and lines[0].startswith('Порт-Глухов')
+    assert any(s.startswith('Вано:') for s in lines) and any(s.startswith('Макс:') for s in lines)
+    assert seen == dict(bus=True, hidden=True, walked=True, phone=True, room=True, bed=True, paused=False), seen
+    _after_intro(g, w, errors)
+
+
+@pytest.mark.parametrize('when', [0.1, 3.0, 9.0, 18.0, 25.5, 33.0, 46.0, 53.0, 59.0])
+def test_intro_can_be_skipped_any_time(game, when):
+    """Esc в любой момент пролога: декорации убраны, герой дома, пауза не открылась."""
+    g = game
+    random.seed(11)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    harness.run(g, when)
+    assert w.missions.intro is not None
+    harness.press(g, 'escape')
+    harness.run(g, 0.3)
+    _after_intro(g, w, errors)
+
+
+def test_intro_enter_steps_through_shots(game):
+    """Enter листает кадры пролога: за десяток-другой нажатий он заканчивается."""
+    g = game
+    random.seed(13)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    n = 0
+    while w.missions.intro is not None and n < 30:
+        harness.run(g, 0.5)
+        harness.press(g, 'enter')
+        n += 1
+    assert 6 <= n < 30, n
+    harness.run(g, 0.3)
+    _after_intro(g, w, errors)
+
+
+def test_first_hints_lead_out_of_the_room(game):
+    """После пролога подсказки: сначала про комнату и выход, на улице — куда идти."""
+    g = game
+    random.seed(17)
+    g.new_game()
+    w = g.world
+    ms = w.missions
+    said = []
+    orig = w.hud.help
+    w.hud.help = lambda text, dur=6.0: (said.append(text), orig(text, dur))[1]
+    try:
+        harness.run(g, 1.0)
+        harness.press(g, 'escape')
+        harness.run(g, 4.0)
+        assert len(said) == 1 and 'комната' in said[0] and 'стрелк' in said[0]
+        w.interiors.leave(instant=True)
+        harness.quiet(w, peds=True)
+        harness.run(g, 14.0)
+        assert len(said) == 2 and 'Вано' in said[1]
+    finally:
+        w.hud.help = orig
+
+
+def test_intro_interrupted_by_menu(game):
+    """Пролог прервали (окно потеряло фокус → пауза → главное меню): мир не остаётся «выключенным»."""
+    g = game
+    random.seed(19)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    harness.run(g, 20.0)
+    assert w.missions.intro is not None and not w.traffic.enabled
+    g.pause()                                   # так срабатывает потеря фокуса окна
+    assert g.state == 'pause'
+    g.to_main_menu()
+    w = g.world
+    assert w.traffic.enabled and w.sky.time_scale == 1.0 and w.scene_engine is None
+    assert g.state == 'menu' and w.missions.intro is None and not w.interiors.cinema
+    harness.run(g, 1.0)
+    assert not any(v.scripted for v in w.vehicles)
+    w = harness.start_game(g, street=False)
+    _after_intro(g, w, errors)

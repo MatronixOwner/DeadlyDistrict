@@ -54,17 +54,20 @@ def press(g, key, dt=1.0 / 30.0):
     g.step(dt)
 
 
-def start_game(g):
-    """Новая игра с пропуском вступления."""
+def start_game(g, street=True):
+    """Новая игра с пропуском пролога.  street: вывести героя из комнаты на улицу, к двери дома."""
     g.new_game()
     w = g.world
     for i in range(12):
         if w.missions.intro is None:
             break
         run(g, 0.35)
-        press(g, 'enter')
+        press(g, 'escape')
     run(g, 0.5)
     assert w.missions.intro is None, 'intro not skipped'
+    if street and w.interiors.current is not None:
+        w.interiors.leave(instant=True)
+        run(g, 0.2)
     return w
 
 

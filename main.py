@@ -59,12 +59,17 @@ def selftest():
         game.step(dt)
     game.new_game()
     for i in range(240):
+        # пролог: сначала листаем кадры клавишей Enter, потом пропускаем остаток клавишей Esc
+        key = 'enter' if i < 120 else 'escape'
         if w.missions.intro is not None and i % 12 == 0:
-            game.inp._dn('enter')
+            game.inp._dn(key)
         else:
             game.inp._up('enter')
+            game.inp._up('escape')
         game.step(dt)
     _need(w.missions.intro is None, 'intro did not finish')
+    _need(w.interiors.current is not None and w.interiors.current.name == 'safehouse', 'hero is not at home')
+    w.interiors.leave(instant=True)
     game.inp._dn('w')
     for _ in range(90):
         game.step(dt)

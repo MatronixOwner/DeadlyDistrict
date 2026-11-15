@@ -81,6 +81,7 @@ class World(object):
         self.respawn_t = 0.0
         self.respawn_kind = None
         self.hurt_cd = 0.0
+        self.scene_engine = None          # (звук, громкость, тон) мотора в сценке
         self.engine_rate = 0.6
         self.radio_station = -1
         self.radio_pref = None             # станция, которую выбрал игрок: включается в любой машине
@@ -749,6 +750,10 @@ class World(object):
                 au.loop('skid', 'skid', min(0.7, 0.25 + slip * 0.06), 0.9 + min(0.3, slip * 0.02))
             else:
                 au.loop('skid', None)
+        elif self.scene_engine is not None:
+            # сценка: слышен мотор машины, которую показывает камера
+            au.loop('engine', self.scene_engine[0], self.scene_engine[1], self.scene_engine[2])
+            au.loop('skid', None)
         else:
             au.loop('engine', None)
             au.loop('skid', None)

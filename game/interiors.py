@@ -920,6 +920,7 @@ class Interiors(object):
         self.current = None
         self.trans = None               # идёт переход через дверь: [вид, комната, время, сделано]
         self.msg_cd = 0.0
+        self.cinema = False             # идёт сценка: стрелки у дверей не показываем
         self.people = []                # жильцы всех комнат
         self.cars = []
         self.talk_cd = 0.0
@@ -972,6 +973,7 @@ class Interiors(object):
         if self.current is not None:
             self._switch(None)
         self.trans = None
+        self.cinema = False
         for p in self.people:
             if not p.removed:
                 p.keep = False
@@ -1158,7 +1160,7 @@ class Interiors(object):
                 a = r.arrow
                 if a is None:
                     continue
-                if abs(r.out[0] - p.x) < 90.0 and abs(r.out[1] - p.y) < 90.0:
+                if abs(r.out[0] - p.x) < 90.0 and abs(r.out[1] - p.y) < 90.0 and not self.cinema:
                     a.update(dt)
                     if on_foot and not pl.freeze and abs(p.x - r.out[0]) < 0.8 and -1.3 < p.y - r.wall_y < 0.3:
                         why = self.locked_reason()
@@ -1171,7 +1173,7 @@ class Interiors(object):
                     a.np.hide()
             return
         cur.arrow_in.update(dt)
-        if (w.cam.x - cur.exit[0]) ** 2 + (w.cam.y - cur.exit[1]) ** 2 < 9.0:
+        if self.cinema or (w.cam.x - cur.exit[0]) ** 2 + (w.cam.y - cur.exit[1]) ** 2 < 9.0:
             cur.arrow_in.np.hide()                  # вплотную к камере стрелка закрыла бы пол-экрана
         if on_foot and not pl.freeze and abs(p.x - cur.exit[0]) < 0.62 and p.y - cur.oy < 0.72:
             ms = w.missions

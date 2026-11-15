@@ -213,6 +213,7 @@ class Player(object):
         self.switch_t = 0.0
         self.shots_fired = 0
         self.busy_t = 0.0
+        self.script_move = None           # (x, y, скорость): сценка ведёт героя, пока freeze
         self.freeze = False
 
     # ------------------------------------------------------------------
@@ -240,6 +241,7 @@ class Player(object):
         p.node.show()
         self.state = 'foot'
         self.freeze = False
+        self.script_move = None
         self.controls = True
         self.aiming = False
         self.enter_v = None
@@ -367,6 +369,21 @@ class Player(object):
             self.aiming = False
             self.mvx = self.mvy = 0.0
             p.speed = 0.0
+            sm = self.script_move
+            if sm is not None and self.vehicle is None and st != 'entering':
+                # сценка ведёт героя к точке (tx, ty) со скоростью sm[2]
+                dx, dy = sm[0] - p.x, sm[1] - p.y
+                d = math.hypot(dx, dy)
+                step = sm[2] * dt
+                if d <= max(step, 0.04):
+                    p.x, p.y = sm[0], sm[1]
+                    self.script_move = None
+                else:
+                    p.x += dx / d * step
+                    p.y += dy / d * step
+                    p.yaw = turn_towards(p.yaw, math.atan2(dy, dx), 9.0 * dt)
+                    p.speed = sm[2]
+                p.z = self.w.city.ground_z(p.x, p.y)
             v = self.vehicle
             if v is not None:
                 v.in_throttle = 0.0
