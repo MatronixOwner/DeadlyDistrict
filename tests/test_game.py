@@ -1025,3 +1025,48 @@ def test_bridges_are_drivable(game, world, name, back):
     assert s >= total - 4.0, 'застрял на %.0f м из %.0f (мост %s)' % (s, total, name)
     assert zmax > seg['bridge']['height'] - 0.5                  # действительно поднялись на мост
     assert car.health > 900 and pl.vehicle is car
+
+
+def test_story_places_are_reachable(game, world):
+    """До дверей, ящиков, фургона и самолёта можно добраться от дороги: путь ищется по карте препятствий."""
+    w = world
+    c = w.city
+    harness.quiet(w, peds=True)
+    for v in list(w.vehicles):
+        if not v.keep:
+            w.remove_vehicle(v)
+    foot = [('дверь ' + r.name, r.out[0], r.out[1] - 0.6) for r in w.interiors.order]
+    for x, y in ((1000.0, -243.0), (1161.0, 258.0), (686.0, 40.0)):                 # ящики «Улова»
+        fx, fy = w.missions.free_spot(x, y)
+        foot.append(('ящик', fx, fy))
+    ap = c.landmarks['airfield']['apron']
+    foot.append(('самолёт', ap[0] - 11.0, ap[1] + 14.0))
+    cars = [('самолёт', ap[0] - 11.0, ap[1] + 14.0), ('фургон на причале', 470.0, 30.0),
+            ('«Комета» у участка', c.landmarks['police']['road'][0] + 13.0, c.landmarks['police']['road'][1] + 2.9)]
+    for name in ('grom', 'zakhar', 'vano', 'rosa', 'prof'):
+        rx, ry = c.landmarks[name]['road']
+        cars.append(('машина у ' + name, rx, ry))
+    lost = [n for n, x, y in foot if not harness.reachable(w, x, y)]
+    lost += [n + ' (на машине)' for n, x, y in cars if not harness.reachable(w, x, y, car=True)]
+    assert not lost, lost
+    # и проверка самой проверки: точка внутри здания недостижима
+    x0, y0, x1, y1 = c.landmarks['bank']['rect']
+    assert not harness.reachable(w, (x0 + x1) * 0.5, (y0 + y1) * 0.5)
+
+
+def test_every_hidden_package_can_be_reached(game, world):
+    """Тайник, запертый за забором или в стене, собрать нельзя — а счётчик «из 46» остался бы вечным укором."""
+    w = world
+    c = w.city
+    harness.quiet(w, peds=True)
+    for v in list(w.vehicles):
+        if not v.keep:
+            w.remove_vehicle(v)
+    assert len(c.packages) == 46
+    lost = []
+    for i, pk in enumerate(c.packages):
+        x, y = pk[0], pk[1]
+        # сначала ищем путь рядом; если двор обнесён забором и вход далеко — по большой окрестности
+        if not harness.reachable(w, x, y) and not harness.reachable(w, x, y, margin=200.0):
+            lost.append((i, round(x, 1), round(y, 1), c.zone_name(x, y)))
+    assert not lost, lost

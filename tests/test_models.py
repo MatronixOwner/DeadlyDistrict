@@ -288,3 +288,19 @@ def test_combined_character_has_two_textures(world):
     for x in (a, b):
         x.cleanup()
         x.removeNode()
+
+
+def test_red_shirt_guy_wears_trousers(world):
+    """У модели в футболке штаны были песочные, почти в цвет кожи: издали казалось, что человек без штанов.
+    Теперь они тёмные на всех текстурах этой модели."""
+    from panda3d.core import PNMImage, Filename
+    pts = ((385, 120), (240, 120), (200, 330), (60, 380), (370, 430), (425, 430))       # по разу на каждый кусок штанов
+    chars = world.models.meta['chars']
+    names = sorted(set(i['tex'] for i in chars.values() if i['tex'] == 'm_red' or i['tex'].startswith('red_')))
+    assert len(names) == 8, names
+    for n in names:
+        img = PNMImage(Filename.fromOsSpecific(os.path.join(harness.ROOT, 'assets', 'models', 'chars', n + '.png')))
+        k = img.getXSize() / 512.0
+        for (x, y) in pts:
+            c = img.getXel(int(x * k), int(y * k))
+            assert max(c[0], c[1], c[2]) < 0.56, (n, x, y, tuple(c))                    # было 0.64–0.76

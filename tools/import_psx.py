@@ -70,17 +70,29 @@ COMBOS = {
     'm_old_h3': ('m_old', 'medic'),
 }
 
+# Штаны.  У модели psx-06 они песочные, почти в цвет кожи: в игре человек в красной футболке выглядел
+# так, будто вышел из дома без штанов.  Красим их целиком — по «островам» развёртки, в которые попадают
+# эти точки (координаты для текстуры 512x512); по цвету отделить ткань от кожи нельзя, оттенки слишком близки.
+LEGS = {
+    'm_red': ((385, 120), (240, 120), (200, 330), (60, 380), (370, 430), (425, 430)),
+}
+JEANS = dict(hue=216, sat=0.42, val=0.50)           # тёмно-синие джинсы — штаны по умолчанию
+DARK = dict(hue=30, sat=0.06, val=0.36)             # чёрные брюки
+GREY = dict(hue=215, sat=0.08, val=0.62)            # серые
+BROWN = dict(hue=24, sat=0.42, val=0.46)            # коричневые рабочие
+
 # Перекрашенная одежда: имя текстуры -> (исходная текстура, что красим, как)
 #   что:  'red' — насыщенно-красное, 'blue' — синее и голубое
-#   как:  hue — новый оттенок (градусы), sat и val — множители насыщенности и яркости
+#   как:  hue — новый оттенок (градусы), sat и val — множители насыщенности и яркости;
+#         legs — цвет штанов (если у модели они перекрашиваются, см. LEGS)
 RECOLORS = {
-    'red_blue': ('m_red', 'red', dict(hue=215, sat=0.80, val=0.85)),
-    'red_green': ('m_red', 'red', dict(hue=125, sat=0.60, val=0.70)),
-    'red_yellow': ('m_red', 'red', dict(hue=48, sat=0.75, val=1.0)),
-    'red_orange': ('m_red', 'red', dict(hue=26, sat=0.9, val=1.0)),
-    'red_purple': ('m_red', 'red', dict(hue=282, sat=0.75, val=0.8)),
-    'red_black': ('m_red', 'red', dict(sat=0.0, val=0.32)),
-    'red_white': ('m_red', 'red', dict(sat=0.0, val=1.25)),
+    'red_blue': ('m_red', 'red', dict(hue=215, sat=0.80, val=0.85, legs=DARK)),
+    'red_green': ('m_red', 'red', dict(hue=125, sat=0.60, val=0.70, legs=BROWN)),
+    'red_yellow': ('m_red', 'red', dict(hue=48, sat=0.75, val=1.0, legs=JEANS)),
+    'red_orange': ('m_red', 'red', dict(hue=26, sat=0.9, val=1.0, legs=GREY)),
+    'red_purple': ('m_red', 'red', dict(hue=282, sat=0.75, val=0.8, legs=DARK)),
+    'red_black': ('m_red', 'red', dict(sat=0.0, val=0.32, legs=JEANS)),
+    'red_white': ('m_red', 'red', dict(sat=0.0, val=1.25, legs=DARK)),
     'shirt_pink': ('m_shirt', 'blue', dict(hue=345, sat=1.1, val=1.0)),
     'shirt_grey': ('m_shirt', 'blue', dict(sat=0.0, val=1.06)),
     'shirt_green': ('m_shirt', 'blue', dict(hue=140, sat=0.8, val=0.85)),
@@ -119,6 +131,30 @@ def recolor(img, what, hue=None, sat=1.0, val=1.0):
     out = np.stack([h * (255.0 / 360.0), s2 * 255.0, v2 * 255.0], axis=-1).astype(np.uint8)
     from PIL import Image
     return Image.fromarray(out, 'HSV').convert('RGB')
+
+
+def dye(img, seeds, hue=216.0, sat=0.42, val=0.5):
+    """Красит «острова» развёртки, в которые попадают точки seeds: оттенок и насыщенность задаются,
+    яркость умножается на val (складки и тени ткани остаются)."""
+    from PIL import Image, ImageDraw
+    img = img.convert('RGB')
+    k = img.size[0] / 512.0
+    solid = (np.asarray(img).max(-1) > 15).astype(np.uint8) * 255
+    m = Image.fromarray(solid, 'L').copy()         # копия: картинку поверх массива numpy заливка не меняет
+    for (sx, sy) in seeds:
+        xy = (int(sx * k), int(sy * k))
+        if m.getpixel(xy) == 255:
+            ImageDraw.floodfill(m, xy, 128)
+    mask = np.asarray(m) == 128
+    if not mask.any():
+        raise RuntimeError('dye: ни одна точка не попала на развёртку')
+    a = np.asarray(img.convert('HSV'), dtype=np.float32)
+    h = np.where(mask, hue * (255.0 / 360.0), a[..., 0])
+    s_ = np.where(mask, sat * 255.0, a[..., 1])
+    v = np.where(mask, np.clip(a[..., 2] * val, 0.0, 255.0), a[..., 2])
+    out = np.stack([h, s_, v], axis=-1).astype(np.uint8)
+    return Image.fromarray(out, 'HSV').convert('RGB'), int(mask.sum())
+
 
 # клипы анимации: имя в игре -> файл Mesh2Motion (static/assets/human/animations/<файл>.glb)
 ANIMS = {
@@ -833,11 +869,15 @@ def do_chars(meta):
             return dict(verts=verts, height=round(float(mx[1] - mn[1]), 3), source=src, model=name)
 
         textures = {}
+        raw = {}                                    # текстуры как в исходнике (до перекраски штанов)
         for name, src in sorted(CHARS.items()):
             ch = Skinned(os.path.join(m2m_dir(), 'variations', src + '.glb'))
             mitten(ch)
             pos, nrm, ji, jw = retarget(ch, ref)
-            textures[name] = Image.open(io.BytesIO(ch.image)).convert('RGB')
+            textures[name] = raw[name] = Image.open(io.BytesIO(ch.image)).convert('RGB')
+            if name in LEGS:
+                textures[name], n = dye(raw[name], LEGS[name], **JEANS)
+                print('  %-12s штаны перекрашены: %d точек развёртки' % (name, n))
             save_tex(name, textures[name])
             parts[name] = (pos, nrm, ch.uv, ji, jw, ch.idx)
             if name not in PARTS_ONLY:
@@ -847,7 +887,12 @@ def do_chars(meta):
             info = write_char(name, '%s + %s' % (CHARS[body], CHARS[head]), pos, nrm, uv, ji, jw, idx)
             meta['chars'][name] = dict(info, tex=body, head_tex=head)
         for name, (model, what, op) in sorted(RECOLORS.items()):
-            save_tex(name, recolor(textures[model], what, **op))
+            op = dict(op)
+            legs = op.pop('legs', None)
+            img = recolor(raw[model], what, **op)
+            if model in LEGS:
+                img = dye(img, LEGS[model], **(legs or JEANS))[0]
+            save_tex(name, img)
         for name, (model, tex) in sorted(VARIANTS.items()):
             meta['chars'][name] = dict(meta['chars'][model], tex=tex)
         # --- анимации: один набор на всех (скелет общий)

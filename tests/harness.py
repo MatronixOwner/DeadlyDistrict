@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Запуск игры без окна (программный рендер) для автоматических проверок."""
+import math
 import os
 import sys
 import tempfile
@@ -82,3 +83,57 @@ def quiet(w, peds=False):
         for p in list(w.peds):
             if p is not w.player.ped and p.room is None:              # жильцы интерьеров остаются
                 w.remove_ped(p)
+
+
+def reachable(w, tx, ty, car=False, step=1.0, margin=60.0, maxd=220.0):
+    """Можно ли добраться до точки от ближайших дорог (пешком или на машине): поиск пути по сетке.
+
+    Проверяет статику мира (стены, заборы, воду), машины и людей не учитывает."""
+    from collections import deque
+    from game.collision import F_PED, F_CAR
+    st = w.static
+    c = w.city
+    r = 1.25 if car else w.player.ped.radius
+    mask = F_CAR if car else F_PED
+    starts = []
+    for l in w.roadnet.lanes_near(tx, ty, 0.0, maxd):
+        if l.turn is not None:
+            continue
+        for s in (0.0, l.length * 0.5, l.length):
+            x, y, _ = l.pos(s)
+            starts.append((math.hypot(x - tx, y - ty), x, y))
+    starts.sort()
+    starts = starts[:12]
+    if not starts:
+        return False
+    x0 = min([tx] + [s[1] for s in starts]) - margin
+    y0 = min([ty] + [s[2] for s in starts]) - margin
+    x1 = max([tx] + [s[1] for s in starts]) + margin
+    y1 = max([ty] + [s[2] for s in starts]) + margin
+    wn = int((x1 - x0) / step) + 1
+    hn = int((y1 - y0) / step) + 1
+    cache = {}
+
+    def free(i, j):
+        v = cache.get((i, j))
+        if v is None:
+            x, y = x0 + i * step, y0 + j * step
+            v = not st.overlap_circle(x, y, r, mask) and not (c.in_water(x, y) and c.ground_z(x, y) < -0.2)
+            cache[(i, j)] = v
+        return v
+    goal = set((int(round((x - x0) / step)), int(round((y - y0) / step))) for d, x, y in starts)
+    ti, tj = int(round((tx - x0) / step)), int(round((ty - y0) / step))
+    reach = 3 if car else 1                                  # машину достаточно подогнать вплотную
+    seen = set((ti + di, tj + dj) for di in range(-reach, reach + 1) for dj in range(-reach, reach + 1)
+               if free(ti + di, tj + dj))
+    q = deque(seen)
+    while q:
+        i, j = q.popleft()
+        if (i, j) in goal:
+            return True
+        for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            n = (i + di, j + dj)
+            if 0 <= n[0] < wn and 0 <= n[1] < hn and n not in seen and free(n[0], n[1]):
+                seen.add(n)
+                q.append(n)
+    return False
