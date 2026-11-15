@@ -14,6 +14,9 @@ from .collision import (F_CAR, F_PED, F_SIGHT, F_BULLET, F_BREAK, F_CAM, F_SOLID
 from .terrain import FLAT as TERRAIN_FLAT
 
 W4 = (1.0, 1.0, 1.0, 1.0)
+SHOULDER = 2.2                  # обочина трассы: ширина, высота, цвет
+SHOULDER_Z = -0.04
+SHOULDER_C = (0.80, 0.78, 0.74, 1.0)
 
 
 def _c4(c, k=1.0):
@@ -327,17 +330,11 @@ class CityMesh(object):
                 # трасса: разметка без «зебр», по краям — обочина
                 n = max(1, int(round(L / 8.0)))
                 self._road_quad(mb, tex, ox, oy, dx, dy, hw, 0.0, L, 0.0, float(n))
-                for sgn in (-1.0, 1.0):
-                    rx, ry = dy * sgn, -dx * sgn
-                    p0 = (ox + rx * hw, oy + ry * hw, 0.0)
-                    p1 = (ox + dx * L + rx * hw, oy + dy * L + ry * hw, 0.0)
-                    q0 = (p0[0] + rx * 3.0, p0[1] + ry * 3.0, -0.11)
-                    q1 = (p1[0] + rx * 3.0, p1[1] + ry * 3.0, -0.11)
-                    uv = ((0, 0), (L / 4.0, 0), (L / 4.0, 0.75), (0, 0.75))
-                    if sgn > 0:
-                        mb.quad('dirt', p0, q0, q1, p1, uvs=(uv[0], uv[3], uv[2], uv[1]), color=(0.78, 0.76, 0.72, 1))
-                    else:
-                        mb.quad('dirt', p0, p1, q1, q0, uvs=uv, color=(0.78, 0.76, 0.72, 1))
+                sh = hw + SHOULDER
+                if seg['kind'] == 'h':
+                    mb.flat('dirt', a, cc - sh, b, cc + sh, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
+                else:
+                    mb.flat('dirt', cc - sh, a, cc + sh, b, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
                 continue
             mid = L - 2 * CAP_LEN
             n = max(1, int(round(mid / 8.0)))
@@ -357,6 +354,9 @@ class CityMesh(object):
         for key in sorted(c.nodes):
             n = c.nodes[key]
             mb = self._mb(self._road_chunk(n.x, n.y))
+            if n.rural:
+                mb.flat('dirt', n.x - n.hw - SHOULDER, n.y - n.hh - SHOULDER, n.x + n.hw + SHOULDER,
+                        n.y + n.hh + SHOULDER, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
             if n.through and n.rural:
                 # трасса идёт насквозь: разметка не прерывается
                 if 'e' in n.exits:

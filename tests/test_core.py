@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game.city import City
+from game.city import City, CURB, WATER_Z
 from game.collision import StaticWorld, F_CAR, F_PED, F_WALL
 from game.roadnet import RoadNet
 from game import mathutil
@@ -253,3 +253,95 @@ def test_antialiasing_note_matches_what_the_window_was_opened_with(tmp_path, mon
     assert seen['msaa'] == 0                                  # с этим значением открывается окно
     assert g._boot[0] == 0                                    # и его же помнит меню
     assert g.settings.get('screen') == S.SCREEN_BORDERLESS and g.settings.get('width') == 3840
+
+
+# ---------------------------------------------------------------------------
+# большой мир: три берега, мосты, рельеф
+# ---------------------------------------------------------------------------
+def test_terrain_is_built_for_this_layout():
+    """Рельеф считается заранее (tools/gen_terrain.py) под конкретные дороги и кварталы.
+    Поменяли раскладку — рельеф нужно пересобрать, иначе дороги уйдут под землю или повиснут."""
+    c = City()
+    t = c.terrain
+    assert t.ok, 'нет файлов рельефа в assets/terrain'
+    assert t.signature == c.signature(), 'рельеф устарел: запустите python tools/gen_terrain.py'
+    # под дорогами и кварталами рельеф лежит ниже них
+    from game.terrain import FLAT
+    for seg in c.segs.values():
+        if seg['bridge'] is not None:
+            continue
+        for k in range(5):
+            u = seg['a'] + (seg['b'] - seg['a']) * (k + 0.5) / 5.0
+            x, y = (u, seg['c']) if seg['kind'] == 'h' else (seg['c'], u)
+            assert t.height(x, y) <= FLAT + 0.01, seg['key']
+    for b in c.blocks:
+        cx, cy = b.center()
+        assert t.height(cx, cy) <= FLAT + 0.01, (b.i, b.j)
+
+
+def test_three_shores_and_the_sea_between_them():
+    c = City()
+    zones = set(b.zone for b in c.blocks)
+    assert {'D', 'O', 'B', 'V', 'S', 'H', 'A', 'L'} <= zones          # остров, Заречье, восточный берег
+    bn = c.segs[('v', 6, 8)]                                           # Большой мост: с острова в Заречье
+    be = c.segs[('h', 10, 5)]                                          # Портовый: с причалов на восток
+    # под серединой каждого моста — вода, а на мосту — полотно над ней
+    for seg in (bn, be):
+        mid = (seg['a'] + seg['b']) * 0.5
+        x, y = (mid, seg['c']) if seg['kind'] == 'h' else (seg['c'], mid)
+        assert c.terrain.height(x, y) < WATER_Z
+        assert not c.in_water(x, y)
+        assert c.ground_z(x, y) == seg['bridge']['height'] > 5.0
+        # сбоку от моста, в проливе, — вода
+        sx, sy = (x, y + 40.0) if seg['kind'] == 'h' else (x + 40.0, y)
+        assert c.in_water(sx, sy)
+        # въезд плавный: высота растёт без ступенек
+        prev = 0.0
+        for k in range(1, 60):
+            z = c.bridge_z(seg, k * 2.0)
+            assert 0.0 <= z - prev < 0.45, (k, z, prev)
+            prev = z
+            if z >= seg['bridge']['height']:
+                break
+    assert c.zone_name(bn['c'], (bn['a'] + bn['b']) * 0.5) == 'Большой мост'
+    assert c.zone_name((be['a'] + be['b']) * 0.5, be['c']) == 'Портовый мост'
+    # берега не слиплись: между островом и материком — море
+    assert c.in_water(c.xs[3], (c.ys[8] + c.ys[9]) * 0.5)
+    assert c.in_water((c.xs[10] + c.xs[11]) * 0.5 + 20.0, c.ys[3])
+    # в чистом поле за городом — суша, не дорога и не вода
+    x, y = c.xs[11] - 60.0, c.ys[12]
+    assert c.where(x, y)[0] is None and not c.in_water(x, y) and c.zone_at(x, y) == 'wild'
+
+
+def test_every_town_is_reachable_by_road():
+    c = City()
+    rn = RoadNet(c)
+    home = c.nearest_node(*c.landmarks['safehouse']['road'])
+    start = (home.i, home.j)
+    for goal in ((5, 11), (8, 12), (12, 4), (13, 3), (12, 8), (12, 11)):       # Заречье, восток, трасса
+        assert goal in c.nodes, goal
+        path = rn.route(start, goal)
+        assert path and path[0] == start and path[-1] == goal, goal
+    # по трассе и мостам машины едут без светофоров и не упираются в тупик
+    for l in rn.lanes:
+        seg = c.segs[l.seg]
+        if seg['rural']:
+            assert l.next, l.seg
+            assert not l.signal or not c.nodes[l.node].rural
+    assert all(l.flat == (c.segs[l.seg]['bridge'] is None) for l in rn.lanes)
+
+
+def test_outer_sidewalks_are_walkable_pads():
+    """У крайней улицы тротуар есть и с внешней стороны; по нему ходят на высоте бордюра."""
+    c = City()
+    assert len(c.walk_strips) > 100
+    for (x0, y0, x1, y1) in c.walk_strips[::9]:
+        cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+        assert abs(c.ground_z(cx, cy) - CURB) < 1e-6
+        assert not c.on_road(cx, cy) and not c.in_water(cx, cy)
+    # причалы и пирс — тоже площадки
+    dk = c.special['docks']
+    assert abs(c.ground_z((dk['x0'] + dk['x1']) * 0.5, (dk['y0'] + dk['y1']) * 0.5) - CURB) < 1e-6
+    assert c.zone_at((dk['x0'] + dk['x1']) * 0.5, dk['y0'] + 30.0) == 'docks'
+    pier = c.special['pier']
+    assert c.ground_z((pier['x0'] + pier['x1']) * 0.5, pier['y0'] + 5.0) == pier['z']

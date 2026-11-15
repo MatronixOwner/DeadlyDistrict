@@ -1825,7 +1825,7 @@ class City(object):
         k = 0
         for key in sorted(self.segs):
             seg = self.segs[key]
-            if not seg['rural']:
+            if not seg['rural'] or seg['bridge'] is not None:
                 continue
             a, b, c = seg['a'], seg['b'], seg['c']
             hw = seg['width'] * 0.5

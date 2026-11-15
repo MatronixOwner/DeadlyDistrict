@@ -519,6 +519,8 @@ class Vehicle(object):
         self.circles = spec.circles
         self.roll = 0.0
         self.pitch = 0.0
+        self.slope_p = 0.0            # наклон по рельефу: тангаж и крен, градусы
+        self.slope_r = 0.0
         self.wheel_rot = 0.0
         self.smoke_t = 0.0
         self.skid_t = 0.0
@@ -768,7 +770,8 @@ class Vehicle(object):
         self.vx = math.cos(yaw) * v
         self.vy = math.sin(yaw) * v
         self.slip = 0.0
-        self.z = 0.0
+        # обычная улица лежит на нуле; на мосту полоса поднимается вместе с полотном
+        self.z = 0.0 if link.flat else self.world.city.ground_z(x, y)
 
     def _update_phys(self, dt):
         spec = self.spec
@@ -974,7 +977,22 @@ class Vehicle(object):
     # ------------------------------------------------------------------
     def _update_visual(self, dt):
         spec = self.spec
-        self.node.setPosHpr(self.x, self.y, self.z, yaw_to_h(self.yaw), 0, 0)
+        # наклон по земле: въезд на мост, холмы, бордюры (вблизи камеры; вдали его не разглядеть)
+        w = self.world
+        cam = w.cam
+        if self.is_player or (abs(self.x - cam.x) < 130.0 and abs(self.y - cam.y) < 130.0):
+            gz = w.city.ground_z
+            fx, fy = math.cos(self.yaw), math.sin(self.yaw)
+            hl, hw = spec.L * 0.36, spec.W * 0.40
+            zf = gz(self.x + fx * hl, self.y + fy * hl)
+            zr = gz(self.x - fx * hl, self.y - fy * hl)
+            zl = gz(self.x - fy * hw, self.y + fx * hw)
+            zrt = gz(self.x + fy * hw, self.y - fx * hw)
+            sp = clamp(math.atan2(zf - zr, 2.0 * hl) * DEG, -24.0, 24.0)
+            sr = clamp(math.atan2(zl - zrt, 2.0 * hw) * DEG, -20.0, 20.0)
+            self.slope_p = damp(self.slope_p, sp, 12.0, dt)
+            self.slope_r = damp(self.slope_r, sr, 12.0, dt)
+        self.node.setPosHpr(self.x, self.y, self.z, yaw_to_h(self.yaw), self.slope_p, self.slope_r)
         v = self.speed
         self.wheel_rot = (self.wheel_rot - v * dt / self.wheel_r_vis * DEG) % 360.0
         st = self.steer * DEG

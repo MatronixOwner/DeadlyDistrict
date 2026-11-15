@@ -22,7 +22,8 @@ DIR_YAW = {'e': 0.0, 'n': math.pi / 2, 'w': math.pi, 's': -math.pi / 2}
 class Link(object):
     """Отрезок пути для машины: полоса (straight) или манёвр на перекрёстке."""
     __slots__ = ('id', 'turn', 'x0', 'y0', 'x1', 'y1', 'cx', 'cy', 'curved', 'length', 'next', 'node',
-                 'dir', 'lane', 'ave', 'speed', 'signal', 'axis', 'zone', 'seg', 'kind')
+                 'dir', 'lane', 'ave', 'speed', 'signal', 'axis', 'zone', 'seg', 'kind', 'flat')
+    # flat: полоса лежит на уровне земли (False — на мосту: высоту нужно спрашивать у города)
 
     def pos(self, s):
         """Точка и направление (yaw) на расстоянии s от начала."""
@@ -76,6 +77,7 @@ class RoadNet(object):
         l.zone = 'D'
         l.seg = None
         l.kind = None
+        l.flat = True
         self.links.append(l)
         return l
 
@@ -112,6 +114,7 @@ class RoadNet(object):
                     l.speed = 13.5 if seg['ave'] else 10.0
                     if seg['rural']:
                         l.speed = 17.0 if seg['bridge'] is None else 15.0      # трасса и мосты — быстрее
+                    l.flat = seg['bridge'] is None
                     n = c.nodes.get(node)
                     l.signal = (n is not None and len(n.exits) >= 3 and not n.rural)
                     l.axis = 0 if d in ('n', 's') else 1

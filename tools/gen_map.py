@@ -14,19 +14,56 @@ sys.path.insert(0, ROOT)
 from game.city import City                      # noqa: E402
 from game.mapinfo import MAP_CX, MAP_CY, MAP_HALF        # noqa: E402
 
-SIZE = 1024
+SIZE = 2048
 SS = 2          # сглаживание
 
 ZONE_COL = {'D': (104, 106, 116), 'O': (122, 110, 98), 'G': (112, 100, 90), 'R': (108, 124, 96),
-            'I': (112, 112, 108), 'B': (128, 120, 104), 'P': (74, 128, 70)}
+            'I': (112, 112, 108), 'B': (128, 120, 104), 'P': (74, 128, 70),
+            'V': (126, 116, 102), 'S': (110, 128, 98), 'L': (110, 128, 98), 'H': (114, 112, 106),
+            'A': (98, 128, 88)}
 BLD_COL = {'D': (150, 156, 172), 'O': (168, 148, 128), 'G': (150, 132, 118), 'R': (176, 160, 140),
-           'I': (150, 150, 146), 'B': (182, 170, 150), 'P': (150, 150, 150)}
+           'I': (150, 150, 146), 'B': (182, 170, 150), 'P': (150, 150, 150),
+           'V': (172, 152, 132), 'S': (178, 162, 142), 'L': (178, 162, 142), 'H': (150, 150, 146),
+           'A': (160, 162, 166)}
+SEA = (44, 84, 118)
+COVER_COL = {0: (98, 126, 84), 1: (198, 182, 134), 2: (132, 128, 122), 3: (66, 104, 66), 4: (156, 152, 96),
+             5: SEA}
+
+
+def terrain_layer(c, n):
+    """Рельеф: цвет по покрытию, тени по склонам, мелководье светлее."""
+    import numpy as np
+    t = c.terrain
+    if not t.ok:
+        return Image.new('RGB', (n, n), SEA)
+    h = np.array(t.h, dtype=np.float64).reshape(t.ny, t.nx)
+    cover = np.frombuffer(t.cover, dtype=np.uint8).reshape(t.ny, t.nx)
+    img = np.zeros((t.ny, t.nx, 3))
+    for k, col in COVER_COL.items():
+        img[cover == k] = col
+    gy, gx = np.gradient(h, t.step)
+    shade = np.clip(1.0 + (gx - gy) * 0.8, 0.6, 1.4)
+    land = cover != 5
+    img[land] *= shade[land][:, None]
+    depth = np.clip((-0.7 - h) / 4.0, 0.0, 1.0)
+    img[~land] = np.array(SEA)[None, :] * (1.22 - 0.3 * depth[~land])[:, None]
+    small = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)[::-1], 'RGB')
+    # сетка рельефа -> пиксели карты
+    k = n / (2.0 * MAP_HALF)
+    px0 = (t.x0 - (MAP_CX - MAP_HALF)) * k
+    py0 = ((MAP_CY + MAP_HALF) - t.y1) * k
+    w = int(round((t.x1 - t.x0) * k))
+    hh = int(round((t.y1 - t.y0) * k))
+    deep = tuple(int(v * 0.92) for v in SEA)           # за краем сетки — открытое море того же цвета
+    out = Image.new('RGB', (n, n), deep)
+    out.paste(small.resize((w, hh), Image.BICUBIC), (int(round(px0)), int(round(py0))))
+    return out
 
 
 def main():
     c = City()
     n = SIZE * SS
-    im = Image.new('RGB', (n, n), (44, 84, 118))
+    im = terrain_layer(c, n)
     d = ImageDraw.Draw(im)
     k = n / (2.0 * MAP_HALF)
 
@@ -38,18 +75,27 @@ def main():
         b = P(x1, y0)
         d.rectangle([a[0], a[1], b[0], b[1]], fill=col)
 
-    # суша: песок по краю, дальше трава
-    rect(c.land_x0, c.land_y0, c.land_x1, c.land_y1, (196, 180, 132))
-    rect(c.land_x0 + 4, c.land_y0 + 26, c.land_x1 - 4, c.land_y1 - 4, (98, 122, 84))
-    for (x0, y0, x1, y1, z) in c.extra_land:
-        rect(x0, y0, x1, y1, (150, 132, 104))
-    br = c.special.get('bridge')
-    if br:
-        rect(br['x'] - br['w'] / 2, br['y0'], br['x'] + br['w'] / 2, br['y1'], (70, 70, 74))
-    # дороги
-    rect(c.grid_x0, c.grid_y0, c.grid_x1, c.grid_y1, (58, 58, 62))
+    ROAD = (58, 58, 62)
+    for (x0, y0, x1, y1, z) in c.extra_land:           # причалы, пирсы
+        rect(x0, y0, x1, y1, (150, 140, 124))
+    # дороги и перекрёстки
+    for key, s in c.segs.items():
+        hw = s['width'] * 0.5
+        col = (92, 84, 80) if s['bridge'] else ROAD
+        if s['kind'] == 'h':
+            rect(s['a'], s['c'] - hw, s['b'], s['c'] + hw, col)
+        else:
+            rect(s['c'] - hw, s['a'], s['c'] + hw, s['b'], col)
+    for nd in c.nodes.values():
+        rect(nd.x - nd.hw, nd.y - nd.hh, nd.x + nd.hw, nd.y + nd.hh, ROAD)
+    for (x0, y0, x1, y1) in c.walk_strips:
+        rect(x0, y0, x1, y1, (120, 120, 118))
     for b in c.blocks:
         rect(b.x0, b.y0, b.x1, b.y1, ZONE_COL.get(b.zone, (110, 110, 110)))
+    # покрытия внутри кварталов, заметные на карте: взлётная полоса, асфальт
+    for (x0, y0, x1, y1, tex, tile, color, block, z, rot) in c.ground:
+        if tex == 'asphalt' and (x1 - x0) * (y1 - y0) > 400.0:
+            rect(x0, y0, x1, y1, (72, 72, 76))
     pond = c.special.get('pond')
     if pond:
         a = P(pond['x'] - pond['rx'], pond['y'] + pond['ry'])
@@ -64,17 +110,17 @@ def main():
         a = P(b.x0, b.y1)
         bb = P(b.x1, b.y0)
         d.rectangle([a[0], a[1], bb[0], bb[1]], outline=(col[0] * 3 // 4, col[1] * 3 // 4, col[2] * 3 // 4))
-    # осевые линии проспектов
+    # осевые линии проспектов, трассы и мостов
     for key, s in c.segs.items():
         if not s['ave']:
             continue
         if s['kind'] == 'h':
-            rect(s['a'], s['c'] - 0.35, s['b'], s['c'] + 0.35, (150, 140, 70))
+            rect(s['a'], s['c'] - 0.45, s['b'], s['c'] + 0.45, (150, 140, 70))
         else:
-            rect(s['c'] - 0.35, s['a'], s['c'] + 0.35, s['b'], (150, 140, 70))
+            rect(s['c'] - 0.45, s['a'], s['c'] + 0.45, s['b'], (150, 140, 70))
     im = im.resize((SIZE, SIZE), Image.LANCZOS)
     out = os.path.join(ROOT, 'assets', 'tex', 'map.png')
-    im.save(out, optimize=True)
+    im.quantize(255, method=Image.MEDIANCUT, dither=Image.NONE).save(out, optimize=True)
     print('map written:', out, os.path.getsize(out), 'bytes')
     return out
 
