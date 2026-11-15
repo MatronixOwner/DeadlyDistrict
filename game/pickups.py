@@ -172,15 +172,30 @@ class Pickup(object):
         root = world.fx.root.attachNewNode('pickup')
         root.setPos(x, y, self.z + 0.85)
         self.np = root
-        self.card = _card(world.assets, tex).copyTo(root)
-        if kind == 'money':
-            self.card.setScale(0.6, 1, 0.3)
-        elif kind == 'weapon':
-            self.card.setScale(0.95)
+        model = None
+        if kind == 'weapon':
+            mdl = getattr(world, 'models', None)
+            t = mdl.weapon(wid) if mdl is not None else None
+            if t is not None:
+                # настоящая модель оружия вместо плоского значка
+                model = root.attachNewNode('spin')
+                g = t.copyTo(model)
+                g.setScale(1.7)
+                mn, mx = g.getTightBounds(model)
+                g.setPos(-(mn.x + mx.x) * 0.5, -(mn.y + mx.y) * 0.5, -(mn.z + mx.z) * 0.5)
+                model.setP(18.0)
+        if model is not None:
+            self.card = model
         else:
-            self.card.setScale(0.62)
-        c = TINT.get(kind, (1, 1, 1))
-        self.card.setColorScale(c[0], c[1], c[2], 1)
+            self.card = _card(world.assets, tex).copyTo(root)
+            if kind == 'money':
+                self.card.setScale(0.6, 1, 0.3)
+            elif kind == 'weapon':
+                self.card.setScale(0.95)
+            else:
+                self.card.setScale(0.62)
+            c = TINT.get(kind, (1, 1, 1))
+            self.card.setColorScale(c[0], c[1], c[2], 1)
         self.glow = _card(world.assets, 'glow', True).copyTo(root)
         self.glow.setBillboardPointEye()
         gc = {'weapon': (0.4, 0.6, 1.0), 'health': (1.0, 0.3, 0.3), 'armor': (0.3, 0.6, 1.0),

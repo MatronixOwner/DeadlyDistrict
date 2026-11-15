@@ -62,7 +62,7 @@ SHOES = [(0.08, 0.08, 0.08), (0.90, 0.90, 0.90), (0.34, 0.22, 0.12)]
 
 class Look(object):
     __slots__ = ('skin', 'hair', 'shirt', 'pants', 'shoes', 'torso', 'hat', 'hat_color', 'female', 'glasses',
-                 'beard', 'bald', 'scale', 'fat')
+                 'beard', 'bald', 'scale', 'fat', 'model')
 
     def __init__(self):
         self.skin = SKINS[0]
@@ -79,6 +79,7 @@ class Look(object):
         self.bald = False
         self.scale = 1.0
         self.fat = 1.0
+        self.model = None           # конкретная модель из assets/models/chars (иначе подбирается по одежде)
 
 
 def random_look(rnd=None, zone='D'):

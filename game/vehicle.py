@@ -359,28 +359,52 @@ def wheel_template(assets, kind):
     return np_
 
 
-def lights_template(assets, kind):
+def _light_points(kind, info):
+    """Где у машины фары, задние огни и маячок: по модели, а если её нет — по габаритам."""
+    spec = SPECS[kind]
+    hl, hw = spec.L * 0.5, spec.W * 0.5
+    head = tail = siren = None
+    if info is not None:
+        head = info.get('head') or None
+        tail = info.get('tail') or None
+        siren = info.get('siren') or None
+    if not head:
+        z = spec.belt - spec.nose_drop - 0.18
+        head = [(-hw * 0.75, hl, z), (hw * 0.75, hl, z)]
+    if not tail:
+        zt = spec.belt - spec.tail_drop - 0.17
+        tail = [(-hw * 0.72, -hl, zt), (hw * 0.72, -hl, zt)]
+    if not siren:
+        y_wsb = spec.L * 0.5 - spec.hood
+        y_wst = y_wsb - spec.ws_rake
+        y_rwt = -spec.L * 0.5 + spec.trunk + spec.rw_rake
+        ym = (y_wst + y_rwt) * 0.5 if 'police' in spec.extras else y_wst - 0.3
+        siren = [(0.0, ym, spec.H)]
+    return head, tail, siren
+
+
+def lights_template(assets, kind, info=None):
     """Ночные огни: фары, луч на асфальте, габариты."""
     key = ('lights', kind)
     np_ = _extra_cache.get(key)
     if np_ is None:
         spec = SPECS[kind]
         mb = MeshBuilder()
-        hl, hw = spec.L * 0.5, spec.W * 0.5
-        z = spec.belt - spec.nose_drop - 0.18
+        hl = spec.L * 0.5
+        head, tail, _ = _light_points(kind, info)
         G = ('glow', 'add')
-        for sx in (-1, 1):
-            x = hw * 0.75 * sx
+        for (x, y, z) in head:
+            y = max(y, hl - 0.12) + 0.05
             s = 0.55
-            mb.quad(G, (x - s, hl + 0.05, z - s), (x + s, hl + 0.05, z - s), (x + s, hl + 0.05, z + s),
-                    (x - s, hl + 0.05, z + s), color=(1.0, 0.95, 0.8, 1.0))
-            mb.quad(G, (x, hl - s, z - s), (x, hl + s, z - s), (x, hl + s, z + s), (x, hl - s, z + s),
+            mb.quad(G, (x - s, y, z - s), (x + s, y, z - s), (x + s, y, z + s), (x - s, y, z + s),
+                    color=(1.0, 0.95, 0.8, 1.0))
+            mb.quad(G, (x, y - s, z - s), (x, y + s, z - s), (x, y + s, z + s), (x, y - s, z + s),
                     color=(1.0, 0.95, 0.8, 0.8))
+        for (x, y, z) in tail:
+            y = min(y, -hl + 0.12) - 0.05
             s = 0.34
-            zt = spec.belt - spec.tail_drop - 0.17
-            xt = hw * 0.72 * sx
-            mb.quad(G, (xt + s, -hl - 0.05, zt - s), (xt - s, -hl - 0.05, zt - s), (xt - s, -hl - 0.05, zt + s),
-                    (xt + s, -hl - 0.05, zt + s), color=(1.0, 0.1, 0.05, 0.9))
+            mb.quad(G, (x + s, y, z - s), (x - s, y, z - s), (x - s, y, z + s), (x + s, y, z + s),
+                    color=(1.0, 0.1, 0.05, 0.9))
         bw = 4.2
         mb.quad(('beam', 'add_c'), (-bw, hl - 0.5, 0.06), (bw, hl - 0.5, 0.06), (bw, hl + 15.0, 0.06),
                 (-bw, hl + 15.0, 0.06), (0, 0, 1, 1), (1.0, 0.95, 0.8, 0.5))
@@ -389,39 +413,38 @@ def lights_template(assets, kind):
     return np_
 
 
-def brake_template(assets, kind):
+def brake_template(assets, kind, info=None):
     key = ('brake', kind)
     np_ = _extra_cache.get(key)
     if np_ is None:
         spec = SPECS[kind]
         mb = MeshBuilder()
-        hl, hw = spec.L * 0.5, spec.W * 0.5
-        zt = spec.belt - spec.tail_drop - 0.17
-        for sx in (-1, 1):
-            xt = hw * 0.72 * sx
+        hl = spec.L * 0.5
+        _, tail, _ = _light_points(kind, info)
+        for (x, y, z) in tail:
+            y = min(y, -hl + 0.12)
             s = 0.5
-            mb.quad(('glow', 'add'), (xt + s, -hl - 0.06, zt - s), (xt - s, -hl - 0.06, zt - s),
-                    (xt - s, -hl - 0.06, zt + s), (xt + s, -hl - 0.06, zt + s), color=(1.0, 0.1, 0.05, 1.0))
-            mb.quad(None, (xt + 0.2, -hl - 0.02, zt - 0.08), (xt - 0.2, -hl - 0.02, zt - 0.08),
-                    (xt - 0.2, -hl - 0.02, zt + 0.08), (xt + 0.2, -hl - 0.02, zt + 0.08), color=(1.0, 0.25, 0.2, 1))
+            mb.quad(('glow', 'add'), (x + s, y - 0.06, z - s), (x - s, y - 0.06, z - s),
+                    (x - s, y - 0.06, z + s), (x + s, y - 0.06, z + s), color=(1.0, 0.1, 0.05, 1.0))
+            if info is None:
+                mb.quad(None, (x + 0.2, y - 0.02, z - 0.08), (x - 0.2, y - 0.02, z - 0.08),
+                        (x - 0.2, y - 0.02, z + 0.08), (x + 0.2, y - 0.02, z + 0.08), color=(1.0, 0.25, 0.2, 1))
         np_ = mb.build('brake', assets.apply_state)
         np_.setLightOff(1)
         _extra_cache[key] = np_
     return np_
 
 
-def siren_template(assets, kind, which):
+def siren_template(assets, kind, which, info=None):
     key = ('siren', kind, which)
     np_ = _extra_cache.get(key)
     if np_ is None:
         spec = SPECS[kind]
         mb = MeshBuilder()
         hw = spec.W * 0.5
-        y_wsb = spec.L * 0.5 - spec.hood
-        y_wst = y_wsb - spec.ws_rake
-        y_rwt = -spec.L * 0.5 + spec.trunk + spec.rw_rake
-        ym = (y_wst + y_rwt) * 0.5 if 'police' in spec.extras else y_wst - 0.3
-        z = spec.H + 0.12
+        _, _, siren = _light_points(kind, info)
+        ym = siren[0][1]
+        z = siren[0][2] + 0.12
         x = -hw * 0.33 if which == 0 else hw * 0.33
         col = (1.0, 0.1, 0.05, 1.0) if which == 0 else (0.1, 0.25, 1.0, 1.0)
         s = 1.5
@@ -528,21 +551,52 @@ class Vehicle(object):
         self._build()
 
     # ------------------------------------------------------------------
+    def _paint_rgb(self):
+        pal = self.spec.paints or PAINTS
+        return pal[self.paint % len(pal)]
+
+    def _new_body(self, wreck=False):
+        """Кузов: готовая модель, перекрашенная в цвет машины; если её нет — собранный из плоскостей."""
+        w = self.world
+        mdl = getattr(w, 'models', None)
+        if self.minfo is not None:
+            t = mdl.vehicle_body(self.kind, self.spec, self._paint_rgb(), wreck)
+            if t is not None:
+                return t.copyTo(self.tilt)
+        return body_template(w.assets, self.kind, 0 if wreck else self.paint, wreck=wreck).copyTo(self.tilt)
+
     def _build(self):
         w = self.world
         spec = self.spec
         self.node = w.dyn_root.attachNewNode('veh')
         self.tilt = self.node.attachNewNode('tilt')
-        self.body = body_template(w.assets, self.kind, self.paint).copyTo(self.tilt)
+        mdl = getattr(w, 'models', None)
+        self.minfo = mdl.vehicle_info(self.kind, spec) if (mdl is not None and mdl.ok) else None
+        self.body = self._new_body()
         self.wheels = []
-        wt = wheel_template(w.assets, self.kind)
-        hw = spec.W * 0.5 - spec.wheel_w * 0.5 + 0.03
-        for (wx, wy) in ((-hw, spec.front_axle), (hw, spec.front_axle), (-hw, spec.rear_axle),
-                         (hw, spec.rear_axle)):
-            piv = self.tilt.attachNewNode('wp')
-            piv.setPos(wx, wy, spec.wheel_r)
-            wn = wt.copyTo(piv)
-            self.wheels.append((piv, wn))
+        self.wheel_r_vis = spec.wheel_r
+        made = False
+        if self.minfo is not None and len(self.minfo['wheels']) == 4:
+            # колёса модели: переднее левое, переднее правое, заднее левое, заднее правое
+            tr = mdl.vehicle_wheel(self.kind, spec, False)
+            tl = mdl.vehicle_wheel(self.kind, spec, True)
+            if tr is not None and tl is not None:
+                for (wx, wy, r, left) in self.minfo['wheels']:
+                    piv = self.tilt.attachNewNode('wp')
+                    piv.setPos(wx, wy, r)
+                    wn = (tl if left else tr).copyTo(piv)
+                    self.wheels.append((piv, wn))
+                self.wheel_r_vis = self.minfo['wheel_r']
+                made = True
+        if not made:
+            wt = wheel_template(w.assets, self.kind)
+            hw = spec.W * 0.5 - spec.wheel_w * 0.5 + 0.03
+            for (wx, wy) in ((-hw, spec.front_axle), (hw, spec.front_axle), (-hw, spec.rear_axle),
+                             (hw, spec.rear_axle)):
+                piv = self.tilt.attachNewNode('wp')
+                piv.setPos(wx, wy, spec.wheel_r)
+                wn = wt.copyTo(piv)
+                self.wheels.append((piv, wn))
         sh = shadow_template(w.assets).copyTo(self.node)
         sh.setScale(spec.W * 0.72, spec.L * 0.62, 1.0)
         sh.setZ(0.04)
@@ -555,11 +609,11 @@ class Vehicle(object):
     def set_paint(self, idx):
         self.paint = idx
         self.body.removeNode()
-        self.body = body_template(self.world.assets, self.kind, self.paint).copyTo(self.tilt)
+        self.body = self._new_body()
 
     def _ensure_lights(self):
         if self.lights is None:
-            self.lights = lights_template(self.world.assets, self.kind).copyTo(self.tilt)
+            self.lights = lights_template(self.world.assets, self.kind, self.minfo).copyTo(self.tilt)
             self.lights.hide()
         return self.lights
 
@@ -578,7 +632,7 @@ class Vehicle(object):
             return
         self.brake_on = on
         if self.brake_np is None:
-            self.brake_np = brake_template(self.world.assets, self.kind).copyTo(self.tilt)
+            self.brake_np = brake_template(self.world.assets, self.kind, self.minfo).copyTo(self.tilt)
         if on:
             self.brake_np.show()
         else:
@@ -591,8 +645,8 @@ class Vehicle(object):
                 self.siren_np[1].hide()
             return
         if self.siren_np is None:
-            a = siren_template(self.world.assets, self.kind, 0).copyTo(self.tilt)
-            b = siren_template(self.world.assets, self.kind, 1).copyTo(self.tilt)
+            a = siren_template(self.world.assets, self.kind, 0, self.minfo).copyTo(self.tilt)
+            b = siren_template(self.world.assets, self.kind, 1, self.minfo).copyTo(self.tilt)
             self.siren_np = (a, b)
         ph = int(t * 5.0) % 2
         if ph == 0:
@@ -893,7 +947,9 @@ class Vehicle(object):
         self.set_lights(False)
         self.set_brake_light(False)
         self.body.removeNode()
-        self.body = body_template(self.world.assets, self.kind, 0, wreck=True).copyTo(self.tilt)
+        self.body = self._new_body(wreck=True)
+        for piv, wn in self.wheels:
+            piv.setColorScale(0.16, 0.15, 0.14, 1.0)         # обгоревшие колёса
         self.set_mode(Vehicle.PHYS)
         self.ai = None
         self.vx *= 0.3
@@ -906,7 +962,7 @@ class Vehicle(object):
         spec = self.spec
         self.node.setPosHpr(self.x, self.y, self.z, yaw_to_h(self.yaw), 0, 0)
         v = self.speed
-        self.wheel_rot = (self.wheel_rot - v * dt / spec.wheel_r * DEG) % 360.0
+        self.wheel_rot = (self.wheel_rot - v * dt / self.wheel_r_vis * DEG) % 360.0
         st = self.steer * DEG
         ws = self.wheels
         ws[0][0].setH(st)

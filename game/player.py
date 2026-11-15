@@ -137,7 +137,7 @@ class Camera(object):
         cx, cy, cz = ox - dx * d, oy - dy * d, oz - dz * d
         if v is None:
             # камеру прижало к стене: персонаж закрыл бы весь экран — прячем его
-            hide = d < 1.6 and pl.state == 'foot'
+            hide = d < 1.05 and pl.state == 'foot'
             if hide != self.hid_player:
                 self.hid_player = hide
                 if hide:

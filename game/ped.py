@@ -10,6 +10,7 @@ from .mathutil import clamp, approach, wrap_angle, angle_diff, turn_towards, yaw
 from .collision import F_PED, F_SIGHT
 from .defs import WEAPONS, W_FIST, W_BAT, W_PISTOL
 from .city import WATER_Z
+from .pedvisual import PedVisual
 
 _gun_cache = {}
 _shadow = [None]
@@ -287,13 +288,36 @@ class Ped(object):
         self.voice_cd = 0.0
         self.owner = None
         self._limbs = [0.0, 0.0, 0.0, 0.0]
+        self.shot_t = 0.0           # только что выстрелил (для анимации отдачи)
+        self.hit_t = 0.0            # только что получил удар
+        self._punch_prev = 0.0
+        self._shot_prev = 0.0
+        self._was_lying = False
+        self.vis = None             # модель со скелетной анимацией (pedvisual.PedVisual)
         self._build()
 
     # ------------------------------------------------------------------
     def _build(self):
         w = self.world
-        parts = build_ped(self.look)
         self.node = w.dyn_root.attachNewNode('ped')
+        mdl = getattr(w, 'models', None)
+        if mdl is not None and mdl.ok and mdl.chars_ok:
+            try:
+                self.vis = PedVisual(mdl, self.node, self.look, self.kind)
+            except Exception:
+                # модели не загрузились — рисуем персонажа по-старому, из коробок
+                mdl.chars_ok = False
+                self.vis = None
+                w.game.report_error()
+        if self.vis is not None:
+            self.model = self.vis.root
+            self.shadow = shadow_template(w.assets).copyTo(self.node)
+            self.shadow.setScale(0.95)
+            self.shadow.setZ(0.03)
+            self.gun_np = None
+            self.sync()
+            return
+        parts = build_ped(self.look)
         self.model = self.node.attachNewNode('m')
         s = self.look.scale
         self.model.setScale(s)
@@ -321,6 +345,11 @@ class Ped(object):
 
     def set_weapon(self, wid):
         self.weapon = WEAPONS[wid]
+        if self.removed:
+            return
+        if self.vis is not None:
+            self.vis.set_weapon(wid)
+            return
         if self.gun_np is not None:
             self.gun_np.removeNode()
             self.gun_np = None
@@ -334,6 +363,9 @@ class Ped(object):
         if self.removed:
             return
         self.removed = True
+        if self.vis is not None:
+            self.vis.remove()
+            self.vis = None
         self.node.removeNode()
 
     def set_state(self, st, timer=0.0):
@@ -609,6 +641,7 @@ class Ped(object):
             self.fire_cd = wp.rate if self.burst > 0 else 0.7 + random.random() * 1.0
         else:
             self.fire_cd = wp.rate * (1.6 + random.random() * 1.6)
+        self.shot_t = 0.3
         self.world.weapons.npc_fire(self, t, wp, tx, ty, d)
 
     def _chase(self, tx, ty, d, dt):
@@ -685,6 +718,7 @@ class Ped(object):
         if self.health <= 0.0:
             self.die(attacker, cause)
             return True
+        self.hit_t = 0.35
         if self.is_player:
             w.on_player_hurt(amount, attacker, cause)
             return False
@@ -807,6 +841,11 @@ class Ped(object):
 
     # ------------------------------------------------------------------
     def _animate(self, dt):
+        if self.removed:
+            return
+        if self.vis is not None:
+            self._animate_model(dt)
+            return
         st = self.state
         lying = st in ('down', 'dead')
         tgt = 1.0 if lying else 0.0
@@ -855,3 +894,53 @@ class Ped(object):
         if abs(L[3] - leg_r) > 0.8:
             L[3] = leg_r
             self.leg_r.setP(leg_r)
+
+    def _animate_model(self, dt):
+        """Состояние персонажа -> клип скелетной анимации."""
+        vis = self.vis
+        st = self.state
+        self.node.setPosHpr(self.x, self.y, self.z, yaw_to_h(self.yaw), 0, 0)
+        lying = st == 'down' or st == 'dead'
+        if lying:
+            if not self._was_lying:
+                self._was_lying = True
+                self.lie = 1.0
+                vis.play('Death', False, 1.35, 0.08)
+            if vis.fade > 0.0:
+                vis.update(dt)
+            return
+        if self._was_lying:
+            # поднимается: из лежачей позы плавно в стойку
+            self._was_lying = False
+            self.lie = 0.0
+            vis.play('Idle', True, 1.0, 0.45, True)
+        if self.punch_t > 0.0:
+            self.punch_t -= dt
+        if self.shot_t > 0.0:
+            self.shot_t -= dt
+        if self.hit_t > 0.0:
+            self.hit_t -= dt
+        if self.lod_far:
+            return
+        sp = self.speed
+        w = self.weapon
+        gun = w.kind == 'gun' or w.kind == 'rocket'
+        if self.punch_t > 0.0:
+            vis.strike(w.id, self.punch_t > self._punch_prev)
+        elif sp > 0.12:
+            vis.move_anim(sp, gun and self.aiming)
+        elif gun and self.aiming:
+            if self.shot_t > 0.0 and not w.auto:
+                vis.play('Idle_Gun_Shoot', False, 1.6, 0.05, self.shot_t > self._shot_prev)
+            else:
+                vis.play('Idle_Gun_Pointing', True, 1.0, 0.12)
+        elif self.hit_t > 0.0:
+            vis.play('HitRecieve', False, 1.3, 0.06)
+        elif gun:
+            vis.play('Idle_Gun', True, 1.0)
+        else:
+            vis.play('Idle', True, 1.0)
+        self._punch_prev = self.punch_t
+        self._shot_prev = self.shot_t
+        if vis.fade > 0.0:
+            vis.update(dt)

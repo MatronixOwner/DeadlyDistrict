@@ -15,6 +15,7 @@ from .crowd import Crowd
 from .weapons import Weapons
 from .police import Police
 from .player import Player, Camera
+from .models import Models
 from .defs import random_look, cop_look, medic_look, gang_look, W_PISTOL, W_SHOTGUN, W_FIST, WEAPONS
 from .mathutil import clamp, angle_diff
 from .audio import STATIONS
@@ -58,6 +59,7 @@ class World(object):
         self.citymesh = CityMesh(self.city, self.assets, self.static, self.root,
                                  progress=(lambda f: step(0.15 + 0.6 * f, 'Возводим кварталы…')))
         step(0.8, 'Заселяем улицы…')
+        self.models = Models(self.assets, self.base.loader)
         self.fx = Fx(self)
         self.sky = None
         self.hud = None

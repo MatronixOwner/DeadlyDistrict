@@ -213,6 +213,7 @@ class Weapons(object):
             ox, oy, oz = mx, my, mz
             skip = v
         else:
+            p.shot_t = 0.3
             ox, oy, oz, dx, dy, dz = cam.aim_ray()
             fwd_x, fwd_y = math.cos(cam.yaw), math.sin(cam.yaw)
             rx, ry = fwd_y, -fwd_x

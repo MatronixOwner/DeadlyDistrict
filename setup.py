@@ -30,6 +30,12 @@ setup(
                 'assets/sfx/*.wav',
                 'assets/music/*.ogg',
                 'assets/icon/*',
+                'assets/models/*.json',
+                'assets/models/*.md',
+                'assets/models/chars/*.bam',
+                'assets/models/anims/*.bam',
+                'assets/models/veh/*.bam',
+                'assets/models/weapons/*.bam',
             ],
             'include_modules': {'*': ['game.*']},
             'icons': {
