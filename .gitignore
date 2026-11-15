@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+.venvs/
+settings.json
+save*.json
+crash.log
+*.log
+.DS_Store
+Thumbs.db

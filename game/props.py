@@ -1,0 +1,384 @@
+# -*- coding: utf-8 -*-
+"""Модели уличных объектов (фонари, деревья, скамейки...).
+
+Каждая функция рисует объект в локальных координатах: +X — «перёд»
+объекта, Z вверх, начало координат на земле.  Возвращает описание
+столкновения:  None | ('c', r, h, flags) | ('b', hx, hy, h, flags)
+(для 'b' — полуразмеры вдоль локальных X и Y).
+"""
+import math
+import random
+
+from .collision import F_CAR, F_PED, F_BULLET, F_BREAK, F_SIGHT, F_CAM, F_SOLID
+
+GLOW = ('glow', 'add')
+POOL = ('lightpool', 'add')
+LAMP_COLOR = (1.0, 0.82, 0.52, 1.0)
+
+BREAK_SOFT = F_CAR | F_BREAK                    # машина сносит, пешеход проходит
+BREAK_HARD = F_CAR | F_PED | F_BULLET | F_BREAK   # машина сносит, пешеход обходит
+
+METAL = (0.26, 0.28, 0.31, 1.0)
+WOOD = (0.50, 0.34, 0.20, 1.0)
+
+
+def glow(night, x, y, z, size, color=LAMP_COLOR):
+    h = size * 0.5
+    night.quad(GLOW, (x - h, y, z - h), (x + h, y, z - h), (x + h, y, z + h), (x - h, y, z + h), color=color)
+    night.quad(GLOW, (x, y - h, z - h), (x, y + h, z - h), (x, y + h, z + h), (x, y - h, z + h), color=color)
+
+
+def pool(night, x0, y0, x1, y1, z, uv=(0, 0, 1, 1), color=LAMP_COLOR, k=0.5):
+    c = (color[0] * k, color[1] * k, color[2] * k, 1.0)
+    night.quad(POOL, (x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z), uv, c)
+
+
+# ---------------------------------------------------------------------------
+def lamp(mb, night, p, rnd):
+    if p.get('park'):
+        mb.cylinder(None, 0, 0, 0, 3.6, 0.07, 5, METAL, cap_top=False)
+        mb.cylinder(None, 0, 0, 0, 0.5, 0.13, 6, METAL, r_top=0.08, cap_top=False)
+        mb.box(None, -0.22, -0.22, 3.6, 0.22, 0.22, 4.0, (0.96, 0.92, 0.72, 1), shade=False)
+        mb.box(None, -0.3, -0.3, 4.0, 0.3, 0.3, 4.08, METAL)
+        glow(night, 0, 0, 3.8, 2.0)
+        pool(night, -5, -5, 5, 5, 0.05, k=0.42)
+        return ('c', 0.14, 4.0, BREAK_HARD)
+    mb.cylinder(None, 0, 0, 0, 6.5, 0.085, 5, METAL, cap_top=False)
+    mb.cylinder(None, 0, 0, 0, 0.7, 0.16, 6, METAL, r_top=0.09, cap_top=False)
+    mb.box(None, 0.0, -0.05, 6.42, 1.5, 0.05, 6.52, METAL)
+    mb.box(None, 1.3, -0.2, 6.26, 2.1, 0.2, 6.42, METAL)
+    mb.quad(None, (1.35, 0.16, 6.25), (2.05, 0.16, 6.25), (2.05, -0.16, 6.25), (1.35, -0.16, 6.25),
+            color=(1.0, 0.95, 0.7, 1))
+    glow(night, 1.7, 0, 6.2, 2.6)
+    # световое пятно: часть на тротуаре (z=0), часть на дороге (ниже на высоту бордюра)
+    curb = p.get('curb', 0.15)
+    t0, tc, t1 = -3.6, 0.65, 7.0
+    h = 5.3
+    um = (tc - t0) / (t1 - t0)
+    pool(night, t0, -h, tc, h, 0.05, (0, 0, um, 1))
+    pool(night, tc, -h, t1, h, 0.05 - curb, (um, 0, 1, 1))
+    return ('c', 0.16, 6.5, BREAK_HARD)
+
+
+def tree(mb, night, p, rnd):
+    s = p.get('size', 1.0)
+    trunk = (0.36 + rnd.random() * 0.08, 0.26, 0.17, 1.0)
+    mb.cylinder(None, 0, 0, 0, 2.6 * s, 0.24 * s, 6, trunk, r_top=0.15 * s, cap_top=False)
+    g = rnd.choice([(0.20, 0.46, 0.18), (0.26, 0.52, 0.20), (0.18, 0.40, 0.20), (0.32, 0.50, 0.16)])
+    seed = p.get('seed', 0)
+    mb.blob(None, 0, 0, 3.7 * s, 2.1 * s, 2.1 * s, 1.7 * s, g + (1.0,), seed=seed)
+    mb.blob(None, 0.5 * s, 0.3 * s, 5.0 * s, 1.4 * s, 1.4 * s, 1.2 * s,
+            (g[0] * 1.12, g[1] * 1.12, g[2] * 1.12, 1.0), seed=seed + 1)
+    return ('c', 0.3 * s, 6.0 * s, F_SOLID | F_CAM)
+
+
+def palm(mb, night, p, rnd):
+    s = p.get('size', 1.0)
+    lean_a = rnd.random() * 6.28
+    lean = 0.5 + rnd.random() * 0.7
+    segs = 5
+    hgt = 6.2 * s
+    px = py = 0.0
+    for i in range(segs):
+        t0 = i / float(segs)
+        t1 = (i + 1) / float(segs)
+        nx = math.cos(lean_a) * lean * t1 * t1
+        ny = math.sin(lean_a) * lean * t1 * t1
+        r0 = 0.22 - 0.08 * t0
+        r1 = 0.22 - 0.08 * t1
+        z0, z1 = hgt * t0, hgt * t1
+        c = (0.50 - 0.05 * (i % 2), 0.40 - 0.04 * (i % 2), 0.28, 1.0)
+        n = 5
+        for k in range(n):
+            a0 = k * 2 * math.pi / n
+            a1 = (k + 1) * 2 * math.pi / n
+            mb.quad(None, (px + math.cos(a0) * r0, py + math.sin(a0) * r0, z0),
+                    (px + math.cos(a1) * r0, py + math.sin(a1) * r0, z0),
+                    (nx + math.cos(a1) * r1, ny + math.sin(a1) * r1, z1),
+                    (nx + math.cos(a0) * r1, ny + math.sin(a0) * r1, z1), color=c)
+        px, py = nx, ny
+    leaves = 8
+    for k in range(leaves):
+        a = k * 2 * math.pi / leaves + rnd.random() * 0.4
+        ln = (2.6 + rnd.random() * 0.8) * s
+        droop = 0.9 + rnd.random() * 0.9
+        ca, sa = math.cos(a), math.sin(a)
+        w = 0.62 * s
+        mid = (px + ca * ln * 0.5, py + sa * ln * 0.5, hgt + 0.55 * s)
+        tip = (px + ca * ln, py + sa * ln, hgt - droop * s)
+        ox, oy = -sa * w, ca * w
+        g = (0.9 + rnd.random() * 0.1,) * 3 + (1.0,)
+        key = ('palm_leaf', 'a')
+        mb.quad(key, (px - ox, py - oy, hgt), (px + ox, py + oy, hgt),
+                (mid[0] + ox, mid[1] + oy, mid[2]), (mid[0] - ox, mid[1] - oy, mid[2]),
+                uvs=((0, 0), (0, 1), (0.5, 1), (0.5, 0)), color=g)
+        mb.quad(key, (mid[0] - ox, mid[1] - oy, mid[2]), (mid[0] + ox, mid[1] + oy, mid[2]),
+                (tip[0] + ox * 0.6, tip[1] + oy * 0.6, tip[2]), (tip[0] - ox * 0.6, tip[1] - oy * 0.6, tip[2]),
+                uvs=((0.5, 0), (0.5, 1), (1, 1), (1, 0)), color=g)
+    mb.blob(None, px, py, hgt - 0.1, 0.35, 0.35, 0.3, (0.42, 0.30, 0.16, 1.0), seed=1)
+    return ('c', 0.26, 6.0, F_SOLID | F_CAM)
+
+
+def bench(mb, night, p, rnd):
+    # сиденье вытянуто вдоль локальной Y, спинка сзади (-X)
+    mb.box(None, -0.22, -0.85, 0.40, 0.24, 0.85, 0.47, WOOD)
+    mb.box(None, -0.28, -0.85, 0.47, -0.20, 0.85, 0.95, WOOD)
+    for y in (-0.75, 0.75):
+        mb.box(None, -0.26, y - 0.04, 0.0, 0.22, y + 0.04, 0.40, METAL)
+    return ('c', 0.55, 0.9, BREAK_HARD)
+
+
+def bin_(mb, night, p, rnd):
+    c = rnd.choice([(0.18, 0.38, 0.22, 1), (0.30, 0.32, 0.34, 1), (0.20, 0.30, 0.46, 1)])
+    mb.cylinder(None, 0, 0, 0, 0.85, 0.27, 7, c, top_color=(0.08, 0.08, 0.08, 1))
+    mb.cylinder(None, 0, 0, 0.85, 0.92, 0.30, 7, METAL, cap_top=False)
+    return ('c', 0.3, 0.9, BREAK_HARD)
+
+
+def hydrant(mb, night, p, rnd):
+    red = (0.78, 0.12, 0.10, 1)
+    mb.cylinder(None, 0, 0, 0, 0.55, 0.13, 6, red, r_top=0.11)
+    mb.cylinder(None, 0, 0, 0.55, 0.68, 0.09, 6, red, r_top=0.03)
+    mb.box(None, -0.2, -0.05, 0.34, 0.2, 0.05, 0.44, (0.7, 0.7, 0.72, 1))
+    return ('c', 0.17, 0.7, BREAK_SOFT | F_PED)
+
+
+def newsbox(mb, night, p, rnd):
+    c = rnd.choice([(0.16, 0.30, 0.70, 1), (0.74, 0.14, 0.12, 1), (0.86, 0.70, 0.10, 1), (0.14, 0.5, 0.26, 1)])
+    mb.box(None, -0.22, -0.24, 0.0, 0.22, 0.24, 1.0, c)
+    mb.quad(None, (0.225, -0.18, 0.5), (0.225, 0.18, 0.5), (0.225, 0.18, 0.92), (0.225, -0.18, 0.92),
+            color=(0.80, 0.84, 0.86, 1))
+    return ('c', 0.3, 1.0, BREAK_HARD)
+
+
+def mailbox(mb, night, p, rnd):
+    mb.box(None, -0.04, -0.04, 0.0, 0.04, 0.04, 1.0, WOOD)
+    c = rnd.choice([(0.82, 0.82, 0.84, 1), (0.2, 0.2, 0.22, 1), (0.6, 0.12, 0.1, 1)])
+    mb.box(None, -0.22, -0.11, 1.0, 0.22, 0.11, 1.24, c)
+    mb.box(None, 0.0, 0.11, 1.12, 0.02, 0.13, 1.34, (0.85, 0.1, 0.1, 1))
+    return ('c', 0.14, 1.2, BREAK_SOFT)
+
+
+def cone(mb, night, p, rnd):
+    o = (0.95, 0.42, 0.08, 1)
+    mb.box(None, -0.2, -0.2, 0.0, 0.2, 0.2, 0.04, o)
+    mb.cylinder(None, 0, 0, 0.04, 0.30, 0.15, 6, o, r_top=0.10, cap_top=False)
+    mb.cylinder(None, 0, 0, 0.30, 0.44, 0.10, 6, (0.95, 0.95, 0.95, 1), r_top=0.065, cap_top=False)
+    mb.cylinder(None, 0, 0, 0.44, 0.62, 0.065, 6, o, r_top=0.02)
+    return ('c', 0.2, 0.6, BREAK_SOFT)
+
+
+def busstop(mb, night, p, rnd):
+    # навес: длина вдоль Y, открыт в сторону +X (к дороге)
+    mb.box(None, -0.65, -1.7, 2.35, 0.75, 1.7, 2.45, (0.20, 0.36, 0.56, 1))
+    for y in (-1.6, 1.6):
+        mb.box(None, -0.62, y - 0.05, 0.0, -0.52, y + 0.05, 2.35, METAL)
+    mb.box(None, -0.5, -1.2, 0.42, -0.1, 1.2, 0.48, WOOD)
+    mb.box(None, -0.48, -1.1, 0.0, -0.42, -1.0, 0.42, METAL)
+    mb.box(None, -0.48, 1.0, 0.0, -0.42, 1.1, 0.42, METAL)
+    g = (0.62, 0.78, 0.86, 0.38)
+    key = (None, 'glass')
+    mb.quad2(key, (-0.58, -1.55, 0.35), (-0.58, 1.55, 0.35), (-0.58, 1.55, 2.2), (-0.58, -1.55, 2.2), color=g)
+    mb.quad2(key, (-0.58, 1.62, 0.35), (0.5, 1.62, 0.35), (0.5, 1.62, 2.2), (-0.58, 1.62, 2.2), color=g)
+    glow(night, 0.0, 0.0, 2.2, 1.6, (0.8, 0.9, 1.0, 0.7))
+    return ('b', 0.7, 1.7, 2.4, F_SOLID | F_CAM)
+
+
+def dumpster(mb, night, p, rnd):
+    c = rnd.choice([(0.14, 0.32, 0.20, 1), (0.16, 0.24, 0.40, 1), (0.36, 0.20, 0.14, 1)])
+    mb.box(None, -0.55, -0.95, 0.12, 0.55, 0.95, 1.2, c)
+    mb.box(None, -0.6, -1.0, 1.2, 0.6, 1.0, 1.28, (0.1, 0.1, 0.1, 1))
+    for y in (-0.8, 0.8):
+        for x in (-0.45, 0.45):
+            mb.box(None, x - 0.06, y - 0.06, 0.0, x + 0.06, y + 0.06, 0.12, METAL)
+    return ('b', 0.6, 1.0, 1.3, F_SOLID)
+
+
+def crate(mb, night, p, rnd):
+    s = 0.5 + rnd.random() * 0.12
+    mb.box('crate', -s, -s, 0.0, s, s, s * 2, (1, 1, 1, 1))
+    return ('c', s * 1.15, s * 2, BREAK_HARD)
+
+
+def barrel(mb, night, p, rnd):
+    c = rnd.choice([(0.40, 0.22, 0.14, 1), (0.16, 0.26, 0.42, 1), (0.5, 0.42, 0.12, 1)])
+    mb.cylinder(None, 0, 0, 0, 0.9, 0.3, 8, c, top_color=(0.07, 0.06, 0.05, 1))
+    if p.get('fire'):
+        glow(night, 0, 0, 1.1, 2.4, (1.0, 0.55, 0.15, 0.9))
+        pool(night, -3.5, -3.5, 3.5, 3.5, 0.05, color=(1.0, 0.5, 0.15, 1.0), k=0.5)
+        k = ('fire', 'add')
+        night.quad(k, (-0.4, 0, 0.8), (0.4, 0, 0.8), (0.4, 0, 1.7), (-0.4, 0, 1.7))
+        night.quad(k, (0, -0.4, 0.8), (0, 0.4, 0.8), (0, 0.4, 1.7), (0, -0.4, 1.7))
+    return ('c', 0.32, 0.9, BREAK_HARD)
+
+
+def tires(mb, night, p, rnd):
+    for i in range(3):
+        mb.cylinder(None, (i % 2) * 0.06, 0, i * 0.24, i * 0.24 + 0.22, 0.36, 8, (0.09, 0.09, 0.10, 1),
+                    top_color=(0.05, 0.05, 0.05, 1))
+    return ('c', 0.38, 0.72, BREAK_HARD)
+
+
+def wreck(mb, night, p, rnd):
+    rust = (0.30, 0.17, 0.10, 1)
+    dark = (0.12, 0.10, 0.09, 1)
+    mb.box(None, -2.1, -0.85, 0.15, 2.1, 0.85, 0.7, rust)
+    mb.box(None, -1.0, -0.78, 0.7, 0.7, 0.78, 1.25, dark)
+    mb.box(None, -2.1, -0.85, 0.0, -1.5, 0.85, 0.15, dark)
+    mb.box(None, 1.3, -0.85, 0.0, 1.9, 0.85, 0.15, dark)
+    return ('b', 2.1, 0.9, 1.25, F_SOLID)
+
+
+def hoop(mb, night, p, rnd):
+    mb.cylinder(None, 0, 0, 0, 3.4, 0.09, 5, METAL, cap_top=False)
+    mb.box(None, 0.0, -0.04, 3.0, 0.7, 0.04, 3.1, METAL)
+    mb.box(None, 0.68, -0.9, 2.7, 0.74, 0.9, 3.8, (0.92, 0.92, 0.92, 1))
+    mb.box(None, 0.74, -0.25, 2.92, 1.2, 0.25, 2.96, (0.9, 0.35, 0.1, 1))
+    return ('c', 0.15, 3.4, F_SOLID)
+
+
+def fountain(mb, night, p, rnd):
+    R = 5.0 if p.get('big') else 3.0
+    stone = (0.70, 0.69, 0.66, 1)
+    mb.cylinder('concrete', 0, 0, 0, 0.6, R, 12, stone, uv_wrap=8.0, top_color=(0.62, 0.61, 0.58, 1))
+    n = 12
+    for i in range(n):
+        a0, a1 = i * 2 * math.pi / n, (i + 1) * 2 * math.pi / n
+        r = R - 0.4
+        mb.tri('water', (0, 0, 0.62), (math.cos(a0) * r, math.sin(a0) * r, 0.62),
+               (math.cos(a1) * r, math.sin(a1) * r, 0.62),
+               (0.5, 0.5), (0.5 + math.cos(a0) * 0.5, 0.5 + math.sin(a0) * 0.5),
+               (0.5 + math.cos(a1) * 0.5, 0.5 + math.sin(a1) * 0.5), (0.8, 0.95, 1.0, 1))
+    mb.cylinder(None, 0, 0, 0.6, 1.9, 0.45, 8, stone, r_top=0.3)
+    mb.cylinder(None, 0, 0, 1.9, 2.05, 1.1, 8, stone, r_top=1.25, cap_bottom=True,
+                top_color=(0.55, 0.75, 0.9, 1))
+    w = (0.75, 0.9, 1.0, 0.5)
+    key = (None, 'glass')
+    for a in range(4):
+        ca, sa = math.cos(a * math.pi / 4), math.sin(a * math.pi / 4)
+        mb.quad2(key, (-ca * 0.5, -sa * 0.5, 2.0), (ca * 0.5, sa * 0.5, 2.0),
+                 (ca * 0.12, sa * 0.12, 3.6), (-ca * 0.12, -sa * 0.12, 3.6), color=w)
+    glow(night, 0, 0, 2.2, 5.0, (0.5, 0.8, 1.0, 0.6))
+    return ('c', R, 2.0, F_SOLID)
+
+
+def statue(mb, night, p, rnd):
+    stone = (0.66, 0.65, 0.62, 1)
+    bronze = (0.36, 0.42, 0.34, 1)
+    mb.box('concrete', -1.0, -1.0, 0, 1.0, 1.0, 0.4, stone, uv_m=2.0)
+    mb.box('concrete', -0.7, -0.7, 0.4, 0.7, 0.7, 2.2, stone, uv_m=2.0)
+    mb.box(None, -0.22, -0.3, 2.2, 0.0, -0.06, 3.1, bronze)
+    mb.box(None, -0.22, 0.06, 2.2, 0.0, 0.3, 3.1, bronze)
+    mb.box(None, -0.26, -0.36, 3.1, 0.06, 0.36, 4.0, bronze)
+    mb.box(None, -0.2, -0.16, 4.0, 0.06, 0.16, 4.36, bronze)
+    mb.box(None, -0.1, 0.36, 3.5, 0.9, 0.5, 3.66, bronze)
+    return ('c', 1.25, 4.0, F_SOLID | F_CAM)
+
+
+def gazebo(mb, night, p, rnd):
+    white = (0.92, 0.9, 0.86, 1)
+    R = 3.2
+    n = 6
+    mb.cylinder('wood', 0, 0, 0, 0.25, R + 0.3, n, (0.9, 0.9, 0.9, 1), uv_wrap=6.0)
+    for i in range(n):
+        a = i * 2 * math.pi / n
+        mb.cylinder(None, math.cos(a) * R, math.sin(a) * R, 0.25, 2.9, 0.1, 5, white, cap_top=False)
+    mb.cylinder('roof_tiles', 0, 0, 2.9, 4.4, R + 0.6, n, (1, 1, 1, 1), r_top=0.05, uv_wrap=6.0, smooth=False,
+                cap_bottom=True)
+    glow(night, 0, 0, 2.7, 3.0)
+    return None
+
+
+def pump(mb, night, p, rnd):
+    mb.box(None, -0.3, -0.25, 0.0, 0.3, 0.25, 1.5, (0.86, 0.14, 0.12, 1))
+    mb.box(None, -0.32, -0.27, 1.5, 0.32, 0.27, 1.62, (0.92, 0.92, 0.92, 1))
+    mb.quad(None, (0.305, -0.18, 0.95), (0.305, 0.18, 0.95), (0.305, 0.18, 1.35), (0.305, -0.18, 1.35),
+            color=(0.1, 0.12, 0.14, 1))
+    mb.quad(None, (-0.305, 0.18, 0.95), (-0.305, -0.18, 0.95), (-0.305, -0.18, 1.35), (-0.305, 0.18, 1.35),
+            color=(0.1, 0.12, 0.14, 1))
+    return ('c', 0.4, 1.6, F_SOLID)
+
+
+UMBRELLA_COLORS = [((0.9, 0.2, 0.2), (0.95, 0.95, 0.9)), ((0.2, 0.4, 0.85), (0.95, 0.95, 0.9)),
+                   ((0.95, 0.75, 0.15), (0.9, 0.3, 0.2)), ((0.2, 0.7, 0.4), (0.95, 0.95, 0.9)),
+                   ((0.9, 0.4, 0.7), (0.3, 0.8, 0.85)), ((0.95, 0.5, 0.1), (0.2, 0.3, 0.6))]
+
+
+def umbrella(mb, night, p, rnd):
+    ca, cb = UMBRELLA_COLORS[p.get('color', 0) % len(UMBRELLA_COLORS)]
+    mb.cylinder(None, 0, 0, 0, 2.2, 0.035, 4, (0.9, 0.9, 0.9, 1), cap_top=False)
+    n = 8
+    for i in range(n):
+        a0, a1 = i * 2 * math.pi / n, (i + 1) * 2 * math.pi / n
+        c = (ca if i % 2 == 0 else cb) + (1.0,)
+        p0 = (math.cos(a0) * 1.5, math.sin(a0) * 1.5, 1.85)
+        p1 = (math.cos(a1) * 1.5, math.sin(a1) * 1.5, 1.85)
+        mb.tri(None, (0, 0, 2.3), p0, p1, color=c)
+        mb.tri(None, (0, 0, 2.3), p1, p0, color=(c[0] * 0.6, c[1] * 0.6, c[2] * 0.6, 1))
+    # полотенце / лежак
+    tc = rnd.choice([(0.9, 0.9, 0.3, 1), (0.3, 0.6, 0.9, 1), (0.9, 0.4, 0.4, 1), (0.95, 0.95, 0.95, 1)])
+    mb.box(None, 0.5, -0.4, 0.0, 2.3, 0.4, 0.04, tc)
+    return ('c', 0.1, 2.2, BREAK_SOFT)
+
+
+def lifeguard(mb, night, p, rnd):
+    white = (0.94, 0.93, 0.9, 1)
+    red = (0.82, 0.16, 0.12, 1)
+    for x in (-1.2, 1.2):
+        for y in (-1.2, 1.2):
+            mb.box(None, x - 0.08, y - 0.08, 0, x + 0.08, y + 0.08, 2.2, WOOD)
+    mb.box('wood', -1.6, -1.6, 2.2, 1.9, 1.6, 2.35, (0.9, 0.9, 0.9, 1), uv_m=3.0)
+    mb.box(None, -1.5, -1.3, 2.35, 0.7, 1.3, 4.3, white)
+    mb.box(None, -1.7, -1.5, 4.3, 1.2, 1.5, 4.45, red)
+    mb.quad(None, (0.71, -0.8, 3.0), (0.71, 0.8, 3.0), (0.71, 0.8, 3.9), (0.71, -0.8, 3.9),
+            color=(0.2, 0.3, 0.4, 1))
+    # пандус
+    mb.quad2('wood', (1.9, -0.5, 2.3), (4.6, -0.5, 0.0), (4.6, 0.5, 0.0), (1.9, 0.5, 2.3),
+             color=(0.85, 0.85, 0.85, 1))
+    return ('b', 1.7, 1.6, 4.4, F_SOLID | F_CAM)
+
+
+def crane(mb, night, p, rnd):
+    y_ = (0.92, 0.72, 0.12, 1)
+    H = 30.0
+    for x in (-5.0, 5.0):
+        for y in (-9.0, 9.0):
+            mb.box(None, x - 0.6, y - 0.6, 0, x + 0.6, y + 0.6, H, y_)
+    for y in (-9.0, 9.0):
+        mb.box(None, -5.6, y - 0.5, H * 0.45, 5.6, y + 0.5, H * 0.45 + 1.0, y_)
+    mb.box(None, -5.6, -9.6, H, 5.6, 9.6, H + 1.6, y_)
+    # стрела над водой (+X) и противовес
+    mb.box(None, -16.0, -1.4, H + 1.6, 42.0, 1.4, H + 3.4, y_)
+    mb.box(None, -16.0, -2.4, H - 0.4, -11.0, 2.4, H + 1.6, (0.3, 0.3, 0.32, 1))
+    mb.box(None, 14.0, -1.8, H - 1.2, 18.0, 1.8, H + 1.6, (0.86, 0.86, 0.86, 1))
+    mb.box(None, 23.9, -0.06, H - 14.0, 24.1, 0.06, H + 1.6, (0.1, 0.1, 0.1, 1))
+    mb.box(None, 21.0, -1.3, H - 16.6, 27.0, 1.3, H - 14.0, (0.7, 0.2, 0.16, 1))
+    for (x, y) in ((-5.0, -9.0), (5.0, 9.0), (42.0, 0.0)):
+        glow(night, x, y, H + 3.8, 3.0, (1.0, 0.2, 0.15, 1.0))
+    return ('legs', [(-5.0, -9.0), (5.0, -9.0), (-5.0, 9.0), (5.0, 9.0)], 0.9, H)
+
+
+def bollard(mb, night, p, rnd):
+    mb.cylinder(None, 0, 0, 0, 0.55, 0.26, 7, (0.12, 0.12, 0.13, 1), r_top=0.2)
+    mb.cylinder(None, 0, 0, 0.55, 0.7, 0.3, 7, (0.9, 0.75, 0.1, 1), r_top=0.26)
+    return ('c', 0.3, 0.7, F_SOLID)
+
+
+def rock(mb, night, p, rnd):
+    s = p.get('size', 1.0)
+    g = 0.42 + rnd.random() * 0.12
+    mb.blob(None, 0, 0, 0.35 * s, 1.0 * s, 0.8 * s, 0.6 * s, (g, g, g * 0.96, 1), seed=p.get('seed', 0), jitter=0.3)
+    return ('c', 0.85 * s, 0.9 * s, F_SOLID)
+
+
+BUILDERS = {
+    'lamp': lamp, 'tree': tree, 'palm': palm, 'bench': bench, 'bin': bin_, 'hydrant': hydrant,
+    'newsbox': newsbox, 'mailbox': mailbox, 'cone': cone, 'busstop': busstop, 'dumpster': dumpster,
+    'crate': crate, 'barrel': barrel, 'tires': tires, 'wreck': wreck, 'hoop': hoop, 'fountain': fountain,
+    'statue': statue, 'gazebo': gazebo, 'pump': pump, 'umbrella': umbrella, 'lifeguard': lifeguard,
+    'crane': crane, 'bollard': bollard, 'rock': rock,
+}
+
+# объекты, которые можно снести машиной
+BREAKABLE = set(['lamp', 'bench', 'bin', 'hydrant', 'newsbox', 'mailbox', 'cone', 'crate', 'barrel', 'tires',
+                 'umbrella'])
