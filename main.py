@@ -64,6 +64,10 @@ def selftest():
     game.base.graphicsEngine.renderFrame()
     missing = sorted(set(game.assets.missing))
     assert not missing, 'missing textures: %s' % missing
+    # mp3 для «Астрахань FM» читает встроенный ffmpeg — убеждаемся, что он подключился
+    from panda3d.core import MovieAudio
+    cur = MovieAudio.get(game.assets.path('sfx', 'mp3_check.mp3')).open()
+    assert cur is not None and cur.length() > 0.2, 'mp3 decoder (p3ffmpeg) is not available'
     mdl = w.models
     assert mdl.ok and mdl.chars_ok and not mdl.failed, 'models not loaded: %s' % sorted(mdl.failed)
     assert w.player.ped.vis is not None, 'player has no skeletal model'

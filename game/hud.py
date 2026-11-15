@@ -231,9 +231,14 @@ class Hud(object):
         self.veh_text.setText(text)
         self.veh_t = 3.0
 
-    def radio_changed(self, text):
-        self.radio_text.setText('♪ ' + text if False else text)
-        self.radio_t = 2.5
+    def radio_changed(self, station, title=None):
+        """Показать название станции и, если есть, песни."""
+        if title:
+            self.radio_text.setText(station + '\n' + title)
+            self.radio_t = 4.5
+        else:
+            self.radio_text.setText(station)
+            self.radio_t = 2.5
 
     def set_timer(self, text):
         self._set(self.timer_text, 'timer', text or '')

@@ -591,6 +591,8 @@ class Player(object):
         w.cam.free_t = 5.0
         if w.sky is not None:
             v.set_lights(w.sky.lights_on)
+        if w.radio_pref is not None and v.spec.radio:
+            v.radio = w.radio_pref              # своя станция играет в любой машине
         if not silent:
             w.audio.play('door', 0.8)
         w.on_player_enter_vehicle(v, stolen)
@@ -667,8 +669,11 @@ class Player(object):
                 w.crowd.panic(v.x, v.y, 14.0)
         if inp.hit('r') and v.spec.radio:
             v.radio = (v.radio + 1) % len(STATIONS)
+            w.radio_pref = v.radio
             w.audio.play('static', 0.6)
             w.hud.radio_changed(STATIONS[v.radio][0])
+        if inp.hit('n') and v.spec.radio and w.audio.next_track():
+            w.audio.play('static', 0.4)
         # стрельба из окна
         self.aiming = False
         if inp.held('mouse1') or inp.held('control'):

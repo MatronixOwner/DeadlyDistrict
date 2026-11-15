@@ -10,6 +10,7 @@ from panda3d.core import (loadPrcFileData, WindowProperties, Filename, TextNode,
 
 from . import GAME_TITLE, __version__
 from . import settings as settings_mod
+from . import audio as audio_mod
 from .settings import Settings, DRAW_DIST, TRAFFIC_LEVELS
 
 RESOLUTIONS = [(1024, 576), (1280, 720), (1366, 768), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
@@ -60,6 +61,7 @@ def configure(settings, headless=False):
         'show-frame-rate-meter 0',
         'model-cache-dir',
         'audio-library-name p3openal_audio',
+        'load-audio-type * p3ffmpeg',           # mp3, m4a и прочее — для песен игрока на радио
         'notify-level warning',
         'default-directnotify-level warning',
         'text-minfilter linear',
@@ -480,9 +482,30 @@ class Game(object):
             s.save()
             self.ui.close()
 
+        music_n = [0, -10.0]
+
+        def music_count():
+            # папку перечитываем не чаще раза в секунду: значение спрашивают каждый кадр
+            if time.time() - music_n[1] > 1.0:
+                music_n[0] = len(audio_mod.scan_tracks())
+                music_n[1] = time.time()
+            return ('песен: %d — открыть папку' % music_n[0]) if music_n[0] else 'пусто — открыть папку'
+
+        def open_music(d=0):
+            path = audio_mod.user_music_dir()
+            try:
+                if sys.platform == 'win32':
+                    os.startfile(path)
+                else:
+                    import subprocess
+                    subprocess.Popen(['open' if sys.platform == 'darwin' else 'xdg-open', path])
+            except Exception:
+                pass
+
         items = [
             Item('Громкость звуков', value=pct('sfx_volume'), change=ch_vol('sfx_volume')),
             Item('Громкость музыки', value=pct('music_volume'), change=ch_vol('music_volume')),
+            Item('Песни для «Астрахань FM»', open_music, value=music_count),
             Item('Чувствительность мыши', value=lambda: '%.1f' % float(s.get('mouse_sens')), change=ch_sens),
             Item('Инверсия мыши по вертикали', value=yn('invert_y'), change=toggle('invert_y')),
             Item('Дальность прорисовки', value=lambda: ('Близко', 'Средне', 'Далеко')[int(s.get('draw_distance'))],
@@ -495,7 +518,7 @@ class Game(object):
             Item('Кровь', value=yn('blood'), change=toggle('blood')),
             Item('Назад', back),
         ]
-        return Menu(self.ui, 'Настройки', items, back=back, top=0.44, spacing=0.11, scale=0.072, wide=True)
+        return Menu(self.ui, 'Настройки', items, back=back, top=0.46, spacing=0.098, scale=0.066, wide=True)
 
     def apply_window(self):
         s = self.settings

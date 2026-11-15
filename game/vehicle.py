@@ -543,7 +543,7 @@ class Vehicle(object):
         self.panic_t = 0.0
         self.block_t = 0.0
         self.unseen_t = 0.0
-        self.radio = random.randrange(4)
+        self.radio = random.randrange(5)         # станция, на которую настроено радио (см. audio.STATIONS)
         self.driver_look = None
         self.hits = 0
         self.burn_t = 0.0

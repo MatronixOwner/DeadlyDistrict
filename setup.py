@@ -23,11 +23,12 @@ setup(
             'console_apps': ({'DeadlyDistrict-selftest': 'main.py'} if os.environ.get('DD_SELFTEST') else {}),
             # DD_PLATFORMS=manylinux2014_x86_64,win_amd64 — собрать под другие платформы
             'platforms': os.environ.get('DD_PLATFORMS', 'win_amd64').split(','),
-            'plugins': ['pandagl', 'p3openal_audio', 'p3tinydisplay'],
+            'plugins': ['pandagl', 'p3openal_audio', 'p3tinydisplay', 'p3ffmpeg'],
             'include_patterns': [
                 'assets/tex/*.png',
                 'assets/fonts/*',
                 'assets/sfx/*.wav',
+                'assets/sfx/*.mp3',
                 'assets/music/*.ogg',
                 'assets/icon/*',
                 'assets/models/*.json',

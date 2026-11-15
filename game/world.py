@@ -79,6 +79,8 @@ class World(object):
         self.hurt_cd = 0.0
         self.engine_rate = 0.6
         self.radio_station = -1
+        self.radio_pref = None             # станция, которую выбрал игрок: включается в любой машине
+        self._music_hint = False
         self.cheat_fast = False
 
     # ------------------------------------------------------------------
@@ -711,8 +713,10 @@ class World(object):
             frac = g - int(g) if g < 4.0 else 1.0
             rate = 0.55 + 0.25 * min(g, 4.0) / 4.0 + 0.5 * frac + abs(v.in_throttle) * 0.12
             self.engine_rate += (rate - self.engine_rate) * min(1.0, dt * 6.0)
-            au.loop('engine', 'engine_truck' if v.spec.engine == 'truck' else 'engine',
-                    0.33 + 0.3 * abs(v.in_throttle) + 0.1 * min(1.0, sp / 20.0), self.engine_rate)
+            ev = 0.33 + 0.3 * abs(v.in_throttle) + 0.1 * min(1.0, sp / 20.0)
+            if au.radio_playing():
+                ev *= 0.5                       # с включённым радио мотор тише, как в салоне
+            au.loop('engine', 'engine_truck' if v.spec.engine == 'truck' else 'engine', ev, self.engine_rate)
             slip = abs(v.slip)
             if (slip > 3.0 or (v.in_handbrake and sp > 5.0)) and sp > 3.0:
                 au.loop('skid', 'skid', min(0.7, 0.25 + slip * 0.06), 0.9 + min(0.3, slip * 0.02))
@@ -737,12 +741,17 @@ class World(object):
         st = -1
         if v is not None and v.spec.radio and not v.dead and pl.state == 'car':
             st = v.radio
-        if st != self.radio_station:
+        changed = st != self.radio_station
+        if changed:
             self.radio_station = st
-            if st < 0 or STATIONS[st][1] is None:
-                au.music(None)
-            else:
-                au.music(STATIONS[st][1], 1.0)
+            au.set_station(st)
+        title = au.update_radio()
+        if st >= 0 and self.hud is not None and (title or changed):
+            self.hud.radio_changed(STATIONS[st][0], title)
+            if changed and STATIONS[st][1] == 'user' and au.user_tracks == 0 and not self._music_hint:
+                self._music_hint = True
+                self.hud.help('«Астрахань FM» играет ваши песни: положите файлы mp3 в папку music рядом с игрой. '
+                              'N — следующая песня.', 9.0)
         sky = self.sky
         if sky is not None:
             au.loop('rain', 'rain' if sky.rain > 0.05 else None, 0.55 * sky.rain)

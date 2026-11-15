@@ -70,6 +70,17 @@ README_TXT = u"""DEADLY DISTRICT — «Гиблый район»
 """
 
 
+MUSIC_TXT = u"""Песни для радиостанции «Астрахань FM»
+
+Положите в эту папку свои музыкальные файлы (mp3, ogg, wav, flac, m4a) — можно с подпапками.
+В игре сядьте в машину и клавишей R выберите «Астрахань FM»: песни играют вперемешку.
+N — следующая песня. Название берётся из имени файла, например «Глюкоза - Швайне.mp3».
+
+Перезапускать игру не нужно: папка перечитывается, когда вы переключаетесь на станцию.
+Пока папка пуста, станция играет музыку из самой игры.
+"""
+
+
 def main():
     if '--no-build' not in sys.argv:
         shutil.rmtree(os.path.join(ROOT, 'build'), ignore_errors=True)
@@ -85,6 +96,8 @@ def main():
     with zipfile.ZipFile(OUT, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         # BOM нужен, чтобы «Блокнот» старых версий Windows верно показал кириллицу
         z.writestr(TOP + '/README.txt', (u'\ufeff' + README_TXT.replace('\n', '\r\n')).encode('utf-8'))
+        z.writestr(TOP + '/music/Как добавить песни.txt',
+                   (u'\ufeff' + MUSIC_TXT.replace('\n', '\r\n')).encode('utf-8'))
         for base, dirs, files in os.walk(BUILD):
             dirs.sort()
             for name in sorted(files):
