@@ -22,6 +22,7 @@ class Assets(object):
         self._fonts = {}
         self.missing = []
         self.smooth_textures = False        # настройка «Текстуры: чёткие / сглаженные»
+        self._filtered = []                 # (текстура, всегда ли сглаживать) — для смены настройки на лету
 
     # ------------------------------------------------------------------
     def path(self, *parts):
@@ -56,10 +57,20 @@ class Assets(object):
     def setup_filter(self, t, smooth=False):
         """Фильтрация текстуры.  Вблизи — чёткие пиксели («ретро») либо сглаживание, вдали — мип-уровни
         с анизотропной фильтрацией, чтобы картинка не рябила и не превращалась в «мыло»."""
+        self._filtered.append((t, smooth))
+        self._filter(t, smooth)
+
+    def _filter(self, t, smooth):
         soft = smooth or self.smooth_textures
         t.setMagfilter(SamplerState.FTLinear if soft else SamplerState.FTNearest)
         t.setMinfilter(SamplerState.FTLinearMipmapLinear)
         t.setAnisotropicDegree(16)
+
+    def set_smooth(self, on):
+        """Настройка «Текстуры: чёткие / сглаженные» — применяется сразу ко всем загруженным текстурам."""
+        self.smooth_textures = bool(on)
+        for (t, smooth) in self._filtered:
+            self._filter(t, smooth)
 
     def font(self, name, pixels=48, outline=0.0):
         key = (name, pixels, outline)

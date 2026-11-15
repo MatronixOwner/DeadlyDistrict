@@ -7,10 +7,14 @@ import json
 APP_NAME = 'DeadlyDistrict'
 
 DEFAULTS = {
-    'fullscreen': False,
+    'cfg': 0,                  # версия настроек экрана (см. CFG_VERSION)
+    'screen': 1,               # 0 окно, 1 во весь экран без рамки, 2 полноэкранный режим
+    'fullscreen': False,       # старый ключ (до версии 0.3); теперь режим задаёт 'screen'
     'width': 1280,
     'height': 720,
     'vsync': True,
+    'msaa': 4,                 # сглаживание краёв: 0, 2, 4 или 8 выборок
+    'smooth_textures': False,  # False — чёткие пиксели, True — сглаженные текстуры
     'mouse_sens': 1.0,
     'invert_y': False,
     'sfx_volume': 0.8,
@@ -18,9 +22,17 @@ DEFAULTS = {
     'draw_distance': 1,        # 0 близко, 1 средне, 2 далеко
     'traffic': 1,              # 0 мало, 1 норма, 2 много
     'show_fps': False,
-    'retro': False,            # «пиксельный» рендер в низком разрешении
     'blood': True,
 }
+
+# Версия настроек экрана.  Если в файле настроек она меньше, режим экрана подбирается заново:
+# в версиях до 0.3 окно на экранах с масштабом Windows 125–150 % выбиралось слишком маленьким,
+# а полноэкранный режим включался в заниженном разрешении — отсюда «мыльная» картинка.
+CFG_VERSION = 3
+
+SCREEN_WINDOW, SCREEN_BORDERLESS, SCREEN_EXCLUSIVE = 0, 1, 2
+SCREEN_NAMES = ('В окне', 'Во весь экран', 'Полноэкранный режим')
+MSAA_LEVELS = (0, 2, 4, 8)
 
 DRAW_DIST = [(240.0, 300.0), (360.0, 440.0), (520.0, 620.0)]      # (начало тумана, дальняя плоскость)
 TRAFFIC_LEVELS = [(10, 14), (18, 26), (26, 36)]                   # (машины, пешеходы)
@@ -78,16 +90,58 @@ def find_root():
     return cands[0] if cands else os.getcwd()
 
 
+_dpi_done = [False]
+
+
+def dpi_aware():
+    """Сообщить Windows, что игра сама работает с настоящими пикселями экрана.
+
+    Без этого при масштабе 125–150 % система сообщает уменьшенный размер экрана, а готовую картинку
+    растягивает — она выходит мутной."""
+    if _dpi_done[0] or not sys.platform.startswith('win'):
+        return
+    _dpi_done[0] = True
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)        # Windows 8.1+: по каждому монитору
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()             # Vista / 7 / 8
+    except Exception:
+        pass
+
+
 def desktop_size():
-    """Размер основного экрана в пикселях или (0, 0), если узнать его не удалось."""
+    """Размер основного экрана в настоящих пикселях или (0, 0), если узнать его не удалось."""
     if sys.platform.startswith('win'):
         try:
             import ctypes
+            dpi_aware()
             user32 = ctypes.windll.user32
             return int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
         except Exception:
             pass
     return 0, 0
+
+
+def choose_screen(settings, desktop, sizes):
+    """Режим экрана для первого запуска (и после обновления со старой версии).
+
+    Экран известен — игра занимает его целиком в родном разрешении, без рамки и без смены
+    видеорежима: так картинка самая чёткая.  Неизвестен — обычное окно."""
+    dw, dh = desktop
+    if dw >= 800 and dh >= 600:
+        settings.set('screen', SCREEN_BORDERLESS)
+        settings.set('width', int(dw))
+        settings.set('height', int(dh))
+    else:
+        settings.set('screen', SCREEN_WINDOW)
+        size = fit_window(sizes, desktop)
+        if size is not None:
+            settings.set('width', size[0])
+            settings.set('height', size[1])
+    settings.set('fullscreen', False)
+    settings.set('cfg', CFG_VERSION)
 
 
 def fit_window(sizes, desktop):

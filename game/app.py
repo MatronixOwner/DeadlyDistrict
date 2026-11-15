@@ -11,7 +11,8 @@ from panda3d.core import (loadPrcFileData, WindowProperties, Filename, TextNode,
 from . import GAME_TITLE, __version__
 from . import settings as settings_mod
 from . import audio as audio_mod
-from .settings import Settings, DRAW_DIST, TRAFFIC_LEVELS
+from .settings import (Settings, DRAW_DIST, TRAFFIC_LEVELS, SCREEN_WINDOW, SCREEN_BORDERLESS, SCREEN_EXCLUSIVE,
+                       SCREEN_NAMES, MSAA_LEVELS)
 from .sky import set_lens_range
 
 RESOLUTIONS = [(1024, 576), (1280, 720), (1366, 768), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
@@ -51,14 +52,21 @@ CREDITS_TEXT = (
 
 def configure(settings, headless=False):
     s = settings
+    mode = int(s.get('screen'))
+    msaa = int(s.get('msaa'))
     prc = [
         'window-title %s' % GAME_TITLE,
         'win-size %d %d' % (int(s.get('width')), int(s.get('height'))),
-        'fullscreen %d' % (1 if s.get('fullscreen') else 0),
+        # Окно всегда открывается обычным образом (в рамке либо без неё, во весь экран).  Полноэкранный
+        # видеорежим, если он выбран, включается уже после открытия окна: откажет видеокарта — игра
+        # просто останется в окне, а не упадёт на запуске.
+        'fullscreen 0',
+        'undecorated %d' % (0 if mode == SCREEN_WINDOW else 1),
+        'win-origin %s' % ('-2 -2' if mode == SCREEN_WINDOW else '0 0'),
         'sync-video %d' % (1 if s.get('vsync') else 0),
         'textures-power-2 none',
-        'framebuffer-multisample 1',
-        'multisamples 4',
+        'framebuffer-multisample %d' % (1 if msaa > 0 else 0),
+        'multisamples %d' % max(0, msaa),
         'show-frame-rate-meter 0',
         'model-cache-dir',
         'audio-library-name p3openal_audio',
@@ -84,23 +92,27 @@ class Game(object):
     def __init__(self, base=None, headless=False):
         self.settings = Settings()
         self.headless = headless
+        self._win_todo = []                # отложенные шаги смены режима экрана: (через сколько кадров, что)
+        self._boot = (int(self.settings.get('msaa')), bool(self.settings.get('vsync')))
+        opened_here = base is None
         if base is None:
-            if self.settings.fresh and not headless:
-                # первый запуск: окно подбирается под размер экрана
-                size = settings_mod.fit_window(RESOLUTIONS[:5], settings_mod.desktop_size())
-                if size is not None:
-                    self.settings.set('width', size[0])
-                    self.settings.set('height', size[1])
+            if not headless:
+                self._choose_screen()
             configure(self.settings, headless)
             from direct.showbase.ShowBase import ShowBase
             base = ShowBase()
         self.base = base
+        if opened_here and not headless:
+            self.settings.save()
+            if int(self.settings.get('screen')) == SCREEN_EXCLUSIVE:
+                self.apply_window()         # запрос выполнится на первом же кадре экрана загрузки
         base.disableMouse()
         base.setBackgroundColor(0.02, 0.02, 0.03)
         from .assets import Assets
         from .audio import Audio
         from .input import Input
         self.assets = Assets(base.loader)
+        self.assets.smooth_textures = bool(self.settings.get('smooth_textures'))
         self.audio = Audio(base, self.assets, self.settings)
         self.inp = Input(base)
         self.state = 'loading'
@@ -461,23 +473,64 @@ class Game(object):
             w.crowd.max_peds = lv[1]
 
         def res_list():
-            try:
-                dw, dh = self.base.pipe.getDisplayWidth(), self.base.pipe.getDisplayHeight()
-            except Exception:
-                dw, dh = 0, 0
+            dw, dh = self.desktop()
             lst = [r for r in RESOLUTIONS if dw <= 0 or (r[0] <= dw and r[1] <= dh)]
+            if dw > 0 and (dw, dh) not in lst:
+                lst.append((dw, dh))
             cur = (int(s.get('width')), int(s.get('height')))
             if cur not in lst:
                 lst.append(cur)
             lst.sort()
             return lst, cur
 
+        def res_text():
+            t = '%d × %d' % (int(s.get('width')), int(s.get('height')))
+            if int(s.get('screen')) == SCREEN_BORDERLESS:
+                t += ' (как у экрана)'
+            return t
+
         def ch_res(d):
+            if int(s.get('screen')) == SCREEN_BORDERLESS:
+                return                                   # окно во весь экран всегда в родном разрешении
             lst, cur = res_list()
             i = (lst.index(cur) + d) % len(lst)
             s.set('width', lst[i][0])
             s.set('height', lst[i][1])
             self.apply_window()
+
+        def ch_screen(d):
+            mode = (int(s.get('screen')) + d) % 3
+            s.set('screen', mode)
+            dw, dh = self.desktop()
+            if mode == SCREEN_EXCLUSIVE and dw > 0:
+                # полноэкранный режим — сразу в родном разрешении экрана: в заниженном картинку
+                # растягивает монитор, и она выходит мутной
+                s.set('width', dw)
+                s.set('height', dh)
+            elif mode == SCREEN_WINDOW:
+                size = settings_mod.fit_window(RESOLUTIONS[:5], (dw, dh))
+                if size is not None:
+                    s.set('width', size[0])
+                    s.set('height', size[1])
+            self.apply_window()
+
+        def ch_tex(d):
+            s.set('smooth_textures', not s.get('smooth_textures'))
+            self.assets.set_smooth(s.get('smooth_textures'))
+
+        def msaa_text():
+            n = int(s.get('msaa'))
+            t = 'Выкл' if n <= 0 else '%d×' % n
+            return t + (' (после перезапуска)' if n != self._boot[0] else '')
+
+        def ch_msaa(d):
+            n = int(s.get('msaa'))
+            i = MSAA_LEVELS.index(n) if n in MSAA_LEVELS else 2
+            s.set('msaa', MSAA_LEVELS[(i + d) % len(MSAA_LEVELS)])
+
+        def vsync_text():
+            on = bool(s.get('vsync'))
+            return ('Да' if on else 'Нет') + (' (после перезапуска)' if on != self._boot[1] else '')
 
         def back():
             s.save()
@@ -503,31 +556,135 @@ class Game(object):
             except Exception:
                 pass
 
+        def gfx_back():
+            s.save()
+            self.ui.close()
+
+        def graphics():
+            gi = [
+                Item('Режим экрана', value=lambda: SCREEN_NAMES[int(s.get('screen')) % 3], change=ch_screen),
+                Item('Разрешение', value=res_text, change=ch_res),
+                Item('Текстуры', value=lambda: 'Сглаженные' if s.get('smooth_textures') else 'Чёткие',
+                     change=ch_tex),
+                Item('Сглаживание краёв', value=msaa_text, change=ch_msaa),
+                Item('Вертикальная синхронизация', value=vsync_text, change=toggle('vsync')),
+                Item('Дальность прорисовки',
+                     value=lambda: ('Близко', 'Средне', 'Далеко')[int(s.get('draw_distance'))], change=ch_draw),
+                Item('Счётчик кадров', value=yn('show_fps'), change=toggle('show_fps')),
+                Item('Назад', gfx_back),
+            ]
+            self.ui.open(Menu(self.ui, 'Графика', gi, back=gfx_back, top=0.42, spacing=0.105, scale=0.068,
+                              wide=True))
+
         items = [
+            Item('Графика и экран', graphics, value=lambda: SCREEN_NAMES[int(s.get('screen')) % 3].lower()),
             Item('Громкость звуков', value=pct('sfx_volume'), change=ch_vol('sfx_volume')),
             Item('Громкость музыки', value=pct('music_volume'), change=ch_vol('music_volume')),
             Item('Песни для «Астрахань FM»', open_music, value=music_count),
             Item('Чувствительность мыши', value=lambda: '%.1f' % float(s.get('mouse_sens')), change=ch_sens),
             Item('Инверсия мыши по вертикали', value=yn('invert_y'), change=toggle('invert_y')),
-            Item('Дальность прорисовки', value=lambda: ('Близко', 'Средне', 'Далеко')[int(s.get('draw_distance'))],
-                 change=ch_draw),
             Item('Плотность движения', value=lambda: ('Мало', 'Норма', 'Много')[int(s.get('traffic'))],
                  change=ch_traffic),
-            Item('Разрешение', value=lambda: '%d × %d' % (int(s.get('width')), int(s.get('height'))), change=ch_res),
-            Item('Полный экран', value=yn('fullscreen'), change=toggle('fullscreen', self.apply_window)),
-            Item('Счётчик кадров', value=yn('show_fps'), change=toggle('show_fps')),
             Item('Кровь', value=yn('blood'), change=toggle('blood')),
             Item('Назад', back),
         ]
-        return Menu(self.ui, 'Настройки', items, back=back, top=0.46, spacing=0.098, scale=0.066, wide=True)
+        return Menu(self.ui, 'Настройки', items, back=back, top=0.44, spacing=0.105, scale=0.068, wide=True)
+
+    # ------------------------------------------------------------------
+    # экран
+    # ------------------------------------------------------------------
+    def desktop(self):
+        """Размер экрана в настоящих пикселях; (0, 0), если он неизвестен."""
+        d = settings_mod.desktop_size()
+        if d[0] <= 0 and getattr(self, 'base', None) is not None:
+            try:
+                d = (int(self.base.pipe.getDisplayWidth()), int(self.base.pipe.getDisplayHeight()))
+            except Exception:
+                d = (0, 0)
+        return d
+
+    def _choose_screen(self):
+        """Перед открытием окна: режим экрана для первого запуска и проверка сохранённого."""
+        s = self.settings
+        settings_mod.dpi_aware()
+        desk = settings_mod.desktop_size()
+        if s.fresh or int(s.get('cfg')) < settings_mod.CFG_VERSION:
+            settings_mod.choose_screen(s, desk, RESOLUTIONS[:5])
+            return
+        mode = int(s.get('screen'))
+        if mode not in (SCREEN_WINDOW, SCREEN_BORDERLESS, SCREEN_EXCLUSIVE):
+            mode = SCREEN_BORDERLESS
+            s.set('screen', mode)
+        if mode == SCREEN_BORDERLESS:
+            if desk[0] > 0:
+                s.set('width', desk[0])             # экран могли сменить с прошлого запуска
+                s.set('height', desk[1])
+            else:
+                s.set('screen', SCREEN_WINDOW)
+        elif desk[0] > 0 and (int(s.get('width')) > desk[0] or int(s.get('height')) > desk[1]):
+            s.set('width', desk[0])
+            s.set('height', desk[1])
 
     def apply_window(self):
+        """Применить режим экрана и разрешение из настроек к открытому окну.
+
+        Делается в два шага: сначала рамка и полноэкранный режим, через пару кадров — место и размер
+        (иначе Windows считает размер ещё по старой рамке)."""
+        s = self.settings
+        mode = int(s.get('screen'))
+        try:
+            win = self.base.win
+            if mode == SCREEN_BORDERLESS:
+                dw, dh = self.desktop()
+                if dw > 0:
+                    s.set('width', dw)
+                    s.set('height', dh)
+                else:
+                    mode = SCREEN_WINDOW
+                    s.set('screen', mode)
+            w_, h_ = int(s.get('width')), int(s.get('height'))
+            props = WindowProperties()
+            if mode == SCREEN_EXCLUSIVE:
+                props.setFullscreen(True)
+                props.setSize(w_, h_)
+                win.requestProperties(props)
+                self._win_todo = [[30, 'check']]
+            else:
+                props.setFullscreen(False)
+                props.setUndecorated(mode == SCREEN_BORDERLESS)
+                win.requestProperties(props)
+                self._win_todo = [[2, 'place']]
+        except Exception:
+            pass
+
+    def _window_steps(self):
+        """Отложенные шаги смены режима экрана (вызывается каждый кадр)."""
+        if not self._win_todo:
+            return
+        step = self._win_todo[0]
+        step[0] -= 1
+        if step[0] > 0:
+            return
+        self._win_todo.pop(0)
         s = self.settings
         try:
-            props = WindowProperties()
-            props.setFullscreen(bool(s.get('fullscreen')))
-            props.setSize(int(s.get('width')), int(s.get('height')))
-            self.base.win.requestProperties(props)
+            win = self.base.win
+            what = step[1]
+            if what == 'place':
+                mode = int(s.get('screen'))
+                props = WindowProperties()
+                if mode == SCREEN_BORDERLESS:
+                    props.setOrigin(0, 0)
+                else:
+                    props.setOrigin(-2, -2)                 # по центру экрана
+                props.setSize(int(s.get('width')), int(s.get('height')))
+                win.requestProperties(props)
+            elif what == 'check':
+                if not win.getProperties().getFullscreen():
+                    # видеокарта не приняла режим — возвращаемся к окну во весь экран
+                    s.set('screen', SCREEN_BORDERLESS)
+                    s.save()
+                    self.apply_window()
         except Exception:
             pass
 
@@ -654,6 +811,7 @@ class Game(object):
         if dt <= 0.0:
             dt = 0.001
         try:
+            self._window_steps()
             self.step(dt)
             self._errors_row = 0
         except Exception:

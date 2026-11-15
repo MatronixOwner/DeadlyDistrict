@@ -417,3 +417,69 @@ def test_subtitles_stay_above_letterbox(game, world):
 def test_no_floating_health_or_armor(game, world):
     assert not [p for p in world.missions.pickups if p.kind in ('health', 'armor')]
     assert [p for p in world.missions.pickups if p.kind == 'weapon']         # оружие на улицах осталось
+
+
+def test_graphics_settings_menu(game, world):
+    """Настройки → «Графика и экран»: фильтр текстур меняется сразу, прочее сохраняется в настройках."""
+    from panda3d.core import SamplerState
+    g = game
+    s = g.settings
+    g.pause()
+    g.ui.open(g.settings_menu())
+    assert g.ui.stack[-1].title == 'Настройки'
+    harness.press(g, 'enter')                                   # первый пункт — «Графика и экран»
+    m = g.ui.stack[-1]
+    assert m.title == 'Графика'
+    labels = [it.label for it in m.items]
+    assert labels[:5] == ['Режим экрана', 'Разрешение', 'Текстуры', 'Сглаживание краёв',
+                          'Вертикальная синхронизация']
+    tex = g.assets.tex('fac_brick_a')
+    assert tex.getMagfilter() == SamplerState.FTNearest and tex.getAnisotropicDegree() == 16
+    items = {it.label: it for it in m.items}
+    items['Текстуры'].change(1)
+    assert s.get('smooth_textures') is True and tex.getMagfilter() == SamplerState.FTLinear
+    assert items['Текстуры'].value() == 'Сглаженные'
+    items['Текстуры'].change(1)
+    assert tex.getMagfilter() == SamplerState.FTNearest
+    before = int(s.get('msaa'))
+    items['Сглаживание краёв'].change(1)
+    assert int(s.get('msaa')) != before and 'перезапуска' in items['Сглаживание краёв'].value()
+    items['Сглаживание краёв'].change(-1)
+    assert int(s.get('msaa')) == before and 'перезапуска' not in items['Сглаживание краёв'].value()
+    # режим экрана: без настоящего окна запрос к системе ничего не меняет, но и не роняет игру
+    from game import settings as S
+    keep = (s.get('screen'), s.get('width'), s.get('height'))
+    try:
+        g.desktop = lambda: (1920, 1080)                # «экран» для проверки
+        s.set('screen', S.SCREEN_WINDOW)
+        items['Режим экрана'].change(1)
+        assert (s.get('screen'), s.get('width'), s.get('height')) == (S.SCREEN_BORDERLESS, 1920, 1080)
+        assert 'как у экрана' in items['Разрешение'].value()
+        items['Разрешение'].change(1)                   # во весь экран разрешение всегда родное
+        assert (s.get('width'), s.get('height')) == (1920, 1080)
+        items['Режим экрана'].change(1)
+        assert (s.get('screen'), s.get('width'), s.get('height')) == (S.SCREEN_EXCLUSIVE, 1920, 1080)
+        items['Разрешение'].change(-1)
+        assert (s.get('width'), s.get('height')) == (1600, 900)
+        items['Режим экрана'].change(1)
+        assert (s.get('screen'), s.get('width'), s.get('height')) == (S.SCREEN_WINDOW, 1600, 900)
+        for _ in range(40):
+            g._window_steps()                           # отложенные шаги (место и размер окна, проверка)
+        assert not g._win_todo
+        g.desktop = lambda: (0, 0)                      # экран неизвестен: «во весь экран» недоступен
+        items['Режим экрана'].change(1)
+        assert s.get('screen') == S.SCREEN_WINDOW
+    finally:
+        del g.desktop
+        s.set('screen', keep[0])
+        s.set('width', keep[1])
+        s.set('height', keep[2])
+        g._win_todo = []
+    for it in m.items:
+        if it.value is not None:
+            assert isinstance(it.value(), str)
+    harness.press(g, 'escape')
+    assert g.ui.stack[-1].title == 'Настройки'
+    harness.press(g, 'escape')
+    g.ui.close_all()
+    g.resume()
