@@ -259,6 +259,8 @@ class Game(object):
         hud.zone_name = None
         hud.set_timer(None)
         hud.set_counter(None)
+        w.garage.cars = []                # сами машины уже удалены вместе со всеми остальными
+        w.garage.reset()
         w.interiors.reset()
         w.missions = Missions(w)
         self.audio.stop_loops()

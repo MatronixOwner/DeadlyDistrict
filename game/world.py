@@ -75,6 +75,8 @@ class World(object):
         self.missions = None
         step(0.9, 'Обставляем комнаты…')
         self.interiors = Interiors(self)
+        from .garage import Garage
+        self.garage = Garage(self)
         self._cam_fx = 0.0
         self._cam_fy = 1.0
         self.slowmo = 1.0
@@ -196,6 +198,8 @@ class World(object):
             self.police.update(dt)
         if self.missions is not None:
             self.missions.update(dt)
+        if not indoor:
+            self.garage.update(dt)
         self._update_emitters(dt)
         self.fx.update(dt)
         self._sweep()

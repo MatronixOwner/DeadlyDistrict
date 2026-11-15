@@ -1092,3 +1092,97 @@ def test_every_hidden_package_can_be_reached(game, world):
         if not harness.reachable(w, x, y) and not harness.reachable(w, x, y, margin=200.0):
             lost.append((i, round(x, 1), round(y, 1), c.zone_name(x, y)))
     assert not lost, lost
+
+
+# ----------------------------------------------------------------------
+# гараж
+# ----------------------------------------------------------------------
+def test_garage_keeps_cars(game, world):
+    """Загнал машину в гараж и вышел — она записана в сохранение и после загрузки стоит на месте, того же
+    цвета.  Четвёртая машина в трёхместный гараж не записывается; выгнал машину — её в гараже больше нет."""
+    w = world
+    pl = w.player
+    gar = w.garage
+    harness.quiet(w, peds=True)
+    assert gar.ok and gar.capacity() == 3 and not gar.cars
+    sx, sy = gar.slots[0]
+    car = w.spawn_vehicle('sports', sx, sy - 12.0, math.pi / 2, paint=5)
+    pl.teleport(sx - 2.5, sy - 12.0)
+    pl.enter_vehicle(car, silent=True)
+    harness.run(game, 0.5)
+    assert gar.k > 0.5                                       # ворота поднялись навстречу
+    # въезжаем своим ходом
+    t = 0.0
+    while t < 8.0 and not gar.contains(car.x, car.y, 0.6):
+        harness.run(game, 0.1, keys=('w',))
+        t += 0.1
+    assert gar.contains(car.x, car.y, 0.3), (car.x, car.y, gar.rect)
+    harness.run(game, 1.5, keys=('space',))
+    assert not gar.cars                                      # пока герой за рулём, машина ещё «не оставлена»
+    pl.leave_vehicle(force=True)
+    harness.run(game, 1.0)
+    assert gar.cars == [car] and car.keep and car.garage
+    data = settings_mod.load_save()
+    assert data is not None and len(data['garage']) == 1
+    assert data['garage'][0]['kind'] == 'sports' and data['garage'][0]['paint'] == 5
+    # ещё две — и гараж полон
+    for k, kind in ((1, 'sedan'), (2, 'pickup')):
+        x, y = gar.slots[k]
+        w.spawn_vehicle(kind, x, y, math.pi / 2, paint=k)
+    harness.run(game, 0.6)
+    assert len(gar.cars) == 3
+    extra = w.spawn_vehicle('hatch', gar.cx, gar.rect[1] + 1.6, 0.0, paint=3)
+    said = []
+    orig = w.hud.help
+    w.hud.help = lambda text, dur=6.0: said.append(text)
+    try:
+        harness.run(game, 0.6)
+    finally:
+        w.hud.help = orig
+    assert len(gar.cars) == 3 and extra not in gar.cars and any('полон' in t_ for t_ in said)
+    w.remove_vehicle(extra)
+    harness.run(game, 0.5)
+    assert len(settings_mod.load_save()['garage']) == 3
+    # ушёл далеко — машины никуда не делись
+    pl.teleport(*w.city.landmarks['terminal']['door'])
+    harness.run(game, 3.0)
+    assert all(not v.removed for v in gar.cars) and gar.k == 0.0
+    # загрузка: те же три машины на своих местах
+    game.to_main_menu()
+    game.continue_game()
+    w = game.world
+    gar = w.garage
+    assert sorted(v.kind for v in gar.cars) == ['pickup', 'sedan', 'sports']
+    sp = next(v for v in gar.cars if v.kind == 'sports')
+    assert sp.paint == 5 and gar.contains(sp.x, sp.y, 0.2) and sp.keep
+    # выгоняем одну: в гараже остаются две
+    pl = w.player
+    w.interiors.leave(instant=True)
+    w.traffic.enabled = False
+    pl.teleport(sp.x - 2.0, sp.y - 9.0)
+    pl.enter_vehicle(sp, silent=True)
+    sp.x, sp.y = gar.cx, gar.rect[1] - 14.0
+    sp.sync()
+    harness.run(game, 0.5)
+    assert sp not in gar.cars and len(gar.cars) == 2
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.6)
+    assert len(settings_mod.load_save()['garage']) == 2
+    # новая игра начинается с пустым гаражом
+    w = harness.start_game(game)
+    assert not w.garage.cars
+
+
+def test_camera_stays_under_garage_roof(game, world):
+    """В гараже камера не поднимается сквозь крышу: иначе вместо машины видна кровля."""
+    w = world
+    pl = w.player
+    gar = w.garage
+    harness.quiet(w, peds=True)
+    pl.teleport(gar.cx, gar.cy + 1.0, math.pi / 2)
+    w.cam.yaw = -math.pi / 2                                 # смотрим из глубины гаража на ворота
+    w.cam.pitch = -0.9
+    w.cam.snap()
+    harness.run(game, 0.6)
+    assert gar.contains(w.cam.x, w.cam.y, -0.5)
+    assert w.cam.z < w.city.ceiling(gar.cx, gar.cy) - 0.2

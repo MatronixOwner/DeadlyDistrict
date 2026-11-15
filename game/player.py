@@ -149,6 +149,11 @@ class Camera(object):
             self.dist = min(want, self.dist + dt * 6.0)
         d = self.dist
         cx, cy, cz = ox - dx * d, oy - dy * d, oz - dz * d
+        ceil = w.city.ceiling(cx, cy) if w.city.covered else None
+        if ceil is not None and cz > ceil - 0.3 and dz < -0.01:
+            # под крышей (гараж, бокс покраски) камера не уходит сквозь потолок: подъезжает ближе
+            d = max(1.1, (oz - (ceil - 0.3)) / dz)
+            cx, cy, cz = ox - dx * d, oy - dy * d, min(oz - dz * d, ceil - 0.3)
         if v is None:
             # камеру прижало к стене (или смотрим в прицел): персонаж закрыл бы весь экран — прячем его
             hide = (d < 1.05 or scope) and pl.state == 'foot'

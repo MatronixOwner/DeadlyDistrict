@@ -774,9 +774,18 @@ class CityMesh(object):
             rx0, ry0, rx1, ry1 = ship['ramp']
             mb.quad('metal_paint', (rx0, ry0, CURB + 0.02), (rx1, ry0, dz + 0.02), (rx1, ry1, dz + 0.02),
                     (rx0, ry1, CURB + 0.02), uv=(0.0, 0.0, 8.0, 2.0), color=(0.34, 0.35, 0.38, 1))
-            for yy in (ry0, ry1):                        # боковины плиты
+            railc = (0.78, 0.66, 0.16, 1)
+            for yy in (ry0, ry1):                        # боковины плиты и низкий жёлтый отбойник над ними
                 mb.tri(None, (rx0, yy, CURB), (rx1, yy, CURB), (rx1, yy, dz), color=(0.20, 0.21, 0.24, 1))
                 mb.tri(None, (rx1, yy, CURB), (rx0, yy, CURB), (rx1, yy, dz), color=(0.20, 0.21, 0.24, 1))
+                for (ya, yb) in ((yy - 0.07, yy + 0.07),):
+                    xa = rx0 + 2.5
+                    za = CURB + (dz - CURB) * (xa - rx0) / (rx1 - rx0)
+                    for sgn in (ya, yb):
+                        mb.quad2(None, (xa, sgn, za), (rx1, sgn, dz), (rx1, sgn, dz + 0.45), (xa, sgn, za + 0.45),
+                                 color=railc)
+                    mb.quad(None, (xa, ya, za + 0.45), (rx1, ya, dz + 0.45), (rx1, yb, dz + 0.45), (xa, yb, za + 0.45),
+                            color=railc)
             # трап: ступени вдоль борта и площадка наверху
             gx0, gy0, gx1, gy1 = ship['stairs']
             n = 17
@@ -787,6 +796,23 @@ class CityMesh(object):
                 mb.box(None, xa, gy0, za - 0.22, xb, gy1, za, (0.42, 0.43, 0.46, 1), top_color=(0.55, 0.56, 0.58, 1))
             lx0, ly0, lx1, ly1 = ship['landing']
             mb.box(None, lx0, ly0, dz - 0.2, lx1, ly1, dz, (0.42, 0.43, 0.46, 1), top_color=(0.55, 0.56, 0.58, 1))
+            # перила трапа: стойки и поручень вдоль наклона (со стороны пирса), ограждение площадки
+            pc = (0.72, 0.72, 0.74, 1)
+
+            def zs(x):
+                return CURB + (dz - CURB) * min(1.0, max(0.0, (x - gx0) / (gx1 - gx0)))
+            xa = gx0 + 1.3
+            while xa <= lx1 + 0.01:
+                mb.box(None, xa - 0.03, gy0 - 0.03, zs(xa), xa + 0.03, gy0 + 0.03, zs(xa) + 1.0, pc)
+                xa += 1.45
+            mb.box(None, lx1 - 0.03, ly1 - 0.03, dz, lx1 + 0.03, ly1 + 0.03, dz + 1.0, pc)
+            for hz in (1.0, 0.55):
+                mb.quad2(None, (gx0 + 1.3, gy0, zs(gx0 + 1.3) + hz - 0.05), (gx1, gy0, dz + hz - 0.05),
+                         (gx1, gy0, dz + hz), (gx0 + 1.3, gy0, zs(gx0 + 1.3) + hz), color=pc)
+                mb.quad2(None, (gx1, gy0, dz + hz - 0.05), (lx1, gy0, dz + hz - 0.05), (lx1, gy0, dz + hz),
+                         (gx1, gy0, dz + hz), color=pc)
+                mb.quad2(None, (lx1, ly0, dz + hz - 0.05), (lx1, ly1, dz + hz - 0.05), (lx1, ly1, dz + hz),
+                         (lx1, ly0, dz + hz), color=pc)
             night = self._night(ship['chunk'])
             P.glow(night, hcx, cy, dz + 15.0, 3.0, (1.0, 0.2, 0.15, 1.0))
             P.glow(night, x1 + 11.0, cy, dz + 2.0, 2.4, (0.3, 1.0, 0.4, 1.0))

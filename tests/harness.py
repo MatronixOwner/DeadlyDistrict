@@ -124,11 +124,15 @@ def reachable(w, tx, ty, car=False, step=1.0, margin=60.0, maxd=220.0):
     hn = int((y1 - y0) / step) + 1
     cache = {}
 
+    zs = {}
+
     def free(i, j):
         v = cache.get((i, j))
         if v is None:
             x, y = x0 + i * step, y0 + j * step
-            v = not st.overlap_circle(x, y, r, mask) and not (c.in_water(x, y) and c.ground_z(x, y) < -0.2)
+            z = c.ground_z(x, y)
+            zs[(i, j)] = z
+            v = not st.overlap_circle(x, y, r, mask) and not (c.in_water(x, y) and z < -0.2)
             cache[(i, j)] = v
         return v
     goal = set((int(round((x - x0) / step)), int(round((y - y0) / step))) for d, x, y in starts)
@@ -144,6 +148,8 @@ def reachable(w, tx, ty, car=False, step=1.0, margin=60.0, maxd=220.0):
         for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             n = (i + di, j + dj)
             if 0 <= n[0] < wn and 0 <= n[1] < hn and n not in seen and free(n[0], n[1]):
+                if abs(zs[n] - zs[(i, j)]) > 0.75 * step:
+                    continue                                 # уступ: ни шагнуть, ни съехать (обрыв палубы, край пирса)
                 seen.add(n)
                 q.append(n)
     return False

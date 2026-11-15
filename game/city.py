@@ -1947,14 +1947,19 @@ class City(object):
         gy0, gy1 = py + 8.9, sy0 + 0.1
         self._pad(gx0, gy0, gx1, gy1, deck, 'ship', slope=('x', CURB, deck))
         self._pad(gx1, gy0, gx1 + 2.2, gy1, deck, 'ship')
-        rail = (0.30, 0.31, 0.34)
         bw = (0.16, 0.17, 0.20)
-        # перила трапа со стороны пирса и торец площадки
-        self._wall(gx0 + 1.3, gy0, gx1 + 2.2, gy0, 1.0 + SHIP_DECK, 'metal_paint', chunk, color=rail, thick=0.12)
-        self._wall(gx1 + 2.2, gy0, gx1 + 2.2, gy1, 1.0, 'metal_paint', chunk, color=rail, thick=0.12, z0=deck)
+
+        def fence(x0_, y0_, x1_, y1_):
+            # невидимая преграда: сами перила наклонные, их рисует citymesh
+            self.boxes.append(dict(x0=x0_, y0=y0_, z0=CURB, x1=x1_, y1=y1_, z1=deck + 1.0, tex=None, block=chunk,
+                                   color=(0, 0, 0), uv_m=3.0, solid=True, top_tex=None, top_color=None, faces='',
+                                   stack_h=6.0))
+        # перила трапа со стороны пирса и торец площадки: с пирса на трап можно зайти только снизу
+        fence(gx0 + 1.3, gy0 - 0.07, gx1 + 2.2, gy0 + 0.07)
+        fence(gx1 + 2.13, gy0, gx1 + 2.27, gy1)
         # борта аппарели
         for yy in (ramp[1], ramp[3]):
-            self._wall(rx0 + 2.5, yy, sx0, yy, 0.9 + SHIP_DECK, 'metal_paint', chunk, color=rail, thick=0.14)
+            fence(rx0 + 2.5, yy - 0.08, sx0, yy + 0.08)
         # фальшборт вокруг палубы: разрывы у площадки трапа и у аппарели
         self._wall(sx0, sy0, gx1, sy0, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)
         self._wall(gx1 + 2.2, sy0, sx1, sy0, 1.0, 'metal_paint', chunk, color=bw, thick=0.2, z0=deck)

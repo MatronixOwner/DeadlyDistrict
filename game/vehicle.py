@@ -509,6 +509,8 @@ class Vehicle(object):
         self.siren = False
         self.removed = False
         self.keep = False                # не удалять автоматически (миссии, машина игрока)
+        self.garage = False              # стоит в гараже игрока: сохраняется вместе с игрой
+        self.tune = {}                   # тюнинг: категория -> уровень или вариант (см. tuning.py)
         self.mission = None
         self.spot = None                 # индекс парковочного места
         self.stolen = False

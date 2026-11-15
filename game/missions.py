@@ -1358,6 +1358,9 @@ class Missions(object):
             self.save_mk = Marker(w, sx + 2.2, sy, 1.0, BLUE, 1.4)
         self.markers.append(self.save_mk)
         self.static_blips.append(hud.add_blip('blip_save', sx, sy, edge=True, scale=1.1))
+        if 'garage' in lm['safehouse']:
+            gx, gy = lm['safehouse']['garage']
+            self.static_blips.append(hud.add_blip('blip_garage', gx, gy - 6.0, edge=False, rng=260.0))
         for name in ('spray', 'spray2'):
             if name in lm:
                 x, y = lm[name]['bay']
@@ -2437,7 +2440,7 @@ class Missions(object):
             ammo=dict((str(k), v) for k, v in pl.ammo.items()), weapon=pl.weapon_id,
             health=pl.ped.health, armor=pl.ped.armor, hour=w.sky.hour, day=w.sky.day,
             stats=w.stats, hints=sorted(self.hints), bonus=self.bonus_given, finale=self.finale_shown,
-            ckpt=dict(self.ckpt), version=2)
+            ckpt=dict(self.ckpt), garage=w.garage.state())
         return settings_mod.write_save(data)
 
     def load_game(self, data):
@@ -2469,6 +2472,7 @@ class Missions(object):
         self.finale = self.finale_shown = bool(data.get('finale', False))
         self.ckpt = dict((str(k), int(v)) for k, v in data.get('ckpt', {}).items())
         self.call_t = 9.0
+        w.garage.restore(data.get('garage', []))
         # убрать найденные тайники, выдать накопленные награды
         for pk in self.pickups:
             if pk.kind == 'package' and pk.index in self.packages:
