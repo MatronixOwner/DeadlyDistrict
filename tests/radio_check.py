@@ -37,6 +37,25 @@ def tone(path, freq, seconds, rate=22050):
         import numpy as np
         import soundfile as sf
         sf.write(path, np.array(data, dtype='float32') / 32768.0, rate, format='OGG', subtype='VORBIS')
+    elif path.endswith('.flac'):
+        import numpy as np
+        import soundfile as sf
+        sf.write(path, np.array(data, dtype='float32') / 32768.0, rate, format='FLAC')
+    elif path.endswith('.m4a'):
+        import av                                           # PyAV: только чтобы сделать тестовый файл
+        import numpy as np
+        out = av.open(path, 'w', format='mp4')
+        st = out.add_stream('aac', rate=rate)
+        st.layout = 'mono'
+        fr = av.AudioFrame.from_ndarray(np.array(data, dtype='int16').reshape(1, -1), format='s16', layout='mono')
+        fr.sample_rate = rate
+        rs = av.AudioResampler(format=st.codec_context.format, layout='mono', rate=rate)
+        for f in rs.resample(fr):
+            for pk in st.encode(f):
+                out.mux(pk)
+        for pk in st.encode(None):
+            out.mux(pk)
+        out.close()
     elif path.endswith('.mp3'):
         import lameenc
         enc = lameenc.Encoder()
@@ -52,7 +71,8 @@ def tone(path, freq, seconds, rate=22050):
 def main():
     mdir = os.path.join(USER, 'music')
     os.makedirs(os.path.join(mdir, 'Подборка'))
-    names = ['Глюкоза - Швайне.mp3', '02. Дорожная.ogg', os.path.join('Подборка', 'трек_три.wav')]
+    names = ['Глюкоза - Швайне.mp3', '02. Дорожная.ogg', os.path.join('Подборка', 'трек_три.wav'),
+             'Четвёртая.flac', os.path.join('Подборка', 'Пятая.m4a')]
     made = []
     for i, n in enumerate(names):
         try:
