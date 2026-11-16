@@ -896,6 +896,23 @@
    ]
   }
  },
+ "parts": {
+  "bumper": {
+   "depth": 0.346,
+   "height": 0.308,
+   "tris": 232
+  },
+  "spoiler_a": {
+   "depth": 0.216,
+   "height": 0.273,
+   "tris": 96
+  },
+  "spoiler_b": {
+   "depth": 0.337,
+   "height": 0.35,
+   "tris": 176
+  }
+ },
  "vehicles": {
   "bus": {
    "H": 3.0,

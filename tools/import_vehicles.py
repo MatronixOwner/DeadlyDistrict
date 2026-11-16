@@ -877,6 +877,53 @@ def do_bikes(meta):
                   info['tris']))
 
 
+# ---------------------------------------------------------------------------
+# детали тюнинга (Kenney, Car Kit)
+# ---------------------------------------------------------------------------
+PARTS = {'spoiler_a': 'debris-spoiler-a', 'spoiler_b': 'debris-spoiler-b', 'bumper': 'debris-bumper'}
+
+
+def do_parts(meta):
+    """veh/parts.bam: спойлеры и бампер.  У каждой детали узел paint (то, что красится в цвет кузова) и
+    узел g (стойки, металл).  Ширина приведена к 1 м — игра растягивает деталь под машину; низ — на z = 0."""
+    from PIL import Image
+    from panda3d.core import NodePath
+    _panda()
+    pal = np.asarray(Image.open(src('kenney_carkit', 'Textures', 'colormap.png')).convert('RGB'))
+    ph, pw = pal.shape[:2]
+    root = NodePath('parts')
+    meta['parts'] = {}
+    for name, fname in sorted(PARTS.items()):
+        p = ms.merge(ms.read(src('kenney_carkit', fname + '.obj')), name)
+        p.transform(YUP)
+        lo, hi = p.bounds()
+        k = 1.0 / (hi[0] - lo[0])
+        c = np.array(((lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5, lo[2]))
+        paint, rest = Out(), Out()
+        for i in range(len(p.tris)):
+            uv = p.uvs[i].mean(0)
+            col = pal[min(ph - 1, max(0, int((1.0 - uv[1]) * ph))), min(pw - 1, max(0, int(uv[0] * pw)))].astype(np.float64)
+            pts = (p.verts[p.tris[i]] - c) * k
+            if col[0] > 190 and col[1] < 150:             # красно-оранжевое в наборе — «краска»
+                s = float(lum(col)) / 140.0
+                paint.tri(pts, color=(min(1.0, s), min(1.0, s), min(1.0, s)))
+            elif max(col) < 90:
+                rest.tri(pts, color=DARK)
+            else:
+                g = float(lum(col)) / 255.0 * 1.25
+                rest.tri(pts, color=(min(1.0, g), min(1.0, g), min(1.0, g * 1.02)))
+        n = root.attachNewNode(name)
+        if len(paint):
+            n.attachNewNode(paint.node('paint'))
+        if len(rest):
+            n.attachNewNode(rest.node('g'))
+        size = (hi - lo) * k
+        meta['parts'][name] = dict(depth=round(float(size[1]), 3), height=round(float(size[2]), 3), tris=len(paint) + len(rest))
+        print('  %-10s глубина %.2f  высота %.2f (при ширине 1 м)  треугольников %d, из них красится %d' % (
+            name, size[1], size[2], len(paint) + len(rest), len(paint)))
+    root.writeBamFile(os.path.join(VEH, 'parts.bam'))
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'all'
     if cmd == 'fetch':
@@ -889,6 +936,8 @@ def main():
         do_cars(meta)
     if cmd in ('all', 'bikes'):
         do_bikes(meta)
+    if cmd in ('all', 'parts'):
+        do_parts(meta)
     with open(mpath, 'w', encoding='utf-8') as f:
         json.dump(meta, f, indent=1, sort_keys=True, ensure_ascii=False)
     print('готово:', os.path.relpath(mpath, ROOT))

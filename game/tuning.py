@@ -4,7 +4,10 @@
 Тюнинг машины — словарь «деталь -> номер варианта» (0 или отсутствие — заводское состояние).
 Он лежит в Vehicle.tune, сохраняется вместе с машиной в гараже и применяется функцией apply().
 Ходовые детали меняют множители разгона, скорости, тормозов, сцепления и запас прочности;
-внешние — добавляют к кузову свои детали (спойлер, багажник, кенгурятник, неон и так далее).
+внешние — добавляют к кузову свои детали (спойлер, багажник, силовой бампер, неон и так далее).
+
+Спойлеры «На стойках» и «Антикрыло» и силовой бампер — готовые модели (assets/models/veh/parts.bam, набор
+Kenney Car Kit); если файл моделей не загрузился, вместо них ставятся детали, собранные из брусков.
 """
 import math
 
@@ -29,7 +32,7 @@ PARTS = [
     ('horn', 'Сигнал', [('Воздушный', 300), ('Мелодия', 500), ('Крякалка', 700)]),
     ('exhaust', 'Выхлоп', [('Прямоток', 700), ('Двойной', 1200)]),
     ('roof', 'Крыша', [('Багажник', 400), ('Люстра', 900)]),
-    ('bumper', 'Бампер', [('Кенгурятник', 800)]),
+    ('bumper', 'Бампер', [('Силовой', 800)]),
 ]
 PART = dict((k, (title, opts)) for k, title, opts in PARTS)
 TOTAL = sum(len(opts) for _, _, opts in PARTS)
@@ -216,6 +219,28 @@ def _kit(v, mb, pr, dark, steel, body):
     return bool(spec.kit)
 
 
+def _model_part(v, name, pos, scale, paint=None):
+    """Готовая деталь из parts.bam (ширина в файле — 1 м) или None, если моделей нет."""
+    mdl = getattr(v.world, 'models', None)
+    if mdl is None or not mdl.ok or name not in mdl.meta.get('parts', {}):
+        return None
+    try:
+        from . import bikemodels
+        src = mdl._load('veh', 'parts.bam').find(name)
+        if src.isEmpty():
+            return None
+        np_ = src.copyTo(NodePath('part'))
+        np_.setTexture(bikemodels._texture(mdl, 'grain'), 1)
+        np_.setPos(*pos)
+        np_.setScale(*scale)
+        p = np_.find('paint')
+        if paint is not None and not p.isEmpty():
+            p.setColorScale(paint[0], paint[1], paint[2], 1.0)
+        return np_
+    except Exception:
+        return None
+
+
 def _visuals(v):
     """Собрать заново внешние детали тюнинга."""
     old = getattr(v, 'tune_np', None)
@@ -249,6 +274,7 @@ def _visuals(v):
     # высота посадки
     v.tilt.setZ(v.ride)
     mb = MeshBuilder()
+    models = []                 # готовые детали (спойлеры, бампер)
     used = False
     dark = (0.07, 0.07, 0.08, 1)
     steel = (0.62, 0.63, 0.66, 1)
@@ -263,11 +289,18 @@ def _visuals(v):
         elif sp in (2, 3):
             h = 0.22 if sp == 2 else 0.40
             span = hw * (0.86 if sp == 2 else 0.98)
-            for sx in (-hw * 0.5, hw * 0.5):
+            wide = span * 2.0
+            part = _model_part(v, 'spoiler_a' if sp == 2 else 'spoiler_b', (0.0, -hl + 0.21, pr['rear'] - 0.03),
+                               (wide, wide * 0.8, wide * (0.62 if sp == 2 else 0.72)),
+                               body if sp == 2 else (paint[0] * 0.45, paint[1] * 0.45, paint[2] * 0.45))
+            if part is not None:
+                models.append(part)
+            for sx in (() if part is not None else (-hw * 0.5, hw * 0.5)):
                 mb.box(None, sx - 0.03, -hl + 0.16, pr['rear'] - 0.02, sx + 0.03, -hl + 0.26, pr['rear'] + h, dark)
-            mb.box(None, -span, -hl + 0.04, pr['rear'] + h, span, -hl + 0.36, pr['rear'] + h + 0.035,
-                   body if sp == 2 else dark)
-            if sp == 3:
+            if part is None:
+                mb.box(None, -span, -hl + 0.04, pr['rear'] + h, span, -hl + 0.36, pr['rear'] + h + 0.035,
+                       body if sp == 2 else dark)
+            if sp == 3 and part is None:
                 for sx in (-span, span):
                     mb.box(None, sx - 0.02, -hl + 0.0, pr['rear'] + h - 0.10, sx + 0.02, -hl + 0.40,
                            pr['rear'] + h + 0.10, dark)
@@ -294,10 +327,14 @@ def _visuals(v):
         if t.get('bumper', 0):
             y = hl + 0.10
             z0, z1 = max(0.28, spec.clear + 0.06), min(pr['front'], spec.clear + 0.72)
-            for sx in (-hw * 0.48, hw * 0.48):
+            wide = hw * 1.9
+            part = _model_part(v, 'bumper', (0.0, hl + 0.02, max(0.24, spec.clear + 0.02)), (wide, wide * 0.62, wide * 0.62))
+            if part is not None:
+                models.append(part)
+            for sx in (() if part is not None else (-hw * 0.48, hw * 0.48)):
                 mb.box(None, sx - 0.03, y - 0.03, z0, sx + 0.03, y + 0.03, z1, dark)
                 mb.box(None, sx - 0.03, hl - 0.05, z0 + 0.10, sx + 0.03, y, z0 + 0.16, dark)
-            for zz in (z0 + 0.08, (z0 + z1) * 0.5, z1 - 0.04):
+            for zz in (() if part is not None else (z0 + 0.08, (z0 + z1) * 0.5, z1 - 0.04)):
                 mb.box(None, -hw * 0.62, y - 0.03, zz, hw * 0.62, y + 0.03, zz + 0.05, dark)
             used = True
     if spec.kit and not bike:
@@ -319,6 +356,8 @@ def _visuals(v):
     if used:
         np_ = mb.build('tune', w.assets.apply_state)
         np_.reparentTo(v.tilt)
+        for part in models:
+            part.reparentTo(np_)
         v.tune_np = np_
     # неон: цветное пятно света под днищем
     nc = NEON[t.get('neon', 0)]
