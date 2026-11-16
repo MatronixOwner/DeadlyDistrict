@@ -138,7 +138,7 @@ class Traffic(object):
                     look = cop_look()
                 else:
                     look = random_look(random, zone if len(zone) == 1 else 'D')
-                    look.female = False if kind in ('chopper', 'dirt', 'trike', 'sidecar') else look.female
+                    look.female = False if kind in ('chopper', 'dirt', 'trike', 'sidecar', 'cargo') else look.female
                 v.add_rider(look)
             v.persona = random.uniform(0.8, 1.08)
             v.speed = lane.speed * 0.7

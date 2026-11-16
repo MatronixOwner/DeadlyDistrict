@@ -29,6 +29,9 @@ GLASS = (0.17, 0.24, 0.30, 1.0)
 WHITE = (0.92, 0.92, 0.90, 1.0)
 BLUE = (0.10, 0.22, 0.66, 1.0)
 PLATE = (0.90, 0.90, 0.86, 1.0)
+COURIER = (0.96, 0.80, 0.10, 1.0)   # короб доставки
+CRATE = (0.56, 0.42, 0.24, 1.0)
+CRATE2 = (0.36, 0.46, 0.30, 1.0)
 
 # Посадки.  mix — доля клипа «верхом» (остальное — «за рулём»), lean — наклон корпуса вперёд, градусы.
 # Дальше — где при такой посадке оказываются кисти, стопы и колени относительно таза (метры; вперёд и вверх),
@@ -41,6 +44,10 @@ POSES = {
     # пассажиры: за спиной ездока — верхом, руки на бёдрах; в коляске — ноги вперёд, руки по бокам
     'pillion': dict(clips=(('sit', 0.55), ('ride', 0.45)), lean=4.0),
     'tub': dict(clips=(('sit', 0.6), ('sit_ground', 0.4)), lean=0.0),
+    'bench': dict(clips=(('sit', 1.0),), lean=0.0),
+    # карт: сидят низко, ноги вытянуты вперёд, руки на руле перед коленями
+    'kart': dict(clips=(('drive', 0.6), ('sit_ground', 0.4)), lean=0.0, hand=(0.305, 0.09), foot=(0.20, 0.58, -0.275),
+                 knee=(0.21, 0.445, 0.13)),
 }
 PELVIS_UP = 0.10            # таз сидящего — на столько выше поверхности седла
 SOLE = 0.09                 # подошва — на столько ниже кости стопы
@@ -73,7 +80,17 @@ KINDS = {
                 bar=0.30, wheel='thin'),
     'tourer': dict(wb=1.64, rf=0.32, rr=0.32, wf=0.12, wr=0.16, seat=0.76, pose='cruise', rake=0.36, cb=0.16,
                    cr=0.10, bar=0.34, wheel='cast'),
+    'courier': dict(wb=1.26, rf=0.22, rr=0.22, wf=0.11, wr=0.12, seat=0.68, pose='chair', rake=0.15, cb=0.03,
+                    cr=0.05, bar=0.27, wheel='solid'),
+    'cargo': dict(wb=1.50, rf=0.22, rr=0.24, wf=0.11, wr=0.13, seat=0.70, pose='chair', rake=0.15, cb=0.03, cr=0.05,
+                  bar=0.28, wheel='solid', track=0.47, layout='trike'),
+    'kart': dict(wb=1.06, rf=0.14, rr=0.15, wf=0.13, wr=0.19, seat=0.32, pose='kart', rake=0.30, cb=0.03, cr=0.0,
+                 bar=0.33, wheel='solid', track=0.46, layout='quad'),
+    'caddy': dict(wb=1.56, rf=0.21, rr=0.21, wf=0.16, wr=0.16, seat=0.66, pose='chair', rake=0.22, cb=0.02, cr=0.0,
+                  bar=0.19, wheel='solid', track=0.47, layout='quad', x=-0.25),
 }
+KINDS['quad']['layout'] = 'quad'
+KINDS['trike']['layout'] = 'trike'
 _cache = {}
 _wheels = {}
 
@@ -510,7 +527,7 @@ def _trike(g, paint, p2, k, f):
     return res
 
 
-def _scooter(g, paint, p2, k, f):
+def _scooter(g, paint, p2, k, f, box=False):
     sy, sz = g.sy, g.sz
     fl = g.foot[2]
     # площадка под ноги и щиток
@@ -536,7 +553,152 @@ def _scooter(g, paint, p2, k, f):
            paint, e=0.8, cap_col=LAMP)
     _bars(f, g, 'flat', DARK, 0.016)
     _mirrors(f, g, DARK, STEEL)
+    if box:
+        # короб доставки на багажнике: яркий, с тёмной крышкой и полосой
+        y0, y1, z0 = g.ry - 0.30, g.ry + 0.14, sz + 0.02
+        k.box(-0.22, y0, z0, 0.22, y1, z0 + 0.40, COURIER)
+        k.box(-0.225, y0 - 0.005, z0 + 0.36, 0.225, y1 + 0.005, z0 + 0.42, DARK)
+        for sx in (-1, 1):
+            k.box(sx * 0.221, y0 + 0.04, z0 + 0.14, sx * 0.224, y1 - 0.04, z0 + 0.24, WHITE)
+        k.box(-0.16, y0 - 0.004, z0 + 0.12, 0.16, y0, z0 + 0.26, WHITE)
+        k.pair([(0.16, y0 + 0.06, z0), (0.13, g.ry - 0.10, sz - 0.10)], 0.012, STEEL, 3)
     return dict(head=(0.0, g.cy + 0.14, g.cz - 0.04), tail=(0.0, g.ry - 0.32, sz - 0.14))
+
+
+def _cargo(g, paint, p2, k, f):
+    """Грузовой мотороллер: перед от скутера, сзади — кузов между двумя колёсами."""
+    sy, sz, t = g.sy, g.sz, g.K['track']
+    fl = g.foot[2]
+    k.box(-0.20, sy + 0.10, fl - 0.04, 0.20, g.cy + 0.02, fl, DARK)                          # площадка под ноги
+    k.box(-0.13, sy - 0.10, fl - 0.12, 0.13, g.cy - 0.04, fl - 0.04, ENGINE)
+    k.loft([Kit.ring_z(fl - 0.02, g.cy + 0.06, 0.045, 0.21, 8), Kit.ring_z(fl + 0.36, g.cy + 0.02, 0.05, 0.22, 8),
+            Kit.ring_z(g.cz - 0.14, g.cy - 0.03, 0.055, 0.15, 8)], paint)                    # щиток
+    # тумба с двигателем под седлом
+    k.body([(sy - 0.30, sz - 0.24, 0.20, 0.19), (sy + 0.06, sz - 0.24, 0.21, 0.20), (sy + 0.22, sz - 0.30, 0.17, 0.15)],
+           paint, e=0.75)
+    _seat(k, sy - 0.26, sy + 0.18, sz, 0.17, 0.14, th=0.08)
+    # кузов: пол, борта, стойки; в кузове — пара ящиков
+    y0, y1 = g.ry - 0.40, sy - 0.32
+    z0, z1 = g.rr + 0.27, g.rr + 0.55
+    k.box(-t - 0.05, y0, z0 - 0.04, t + 0.05, y1, z0, DARK)
+    for sx in (-1, 1):
+        k.box(sx * (t + 0.05), y0, z0, sx * (t + 0.02), y1, z1, p2)
+        k.box(sx * (t + 0.055), y0, z1 - 0.03, sx * (t + 0.015), y1, z1, paint)
+        k.box(sx * (t - 0.05), g.ry - g.rr - 0.02, z0 - 0.16, sx * (t + 0.05), g.ry - g.rr - 0.045, z0 - 0.07, RED)
+        k.tube([(sx * 0.10, sy - 0.20, 0.30), (sx * (t - 0.10), g.ry, g.rr)], 0.026, DARK, 4)
+    k.box(-t - 0.05, y0, z0, t + 0.05, y0 + 0.03, z1, p2)
+    k.box(-t - 0.05, y1 - 0.03, z0, t + 0.05, y1, z1 + 0.10, p2)
+    k.box(-t - 0.055, y1 - 0.035, z1 + 0.07, t + 0.055, y1 + 0.005, z1 + 0.10, paint)
+    k.tube([(-t, g.ry, g.rr), (t, g.ry, g.rr)], 0.035, DARK, 5)                              # мост
+    k.box(-0.30, y0 + 0.10, z0, -0.02, y0 + 0.46, z0 + 0.24, CRATE)
+    k.box(0.04, y0 + 0.16, z0, 0.34, y0 + 0.50, z0 + 0.20, CRATE2)
+    k.panel((-0.09, y0 - 0.005, z0 + 0.03), (0.09, y0 - 0.005, z0 + 0.03), (0.09, y0 - 0.005, z0 + 0.15),
+            (-0.09, y0 - 0.005, z0 + 0.15), PLATE)
+    # перед: колонка, рычаг, крыло, руль с фарой
+    f.tube([(0, g.fy, g.rf + 0.02), (0, g.cy, g.cz)], 0.028, DARK, 5)
+    f.tube([(0.075, g.fy, g.rf), (0.06, g.fy - 0.03, g.rf + 0.26)], 0.022, STEEL, 4)
+    f.fender(g.fy, g.rf, g.rf + 0.04, 15.0, 165.0, g.wf * 0.5 + 0.035, paint)
+    f.body([(g.cy - 0.10, g.cz + 0.00, 0.15, 0.075), (g.cy + 0.06, g.cz - 0.02, 0.12, 0.085), (g.cy + 0.13, g.cz - 0.04, 0.07, 0.06)],
+           paint, e=0.8, cap_col=LAMP)
+    _bars(f, g, 'flat', DARK, 0.016)
+    _mirrors(f, g, DARK, STEEL)
+    return dict(head=(0.0, g.cy + 0.14, g.cz - 0.04), tail=(0.0, g.ry - g.rr - 0.05, z0 - 0.11))
+
+
+def _wheel_ring(k, c, r, tilt, col, x=0.0, n=10, th=0.016):
+    """Рулевое колесо: кольцо радиуса r с центром c, плоскость наклонена назад на tilt градусов."""
+    ca, sa = math.cos(math.radians(tilt)), math.sin(math.radians(tilt))
+    pts = []
+    for i in range(n + 1):
+        a = i * 2.0 * math.pi / n
+        u, v = math.cos(a) * r, math.sin(a) * r             # u — вбок, v — «вверх» в плоскости колеса
+        pts.append((x + c[0] + u, c[1] - v * sa, c[2] + v * ca))
+    k.tube(pts, th, col, 4, caps=False)
+    for a in (0.0, math.pi, -math.pi / 2):
+        u, v = math.cos(a) * r, math.sin(a) * r
+        k.tube([(x + c[0], c[1], c[2]), (x + c[0] + u, c[1] - v * sa, c[2] + v * ca)], th * 0.8, col, 3)
+
+
+def _kart(g, paint, p2, k, f):
+    """Карт: рама-поддон, сиденье-ковш, мотор сбоку, обтекатели."""
+    sy, sz, t = g.sy, g.sz, g.K['track']
+    fl = g.foot[2]
+    k.box(-0.24, g.ry + 0.06, fl - 0.025, 0.24, g.fy + 0.16, fl, DARK)                       # поддон
+    for sx in (-1, 1):
+        k.tube([(sx * 0.25, g.ry + 0.02, fl + 0.03), (sx * 0.25, g.fy + 0.10, fl + 0.03)], 0.02, STEEL, 4)
+        # боковые обтекатели между колёсами
+        k.body([(g.ry + 0.26, fl + 0.09, 0.085, 0.07), (sy + 0.20, fl + 0.10, 0.10, 0.08), (g.fy - 0.22, fl + 0.09, 0.085, 0.07)],
+               paint, x=sx * (t - 0.06), e=0.8)
+        k.tube([(sx * 0.20, g.fy - 0.02, fl + 0.05), (sx * (t - 0.07), g.fy, g.rf)], 0.016, STEEL, 4)     # рычаги
+    k.tube([(-t + 0.06, g.ry, g.rr), (t - 0.06, g.ry, g.rr)], 0.022, STEEL, 5)               # задняя ось
+    # нос с номером и передний бампер
+    k.body([(g.fy - 0.06, fl + 0.13, 0.19, 0.10), (g.fy + 0.16, fl + 0.11, 0.17, 0.08), (g.fy + 0.30, fl + 0.07, 0.10, 0.04)],
+           paint, e=0.8)
+    k.panel((-0.09, g.fy - 0.02, fl + 0.235), (0.09, g.fy - 0.02, fl + 0.235), (0.08, g.fy + 0.14, fl + 0.195),
+            (-0.08, g.fy + 0.14, fl + 0.195), WHITE)
+    k.tube([(-t + 0.02, g.fy + 0.20, fl + 0.05), (-0.20, g.fy + 0.31, fl + 0.05), (0.20, g.fy + 0.31, fl + 0.05),
+            (t - 0.02, g.fy + 0.20, fl + 0.05)], 0.02, DARK, 4)
+    # сиденье-ковш
+    k.body([(sy - 0.20, sz - 0.03, 0.20, 0.035), (sy + 0.16, sz - 0.05, 0.18, 0.035)], SEAT, n=6)
+    k.body([(sy - 0.24, sz + 0.20, 0.20, 0.24), (sy - 0.17, sz + 0.18, 0.21, 0.22)], SEAT, n=6)
+    for sx in (-1, 1):
+        k.box(sx * 0.19, sy - 0.20, sz - 0.06, sx * 0.215, sy + 0.10, sz + 0.10, SEAT)
+        k.tube([(sx * 0.12, sy - 0.10, sz - 0.07), (sx * 0.14, sy - 0.10, fl)], 0.014, STEEL, 3)
+    # мотор справа от сиденья, бак под рулём, глушитель, задний бампер
+    k.box(0.24, sy - 0.26, fl + 0.02, 0.40, sy + 0.02, fl + 0.20, ENGINE)
+    k.tube([(0.32, sy - 0.12, fl + 0.20), (0.32, sy - 0.16, fl + 0.32)], 0.05, FIN, 6)
+    k.tube([(0.36, sy - 0.24, fl + 0.12), (0.36, g.ry - 0.06, fl + 0.14)], 0.035, STEEL, 6)
+    k.box(-0.40, sy - 0.24, fl + 0.02, -0.25, sy - 0.02, fl + 0.14, DARK)
+    k.body([(sy + 0.24, fl + 0.13, 0.10, 0.07), (sy + 0.42, fl + 0.12, 0.085, 0.06)], p2, n=6)
+    k.tube([(-t + 0.04, g.ry - 0.20, g.rr + 0.02), (t - 0.04, g.ry - 0.20, g.rr + 0.02)], 0.022, DARK, 4)
+    for sx in (-1, 1):
+        k.tube([(sx * 0.22, g.ry + 0.04, fl + 0.03), (sx * 0.30, g.ry - 0.20, g.rr + 0.02)], 0.016, DARK, 3)
+    k.box(-0.06, g.ry - 0.225, g.rr - 0.01, 0.06, g.ry - 0.215, g.rr + 0.05, RED)
+    # рулевая колонка и руль — там, где у ездока кисти
+    k.tube([(0, g.fy - 0.04, fl + 0.06), (0, g.gy + 0.03, g.gz - 0.03)], 0.016, STEEL, 4)
+    _wheel_ring(k, (0.0, g.gy, g.gz), g.bar - 0.05, 62.0, DARK, n=8, th=0.018)
+    for sx in (-1, 1):                                                                       # педали
+        k.box(sx * 0.16, g.foot[1] + 0.13, fl, sx * 0.24, g.foot[1] + 0.15, fl + 0.12, STEEL)
+    return dict(head=(0.0, g.fy + 0.28, fl + 0.08), tail=(0.0, g.ry - 0.23, g.rr + 0.02))
+
+
+def _caddy(g, paint, p2, k, f):
+    """Гольф-кар: открытая тележка с диваном на двоих и крышей на стойках."""
+    sy, sz, t, x = g.sy, g.sz, g.K['track'], g.x
+    fl = g.foot[2]
+    hw = t + 0.07
+    cream = (0.90, 0.88, 0.80, 1.0)
+    k.box(-hw, g.ry - 0.30, fl - 0.05, hw, g.fy + 0.26, fl, DARK)                            # пол
+    # капот со скруглённым носом и фарами
+    k.body([(g.fy - 0.14, fl + 0.21, hw, 0.21), (g.fy + 0.16, fl + 0.19, hw - 0.01, 0.19), (g.fy + 0.34, fl + 0.13, hw - 0.10, 0.12)],
+           paint, e=0.7)
+    k.box(-hw + 0.02, g.fy - 0.20, fl + 0.30, hw - 0.02, g.fy - 0.13, fl + 0.50, DARK)       # панель приборов
+    for sx in (-1, 1):
+        k.box(sx * (hw - 0.26), g.fy + 0.335, fl + 0.14, sx * (hw - 0.12), g.fy + 0.35, fl + 0.24, LAMP)
+        k.box(sx * (hw - 0.02), g.ry - 0.305, fl + 0.22, sx * (hw - 0.16), g.ry - 0.29, fl + 0.30, RED)
+    k.tube([(-hw + 0.04, g.fy + 0.36, fl + 0.02), (hw - 0.04, g.fy + 0.36, fl + 0.02)], 0.03, DARK, 4)      # бампер
+    # диван и тумба под ним
+    k.box(-hw + 0.03, sy - 0.26, fl, hw - 0.03, sy + 0.16, sz - 0.09, paint)
+    k.body([(sy - 0.24, sz - 0.045, hw - 0.05, 0.045), (sy + 0.20, sz - 0.055, hw - 0.05, 0.045)], cream, n=6, e=0.6)
+    k.body([(sy - 0.30, sz + 0.22, hw - 0.05, 0.20), (sy - 0.22, sz + 0.22, hw - 0.05, 0.20)], cream, n=6, e=0.6)
+    # задняя площадка под сумки
+    k.body([(g.ry - 0.30, fl + 0.18, hw, 0.18), (sy - 0.30, fl + 0.20, hw, 0.20)], paint, e=0.7)
+    k.box(-hw + 0.06, g.ry - 0.24, fl + 0.38, hw - 0.06, sy - 0.36, fl + 0.40, DARK)
+    for sx in (-0.22, 0.20):                                                                 # сумки с клюшками
+        k.tube([(sx, g.ry - 0.04, fl + 0.40), (sx, g.ry - 0.12, fl + 1.02)], 0.085, p2 if sx < 0 else CRATE, 6)
+        for dx in (-0.03, 0.03):
+            k.tube([(sx + dx, g.ry - 0.12, fl + 1.02), (sx + dx * 1.6, g.ry - 0.14, fl + 1.16)], 0.008, STEEL, 3)
+    # крыша на четырёх стойках
+    top = g.pz + 0.92
+    for sx in (-1, 1):
+        k.tube([(sx * (hw - 0.05), g.fy - 0.16, fl + 0.44), (sx * (hw - 0.07), g.fy - 0.30, top)], 0.018, DARK, 4)
+        k.tube([(sx * (hw - 0.05), sy - 0.34, fl + 0.40), (sx * (hw - 0.07), sy - 0.38, top)], 0.018, DARK, 4)
+    k.body([(sy - 0.52, top + 0.02, hw - 0.01, 0.03), (g.fy - 0.20, top + 0.02, hw - 0.01, 0.03)], cream, n=6, e=0.5)
+    # руль перед водителем
+    k.tube([(x, g.fy - 0.14, fl + 0.44), (x, g.gy + 0.03, g.gz - 0.04)], 0.018, DARK, 4)
+    _wheel_ring(k, (0.0, g.gy, g.gz), g.bar, 55.0, DARK, x=x, n=10, th=0.016)
+    return dict(head=(0.0, g.fy + 0.35, fl + 0.19), tail=(0.0, g.ry - 0.30, fl + 0.26),
+                seat2=(-x, sy, g.pz, 'bench'))
 
 
 def _dirt(g, paint, p2, k, f):
@@ -772,6 +934,8 @@ BUILDERS = {
     'bike': _sport, 'chopper': _chopper, 'scooter': _scooter, 'dirt': _dirt, 'bicycle': _bicycle, 'quad': _quad,
     'moped': _moped, 'copbike': lambda g, p, p2, k, f: _tourer(g, p, p2, k, f, police=True), 'sidecar': _sidecar,
     'trike': _trike, 'bmx': lambda g, p, p2, k, f: _bicycle(g, p, p2, k, f, bmx=True), 'tourer': _tourer,
+    'courier': lambda g, p, p2, k, f: _scooter(g, p, p2, k, f, box=True), 'cargo': _cargo, 'kart': _kart,
+    'caddy': _caddy,
 }
 
 
@@ -804,9 +968,10 @@ def build(assets, kind, paint):
     wf = wheel_node(assets, g.rf, g.wf, K['wheel'])
     wr = wheel_node(assets, g.rr, g.wr, K.get('wheel_r', K['wheel']))
     t = K.get('track')
-    if kind == 'quad':
+    lay = K.get('layout')
+    if lay == 'quad':
         wheels = [(-t, g.fy, g.rf, 'self', wf), (t, g.fy, g.rf, 'self', wf), (-t, g.ry, g.rr, None, wr), (t, g.ry, g.rr, None, wr)]
-    elif kind == 'trike':
+    elif lay == 'trike':
         wheels = [(0.0, g.fy, g.rf, 'fork', wf), (-t, g.ry, g.rr, None, wr), (t, g.ry, g.rr, None, wr)]
     elif kind == 'sidecar':
         sx, sy_ = info['side_wheel']

@@ -63,6 +63,7 @@ class Spec(object):
         self.engine = 'car'
         self.bike = False           # ездок сидит верхом и виден (мотоциклы, велосипед, квадроцикл)
         self.lean = False           # наклоняется в повороты (двухколёсные)
+        self.nofire = False         # ни мотора, ни бака: не горит и не взрывается, а просто ломается (велосипеды)
         self.kit = ()               # обвес с завода: детали, которые есть у машины всегда (см. tuning.KIT)
         self.tune = None            # заводской тюнинг: словарь «деталь -> вариант»
         for k, v in kw.items():
@@ -172,7 +173,7 @@ _add(Spec('dirt', 'Кузнечик', 2.16, 0.80, 1.28, bike=True, lean=True, se
           value=1200, engine='bike', steer=0.54, clear=0.34))
 _add(Spec('bicycle', 'Велосипед', 1.78, 0.58, 1.10, bike=True, lean=True, seats=1, mass=40.0, top=11.5, accel=3.2,
           grip=8.5, brake=9.0, health=140.0, wheel_r=0.34, front_axle=0.54, rear_axle=-0.54, radio=False,
-          value=60, engine='none', steer=0.6))
+          value=60, engine='none', steer=0.6, nofire=True))
 _add(Spec('quad', 'Квадро', 2.20, 1.22, 1.20, bike=True, lean=False, seats=1, mass=280.0, top=34.0, accel=8.0,
           grip=8.8, brake=14.0, health=560.0, wheel_r=0.29, front_axle=0.63, rear_axle=-0.63, radio=False,
           value=900, engine='bike', steer=0.5, clear=0.26,
@@ -194,34 +195,52 @@ _add(Spec('trike', 'Мамонт', 2.60, 1.44, 1.22, bike=True, lean=False, seat
           paints=[(0.60, 0.08, 0.20), (0.05, 0.05, 0.06), (0.85, 0.42, 0.10), (0.42, 0.10, 0.44)]))
 _add(Spec('bmx', 'Трюкач', 1.50, 0.62, 1.12, bike=True, lean=True, seats=1, mass=30.0, top=13.0, accel=4.2,
           grip=9.0, brake=10.0, health=160.0, wheel_r=0.26, front_axle=0.47, rear_axle=-0.47, radio=False,
-          value=90, engine='none', steer=0.66,
+          value=90, engine='none', steer=0.66, nofire=True,
           paints=[(0.80, 0.10, 0.09), (0.92, 0.72, 0.10), (0.16, 0.56, 0.66), (0.05, 0.05, 0.06), (0.42, 0.10, 0.44)]))
 _add(Spec('tourer', 'Странник', 2.50, 0.92, 1.46, bike=True, lean=True, seats=2, mass=400.0, top=52.0, accel=8.6,
           grip=8.4, brake=15.0, health=640.0, wheel_r=0.32, front_axle=0.82, rear_axle=-0.82, radio=True,
           value=2600, engine='bike', steer=0.46,
           paints=[(0.50, 0.08, 0.12), (0.10, 0.20, 0.42), (0.08, 0.08, 0.09), (0.60, 0.62, 0.64), (0.10, 0.34, 0.26)]))
+_add(Spec('courier', 'Курьер', 1.86, 0.66, 1.16, bike=True, lean=True, seats=1, mass=130.0, top=25.0, accel=5.6,
+          grip=7.5, brake=12.0, health=300.0, wheel_r=0.22, front_axle=0.63, rear_axle=-0.63, radio=False,
+          value=380, engine='bike', steer=0.56,
+          paints=[(0.12, 0.12, 0.13), (0.80, 0.10, 0.09), (0.16, 0.50, 0.28), (0.90, 0.90, 0.88)]))
+_add(Spec('cargo', 'Муравей', 2.20, 1.10, 1.30, bike=True, lean=False, seats=1, mass=260.0, top=20.0, accel=4.2,
+          grip=7.4, brake=11.0, health=460.0, wheel_r=0.22, front_axle=0.75, rear_axle=-0.75, radio=False,
+          value=420, engine='bike', steer=0.5,
+          paints=[(0.16, 0.36, 0.56), (0.30, 0.40, 0.26), (0.62, 0.20, 0.14), (0.56, 0.56, 0.52)]))
+_add(Spec('kart', 'Карт', 1.60, 1.12, 0.80, bike=True, lean=False, seats=1, mass=120.0, top=33.0, accel=10.0,
+          grip=10.5, brake=16.0, health=260.0, wheel_r=0.14, front_axle=0.53, rear_axle=-0.53, radio=False,
+          value=700, engine='bike', steer=0.62, clear=0.05,
+          paints=[(0.80, 0.10, 0.09), (0.92, 0.72, 0.10), (0.12, 0.26, 0.62), (0.10, 0.42, 0.22), (0.90, 0.90, 0.88)]))
+_add(Spec('caddy', 'Гольф-кар', 2.30, 1.20, 1.72, bike=True, lean=False, seats=2, mass=320.0, top=15.0, accel=4.0,
+          grip=7.6, brake=10.0, health=420.0, wheel_r=0.21, front_axle=0.78, rear_axle=-0.78, radio=False,
+          value=500, engine='none', steer=0.55,
+          paints=[(0.92, 0.92, 0.88), (0.16, 0.44, 0.30), (0.10, 0.20, 0.42), (0.60, 0.10, 0.14)]))
 BIKES = tuple(k for k, s in SPECS.items() if s.bike)
 
 # какие машины встречаются в каком районе (тип, вес)
 ZONE_CARS = {
     'D': [('sedan', 5), ('taxi', 4), ('sports', 1.2), ('suv', 2), ('hatch', 2), ('bus', 0.8), ('van', 1),
           ('muscle', 0.6), ('limo', 0.5), ('minibus', 0.9), ('bike', 0.7), ('scooter', 0.9), ('pizza', 0.6),
-          ('cashvan', 0.3), ('racer', 0.15), ('firetruck', 0.2), ('tourer', 0.5), ('copbike', 0.35)],
+          ('cashvan', 0.3), ('racer', 0.15), ('firetruck', 0.2), ('tourer', 0.5), ('copbike', 0.35),
+          ('courier', 1.0)],
     'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('beater', 1.5), ('bus', 0.6), ('pickup', 1),
           ('minibus', 1.2), ('scooter', 1.4), ('bicycle', 1.0), ('pizza', 0.8), ('icecream', 0.3), ('chopper', 0.4),
-          ('moped', 1.0), ('sidecar', 0.4), ('copbike', 0.25)],
+          ('moped', 1.0), ('sidecar', 0.4), ('copbike', 0.25), ('courier', 1.1), ('cargo', 0.7)],
     'G': [('beater', 6), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1), ('chopper', 1.6),
           ('hotrod', 0.6), ('dirt', 0.8), ('bicycle', 0.8), ('moped', 1.0), ('trike', 0.7), ('bmx', 0.8),
-          ('sidecar', 0.5)],
+          ('sidecar', 0.5), ('cargo', 0.8), ('kart', 0.3)],
     'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5), ('jeep', 1.0),
           ('bicycle', 1.4), ('scooter', 0.8), ('icecream', 0.5), ('minibus', 0.6), ('quad', 0.3), ('bmx', 0.9),
-          ('moped', 0.6), ('tourer', 0.4), ('sidecar', 0.5)],
+          ('moped', 0.6), ('tourer', 0.4), ('sidecar', 0.5), ('caddy', 0.9), ('courier', 0.6), ('kart', 0.3)],
     'I': [('truck', 4), ('van', 4), ('pickup', 3), ('beater', 2), ('sedan', 1), ('jeep', 0.8), ('dirt', 0.7),
-          ('cashvan', 0.3), ('sidecar', 0.5), ('moped', 0.5)],
+          ('cashvan', 0.3), ('sidecar', 0.5), ('moped', 0.5), ('cargo', 1.4)],
     'B': [('sports', 2.5), ('sedan', 3), ('taxi', 3), ('muscle', 2), ('suv', 2), ('hatch', 2), ('bus', 0.5),
           ('limo', 0.8), ('bike', 1.4), ('chopper', 1.0), ('tuner', 1.2), ('racer', 0.4), ('hotrod', 0.6),
-          ('quad', 0.5), ('icecream', 0.6), ('trike', 0.8), ('tourer', 0.7), ('bmx', 0.5)],
-    'P': [('sedan', 4), ('taxi', 3), ('hatch', 2), ('bicycle', 1.5), ('scooter', 0.8), ('bmx', 1.0)],
+          ('quad', 0.5), ('icecream', 0.6), ('trike', 0.8), ('tourer', 0.7), ('bmx', 0.5), ('caddy', 1.0),
+          ('kart', 0.6), ('courier', 0.5)],
+    'P': [('sedan', 4), ('taxi', 3), ('hatch', 2), ('bicycle', 1.5), ('scooter', 0.8), ('bmx', 1.0), ('caddy', 0.8)],
 }
 
 _body_cache = {}
@@ -594,6 +613,7 @@ class Vehicle(object):
         self.max_health = spec.health
         self.dead = False
         self.burning = 0.0
+        self.fallen = 0.0                 # сломанный велосипед лежит на боку: -1 или 1
         self.sunk = False
         self.driver = None               # Ped
         self.passengers = []
@@ -1167,7 +1187,9 @@ class Vehicle(object):
         if by_player:
             self.last_hit_by_player = self.world.time
         if self.health <= 0.0:
-            if cause == 'explosion' and amount > self.max_health * 1.1:
+            if self.spec.nofire:
+                self.break_down(by_player)
+            elif cause == 'explosion' and amount > self.max_health * 1.1:
                 self.explode(by_player)                 # прямое попадание
             else:
                 # загорается и скоро взорвётся (цепная реакция выглядит эффектнее с задержкой)
@@ -1186,6 +1208,10 @@ class Vehicle(object):
                     self.world.fx.smoke(self.x, self.y, self.z + self.spec.H, 1.6, dark=True)
             return
         hp = self.health
+        if self.spec.nofire:
+            if hp < self.max_health * 0.14:
+                self.break_down(self.world.time - self.last_hit_by_player < 12.0)
+            return
         if hp < self.max_health * 0.35:
             self.smoke_t -= dt
             if self.smoke_t <= 0:
@@ -1206,6 +1232,32 @@ class Vehicle(object):
             self.burn_t += dt
             if self.burn_t > 4.5:
                 self.explode(self.world.time - self.last_hit_by_player < 12.0)
+
+    def break_down(self, by_player=False):
+        """Велосипед не горит и не взрывается: он ломается и падает набок, а ездок летит на асфальт."""
+        if self.dead:
+            return
+        w = self.world
+        vx, vy = self.vx, self.vy
+        if self.is_player:
+            w.player.thrown_off(self, 10.0)
+        elif self.npc and self.rider is not None:
+            self.remove_rider()
+            drv = w.make_driver(self)
+            drv.knock_down(1.6 + random.random(), vx * 0.5, vy * 0.5, 1.5)
+        self.dead = True
+        self.health = 0.0
+        self.burning = 0.0
+        self.fallen = random.choice((-1.0, 1.0))
+        self.set_lights(False)
+        self._free_riders()
+        w.traffic.take_over(self)
+        self.vx *= 0.3
+        self.vy *= 0.3
+        w.stats['wrecks'] += 1
+        w.audio.play_at('crash1', self.x, self.y, 0.7, 1.3, 60.0)
+        if w.missions is not None:
+            w.missions.notify('vehicle_destroyed', self)
 
     def explode(self, by_player=False):
         if self.dead:
@@ -1261,6 +1313,10 @@ class Vehicle(object):
                 self.steer_np.setH(st)
             for piv, wn in ws:
                 wn.setP(rot)
+            if self.fallen:
+                self.roll = damp(self.roll, 84.0 * self.fallen, 8.0, dt)
+                self.tilt.setHpr(0, 0, self.roll)
+                return
             if spec.lean:
                 # мотоцикл ложится в поворот тем сильнее, чем быстрее едет
                 lean = clamp(v * math.tan(self.steer) * 2.6, -34.0, 34.0) if self.mode == Vehicle.PHYS else 0.0

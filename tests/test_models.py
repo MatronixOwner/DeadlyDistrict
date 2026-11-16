@@ -62,9 +62,9 @@ def test_vehicle_model_fits_its_spec(world, kind):
         assert abs((mx.y - mn.y) - spec.L) < 0.22 * spec.L
         assert (mx.x - mn.x) <= spec.W * 1.3 and mx.z <= spec.H * 1.15
         assert abs((mx.x + mn.x) * 0.5) < 0.12                         # модель стоит по середине своего габарита
-        assert len(v.wheels) == {'quad': 4, 'trike': 3, 'sidecar': 3}.get(kind, 2)
+        assert len(v.wheels) == {'quad': 4, 'kart': 4, 'caddy': 4, 'trike': 3, 'sidecar': 3, 'cargo': 3}.get(kind, 2)
         front = v.wheels[0][0].getPos(v.tilt)
-        rear = v.wheels[1 if kind != 'quad' else -1][0].getPos(v.tilt)
+        rear = v.wheels[-1][0].getPos(v.tilt)
         assert front.y > 0 > rear.y and abs(front.z - spec.wheel_r) < 0.04
     else:
         assert kind in VEHICLE_MODELS
@@ -351,11 +351,10 @@ def test_long_gun_lies_in_both_hands(game, world):
 
 
 def test_fleet_has_bikes_and_new_cars(world):
-    """Транспорта стало больше чем вдвое: двенадцать видов мотоциклов и их родни и десять новых машин."""
+    """Транспорта стало больше чем вдвое: шестнадцать видов мотоциклов и их родни и десять новых машин."""
     from game.vehicle import BIKES, ZONE_CARS
-    assert len(SPECS) >= 39
-    assert set(BIKES) == {'bike', 'chopper', 'scooter', 'dirt', 'bicycle', 'quad',
-                          'moped', 'copbike', 'sidecar', 'trike', 'bmx', 'tourer'}
+    assert len(SPECS) >= 43
+    assert set(BIKES) == set(ALL_BIKES) and len(ALL_BIKES) == 16
     new_cars = {'limo', 'racer', 'minibus', 'firetruck', 'cashvan', 'icecream', 'hotrod', 'jeep', 'pizza', 'tuner'}
     assert new_cars <= set(SPECS) and new_cars <= set(VEHICLE_MODELS)
     titles = [s.title for s in SPECS.values()]
@@ -365,6 +364,10 @@ def test_fleet_has_bikes_and_new_cars(world):
     assert (new_cars | set(BIKES)) <= seen
     for cars in ZONE_CARS.values():
         assert all(k in SPECS for k, _ in cars)
+
+
+ALL_BIKES = ['bike', 'chopper', 'scooter', 'dirt', 'bicycle', 'quad', 'moped', 'copbike', 'sidecar', 'trike', 'bmx',
+             'tourer', 'courier', 'cargo', 'kart', 'caddy']
 
 
 def _check_rider(v, vis, seat=None, tol=0.05):
@@ -388,8 +391,7 @@ def _check_rider(v, vis, seat=None, tol=0.05):
             assert abs(h.x - g.x) < g.bar + 0.05, (v.kind, name, tuple(h))
 
 
-@pytest.mark.parametrize('kind', ['bike', 'chopper', 'scooter', 'dirt', 'bicycle', 'quad', 'moped', 'copbike',
-                                  'sidecar', 'trike', 'bmx', 'tourer'])
+@pytest.mark.parametrize('kind', ALL_BIKES)
 def test_every_bike_seats_its_rider(game, world, kind):
     """У каждой модели ездок сидит в седле и держится за руль; где есть второе место — пассажир на нём."""
     w = world
@@ -503,3 +505,44 @@ def test_traffic_bikers_and_jacking(game, world):
     pl.enter_vehicle(v, silent=True)
     w.remove_vehicle(v)
     assert not pl.ped.node.isEmpty()
+
+
+def test_bicycle_breaks_instead_of_exploding(game, world):
+    """У велосипеда нет ни мотора, ни бака: он не горит и не взрывается, а ломается и падает набок."""
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(8.0)
+    for kind in ('bicycle', 'bmx'):
+        assert SPECS[kind].nofire
+    assert not SPECS['moped'].nofire and not SPECS['caddy'].nofire
+    v = w.spawn_vehicle('bicycle', x, y, yaw, paint=0)
+    pl.teleport(x, y - 2.0)
+    pl.enter_vehicle(v, silent=True)
+    harness.run(game, 0.2)
+    wrecks = w.stats['wrecks']
+    hp = pl.ped.health
+    v.damage(v.max_health * 0.95, 'crash', False)
+    harness.run(game, 0.5)
+    assert v.dead and v.fallen != 0.0 and v.burning <= 0.0                  # сломан, но не горит
+    assert pl.vehicle is None and pl.ped.node.getParent() != v.tilt         # ездок на асфальте, сам по себе
+    assert not pl.ped.dead and pl.ped.health < hp
+    assert w.stats['wrecks'] == wrecks + 1
+    harness.run(game, 1.5)
+    assert abs(abs(v.roll) - 84.0) < 3.0                                    # лежит на боку
+    pl.ped.health = 100.0
+    harness.run(game, 3.0)
+    # ездок из потока машин тоже остаётся жив: он падает рядом
+    x2, y2, yaw2 = lane.pos(30.0)
+    b = w.spawn_vehicle('bmx', x2, y2, yaw2)
+    b.npc = True
+    b.add_rider(random_look(random.Random(3), 'R'))
+    before = set(w.peds)
+    b.damage(b.max_health * 2.0, 'explosion', True)
+    harness.run(game, 0.2)
+    fell = [q for q in w.peds if q not in before]
+    assert b.dead and b.rider is None and len(fell) == 1 and not fell[0].dead
+    w.remove_ped(fell[0])
+    w.remove_vehicle(b)
+    w.remove_vehicle(v)
