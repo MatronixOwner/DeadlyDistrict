@@ -38,6 +38,9 @@ POSES = {
     'cruise': dict(mix=0.2, lean=0.0, hand=(0.48, 0.27), foot=(0.24, 0.36, -0.48), knee=(0.23, 0.445, -0.055)),
     'std': dict(mix=0.35, lean=10.0, hand=(0.51, 0.135), foot=(0.28, 0.21, -0.54), knee=(0.24, 0.415, -0.16)),
     'bike': dict(mix=0.5, lean=20.0, hand=(0.505, 0.0), foot=(0.32, 0.05, -0.545), knee=(0.255, 0.36, -0.25)),
+    # пассажиры: за спиной ездока — верхом, руки на бёдрах; в коляске — ноги вперёд, руки по бокам
+    'pillion': dict(clips=(('sit', 0.55), ('ride', 0.45)), lean=4.0),
+    'tub': dict(clips=(('sit', 0.6), ('sit_ground', 0.4)), lean=0.0),
 }
 PELVIS_UP = 0.10            # таз сидящего — на столько выше поверхности седла
 SOLE = 0.09                 # подошва — на столько ниже кости стопы
@@ -744,12 +747,12 @@ def _sidecar(g, paint, p2, k, f):
     _pegs(k, g, 0.10, DARK, x=x)
     # коляска: «лодка» с местом пассажира, своим колесом и ветровым щитком
     cx = x + 0.80
-    k.body([(g.ry - 0.44, 0.50, 0.13, 0.10), (g.ry - 0.06, 0.46, 0.30, 0.29), (sy + 0.34, 0.45, 0.31, 0.30),
-            (sy + 0.84, 0.47, 0.25, 0.24), (sy + 1.16, 0.50, 0.10, 0.09)], paint, x=cx, e=0.8)
-    k.box(cx - 0.23, sy - 0.40, 0.745, cx + 0.23, sy + 0.30, 0.758, SEAT)                    # проём кабины
-    k.box(cx - 0.22, sy - 0.50, 0.70, cx + 0.22, sy - 0.40, 0.94, SEAT)                      # спинка
-    k.panel((cx - 0.23, sy + 0.34, 0.745), (cx + 0.23, sy + 0.34, 0.745), (cx + 0.19, sy + 0.25, 0.99),
-            (cx - 0.19, sy + 0.25, 0.99), GLASS)
+    k.body([(g.ry - 0.44, 0.50, 0.13, 0.10), (g.ry - 0.06, 0.43, 0.31, 0.32), (sy + 0.44, 0.42, 0.32, 0.33),
+            (sy + 0.90, 0.45, 0.26, 0.27), (sy + 1.18, 0.50, 0.10, 0.09)], paint, x=cx, e=0.8)
+    k.box(cx - 0.24, sy - 0.46, 0.745, cx + 0.24, sy + 0.44, 0.758, SEAT)                    # проём кабины
+    k.box(cx - 0.22, sy - 0.56, 0.66, cx + 0.22, sy - 0.46, 0.92, SEAT)                      # спинка
+    k.panel((cx - 0.24, sy + 0.50, 0.745), (cx + 0.24, sy + 0.50, 0.745), (cx + 0.20, sy + 0.42, 0.97),
+            (cx - 0.20, sy + 0.42, 0.97), GLASS)
     wx = cx + 0.40
     k.fender(g.ry + 0.22, g.rr, g.rr + 0.045, 20.0, 170.0, g.wr * 0.5 + 0.035, paint, x=wx)
     k.box(wx - 0.04, g.ry + 0.22 + g.rr + 0.03, g.rr + 0.10, wx + 0.04, g.ry + 0.22 + g.rr + 0.05, g.rr + 0.16, LAMP)
@@ -762,7 +765,7 @@ def _sidecar(g, paint, p2, k, f):
     f.fender(g.fy, g.rf, g.rf + 0.04, 30.0, 165.0, g.wf * 0.5 + 0.035, paint, x=x)
     _headlight(f, g.cy + 0.15, g.cz - 0.12, 0.085, DARK, x=x)
     return dict(head=(x, g.cy + 0.17, g.cz - 0.12), tail=(x, g.ry - g.rr - 0.05, g.rr + 0.12),
-                seat2=(cx, sy - 0.10, 0.68, 'chair'), side_wheel=(wx, g.ry + 0.22))
+                seat2=(cx, sy - 0.22, 0.56, 'tub'), side_wheel=(wx, g.ry + 0.22))
 
 
 BUILDERS = {
@@ -812,7 +815,7 @@ def build(assets, kind, paint):
         wheels = [(0.0, g.fy, g.rf, 'fork', wf), (0.0, g.ry, g.rr, None, wr)]
     seat2 = info.get('seat2')
     if seat2 is None and kind in ('tourer', 'chopper', 'trike'):
-        seat2 = (0.0, g.sy - (0.50 if kind == 'trike' else 0.42), g.pz + (0.12 if kind == 'trike' else 0.08), 'cruise')
+        seat2 = (0.0, g.sy - (0.50 if kind == 'trike' else 0.42), g.pz + (0.12 if kind == 'trike' else 0.08), 'pillion')
     res = dict(body=k.build('body', assets), fork=f.build('fork', assets), wheels=wheels,
                seat=(g.x, g.sy, g.pz), pose=K['pose'], seat2=seat2, steer=(g.x, g.fy),
                head=info['head'], tail=info['tail'], siren=info.get('siren'))

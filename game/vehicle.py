@@ -795,7 +795,7 @@ class Vehicle(object):
         """Усадить фигуру: поза из смеси клипов, наклон корпуса, таз — точно в точку seat (оси машины)."""
         from . import bikes
         P = bikes.POSES[pose]
-        vis.pose_mix((('ride', P['mix']), ('drive', 1.0 - P['mix'])))
+        vis.pose_mix(P.get('clips') or (('ride', P['mix']), ('drive', 1.0 - P['mix'])))
         node.reparentTo(self.tilt)
         node.setPosHpr(0.0, 0.0, 0.0, 0.0, -P['lean'], 0.0)
         pv = vis.pelvis_pos(self.tilt)

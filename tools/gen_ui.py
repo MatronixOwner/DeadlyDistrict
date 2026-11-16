@@ -206,16 +206,20 @@ def hud():
             d.polygon(star_points(s * 0.5, s * 0.53, s * 0.47, s * 0.20), fill=(14, 15, 18, 150))
             d.polygon(star_points(s * 0.5, s * 0.53, s * 0.39, s * 0.165), fill=(240, 237, 230, 70))
         save(img, name, 64)
-    # прицел: точка и четыре штриха
+    # прицел: точка и четыре штриха; светлое с тёмной каймой — видно и на асфальте, и на небе.
+    # На экране он вдвое меньше текстуры, поэтому штрихи толстые: тонкие при уменьшении пропадают
     img, d = canvas(64)
     s = 64 * K
-    c = s * 0.5
-    for w, col in ((K * 3.0, INK), (K * 1.5, PAPER)):
-        r = w * 0.9
-        d.ellipse([c - r, c - r, c + r, c + r], fill=col)
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            d.line([(c + dx * s * 0.20, c + dy * s * 0.20), (c + dx * s * 0.38, c + dy * s * 0.38)], fill=col,
-                   width=int(w))
+    c = s // 2
+    for grow, col in ((K * 2, (14, 15, 18, 215)), (0, PAPER)):
+        hw = K * 2 + grow                           # полутолщина штриха
+        r = K * 3 + grow
+        a, b = K * 11 - grow, K * 25 + grow         # штрих — от a до b от центра
+        d.ellipse([c - r, c - r, c + r - 1, c + r - 1], fill=col)
+        d.rectangle([c + a, c - hw, c + b - 1, c + hw - 1], fill=col)
+        d.rectangle([c - b, c - hw, c - a - 1, c + hw - 1], fill=col)
+        d.rectangle([c - hw, c + a, c + hw - 1, c + b - 1], fill=col)
+        d.rectangle([c - hw, c - b, c + hw - 1, c - a - 1], fill=col)
     save(img, 'crosshair', 64)
     # оптика: чёрное поле с круглым окном и тонким перекрестием
     n = 512

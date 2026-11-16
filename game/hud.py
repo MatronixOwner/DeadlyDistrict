@@ -134,7 +134,7 @@ class Hud(object):
         self.radio_text = kit.label(self.root, '', 0, 0.87, 0.058, ACCENT, kit.head, 'c')
         self.radio_sub = kit.label(self.root, '', 0, 0.815, 0.038, PAPER, kit.text, 'c')
         self.fps_text = kit.label(self.tl, '', M, -M - 0.01, 0.036, MUTE, kit.text, 'l')
-        self.cross = kit.image(self.root, 'crosshair', 0, 0, 0.034)
+        self.cross = kit.image(self.root, 'crosshair', 0, 0, 0.05)
         self.cross.hide()
 
         # --- оптика: круглое окно и чёрные поля по бокам
