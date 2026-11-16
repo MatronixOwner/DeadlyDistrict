@@ -709,3 +709,41 @@ def test_removing_a_seated_passenger_is_safe(game, world):
         harness.run(game, 0.3)
         assert not pl.ped.dead and pl.vehicle is None and not pl.ped.node.isHidden()
         pl.ped.health = 100.0
+
+
+def test_every_vehicle_takes_full_tuning_and_paint(game, world):
+    """Любую машину и любой мотоцикл можно обвесить всем, что для них продаётся, перекрасить, прокатить и убрать:
+    ни одна деталь не должна уронить игру на непривычном кузове (карт, гольф-кар, коляска)."""
+    from game import tuning
+    from game.vehicle import PAINTS
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(10.0)
+    pl.teleport(x, y - 4.0)
+    for kind in sorted(SPECS):
+        v = w.spawn_vehicle(kind, x, y, yaw, paint=0)
+        parts = tuning.parts_for(v)
+        if kind in tuning.NO_TUNE:
+            assert parts == []
+        full = dict((k, len(opts)) for k, title, opts in parts)
+        v.apply_tune(full)
+        assert v.tune == tuning.clean(full), kind
+        if v.spec.paints is None:
+            v.set_paint(3)
+        w.sky.set_time(23.0)
+        v.set_lights(True)
+        pl.enter_vehicle(v, silent=True)
+        harness.run(game, 0.4, keys=('w', 'shift'))
+        assert pl.vehicle is v, kind
+        pl.leave_vehicle(force=True)
+        for k, title, opts in parts:                 # и по одной детали, каждый вариант
+            for n in range(len(opts) + 1):
+                v.apply_tune({k: n})
+        v.apply_tune({})
+        assert not v.tune, kind
+        w.remove_vehicle(v)
+        harness.run(game, 0.1)
+        pl.teleport(x, y - 4.0)
+    w.sky.set_time(12.0)
