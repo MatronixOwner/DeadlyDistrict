@@ -805,7 +805,7 @@ WEAPONS = {
     'ak': ('ToonShooterGameKit/S_AK', 0.90, False, False, 0.32, 0.22),
     'rocket': ('ToonShooterGameKit/S_RocketLauncher', 1.05, False, False, 0.40, 0.25),
     'grenade': ('ToonShooterGameKit/S_Grenade', 0.13, False, False, 0.5, 0.0),
-    'molotov': ('ToonShooterGameKit/S_FireGrenade', 0.20, False, False, 0.5, 0.0),
+    # бутылку с зажигательной смесью («molotov») делает tools/import_vehicles.py bottle
 }
 
 

@@ -356,8 +356,10 @@ def icons():
         m.reparentTo(root)
         if name in ('bat', 'knife'):
             m.setP(-20.0)                           # холодное оружие — наискось, как его рисуют на значках
-        elif name in ('grenade', 'molotov'):
-            m.setP(90.0)                            # граната и бутылка стоят вертикально
+        elif name == 'grenade':
+            m.setP(90.0)                            # граната стоит вертикально
+        elif name == 'molotov':
+            m.setP(-90.0)                           # бутылка — горлышком вверх (у модели оно смотрит «назад»)
         root.reparentTo(base.render)
         root.setLightOff()
         root.setTextureOff(10)

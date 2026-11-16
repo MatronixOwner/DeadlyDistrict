@@ -1438,6 +1438,16 @@ def do_cars(meta):
     import gen_bus                                      # автобуса в наборе нет — он свой, в том же стиле
     veh['bus'] = gen_bus.build(src)
     meta['vehicles'] = veh
+    # остальная техника (ещё три машины, двухколёсные, детали тюнинга) лежит в той же папке — её собирает
+    # tools/import_vehicles.py; раз папку пересоздали, собираем заново и её (если исходники скачаны)
+    try:
+        import import_vehicles
+        import_vehicles.do_cars(meta)
+        import_vehicles.do_bikes(meta)
+        import_vehicles.do_parts(meta)
+        veh = meta['vehicles']
+    except Exception as e:                              # noqa: BLE001
+        print('  остальная техника не пересобрана (%s): запустите tools/import_vehicles.py fetch, затем all' % e)
     size = sum(os.path.getsize(os.path.join(vdir, f)) for f in os.listdir(vdir))
     print('  машины: %d моделей, %d КБ' % (len(veh), size // 1024))
     for name in sorted(veh):

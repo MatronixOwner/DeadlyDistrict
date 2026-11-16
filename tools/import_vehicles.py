@@ -924,6 +924,42 @@ def do_parts(meta):
     root.writeBamFile(os.path.join(VEH, 'parts.bam'))
 
 
+# ---------------------------------------------------------------------------
+# бутылка с зажигательной смесью
+# ---------------------------------------------------------------------------
+def do_bottle(meta):
+    """weapons/molotov.bam: бутылка (Quaternius, Survival) с тряпкой в горлышке.  Раньше «коктейлем» служила
+    модель зажигательной гранаты — красный баллон с чекой."""
+    from panda3d.core import NodePath, ModelRoot
+    _panda()
+    p = named(ms.read(src('quat', 'S_WaterBottle_1.usda')))['Cylinder_001']
+    lo, hi = p.bounds()
+    L = 0.25
+    k = L / (hi[1] - lo[1])
+    grip = lo[1] + (hi[1] - lo[1]) * 0.80                 # держат за горлышко: бутылка висит донышком вниз
+    c = np.array(((lo[0] + hi[0]) * 0.5, grip, (lo[2] + hi[2]) * 0.5))
+    glass, rag = (0.20, 0.33, 0.14), (0.82, 0.80, 0.74)
+    o = Out()
+    cap = p.mats.index('Grey')
+    flip = np.array((-1.0, -1.0, 1.0))                    # донышко — к +Y («вперёд» у оружия; у опущенной руки это вниз)
+    for i in range(len(p.tris)):
+        pts = (p.verts[p.tris[i]] - c) * k * flip
+        o.tri(pts, color=rag if p.mat[i] == cap else glass)
+    top = -(hi[1] - grip) * k
+    # тряпка-фитиль: торчит из горлышка и свисает вбок, чтобы её было видно из-за кулака
+    o.box(-0.012, top - 0.035, -0.006, 0.012, top + 0.012, 0.006, rag)
+    o.box(-0.012, top - 0.045, 0.004, 0.012, top - 0.025, 0.060, rag)
+    o.box(-0.011, top - 0.040, 0.050, 0.011, top + 0.030, 0.062, rag)
+    root = NodePath(ModelRoot('molotov'))
+    root.attachNewNode(o.node('molotov'))
+    root.writeBamFile(os.path.join(OUT, 'weapons', 'molotov.bam'))
+    pts = np.array([r[0] for r in o.rows])
+    meta['weapons']['molotov'] = dict(length=round(float(pts[:, 1].max() - pts[:, 1].min()), 3),
+                                      muzzle=[0.0, round(float(pts[:, 1].max()), 3), 0.0])
+    print('  бутылка: длина %.2f м, толщина %.3f м, треугольников %d' % (
+        pts[:, 1].max() - pts[:, 1].min(), pts[:, 0].max() - pts[:, 0].min(), len(o)))
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'all'
     if cmd == 'fetch':
@@ -938,6 +974,8 @@ def main():
         do_bikes(meta)
     if cmd in ('all', 'parts'):
         do_parts(meta)
+    if cmd in ('all', 'bottle'):
+        do_bottle(meta)
     with open(mpath, 'w', encoding='utf-8') as f:
         json.dump(meta, f, indent=1, sort_keys=True, ensure_ascii=False)
     print('готово:', os.path.relpath(mpath, ROOT))

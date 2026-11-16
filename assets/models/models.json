@@ -1679,11 +1679,11 @@
    "tex": true
   },
   "molotov": {
-   "length": 0.2,
+   "length": 0.295,
    "muzzle": [
     0.0,
-    0.1,
-    0.02
+    0.2,
+    0.0
    ]
   },
   "pistol": {
