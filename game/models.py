@@ -113,6 +113,8 @@ class Models(object):
             with open(os.path.join(self.dir, 'models.json'), encoding='utf-8') as f:
                 self.meta = json.load(f)
             self.ok = bool(self.meta.get('chars')) and bool(self.meta.get('vehicles')) and 'hand' in self.meta
+            from . import bikes
+            bikes.use_models(self)
         except Exception:
             self.ok = False
         self._files = {}

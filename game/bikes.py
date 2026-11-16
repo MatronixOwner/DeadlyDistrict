@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Мотоциклы, скутер, мопед, велосипеды, квадроцикл, трайк и мотоцикл с коляской: модели собираются кодом.
+"""Мотоциклы, скутер, мопед, велосипеды, квадроцикл, трайк и мотоцикл с коляской.
 
-Готового набора двухколёсной техники в стиле остальных машин и с понятной лицензией в открытых источниках
-не нашлось (что и где искали — в assets/models/CREDITS.md), поэтому всё строится здесь.
+Часть видов — готовые модели (круизер и два велосипеда, см. bikemodels.py): на них построены «Ворон»,
+«Странник», патрульный мотоцикл, трайк, «Тайга» с коляской и оба велосипеда.  Для остальных — спортивного
+и кроссового мотоциклов, скутеров, мопеда, квадроцикла, грузового мотороллера, карта и гольф-кара — готовых
+моделей с понятной лицензией в открытых источниках не нашлось (что и где искали — в
+assets/models/CREDITS.md), и они по-прежнему собираются здесь кодом.  Этим же кодом строится всё, если
+файлы моделей не загрузились.
 
 Каждая модель строится вокруг ездока.  Сначала выбирается посадка — как человек сидит в седле (POSES);
 по ней ставятся седло, руль и подножки, а уже вокруг них — бак, обтекатели, двигатель, рама.  Поэтому
@@ -93,6 +97,22 @@ KINDS['quad']['layout'] = 'quad'
 KINDS['trike']['layout'] = 'trike'
 _cache = {}
 _wheels = {}
+_models = None              # загрузчик готовых моделей (models.Models): ставит use_models()
+
+
+def use_models(models):
+    """Подключить готовые модели: виды, для которых они есть, будут собираться из них."""
+    global _models
+    from . import bikemodels
+    _models = models
+    _cache.clear()
+    bikemodels.clear()
+
+
+def modelled(kind):
+    """Собирается ли этот вид из готовой модели."""
+    from . import bikemodels
+    return bikemodels.has(_models, kind)
 
 
 class Geo(object):
@@ -940,11 +960,17 @@ BUILDERS = {
 
 
 def geo(kind):
+    from . import bikemodels
+    if bikemodels.has(_models, kind):
+        return bikemodels.Geo(_models, kind)
     return Geo(KINDS[kind])
 
 
 def light_points(kind):
     """Где у модели фара и задний фонарь (и маячки, если есть)."""
+    from . import bikemodels
+    if bikemodels.has(_models, kind):
+        return bikemodels.light_points(_models, kind)
     g = geo(kind)
     res = BUILDERS[kind](g, WHITE, WHITE, Kit(), Kit())
     head = [] if kind in ('bicycle', 'bmx') else [res['head']]
@@ -954,6 +980,9 @@ def light_points(kind):
 
 def build(assets, kind, paint):
     """Детали модели: body, fork, wheels=[(x, y, r, как поворачивает, узел колеса)], посадка ездока и пассажира."""
+    from . import bikemodels
+    if bikemodels.has(_models, kind):
+        return bikemodels.build(assets, _models, kind, paint)
     key = (kind, int(paint[0] * 255), int(paint[1] * 255), int(paint[2] * 255))
     res = _cache.get(key)
     if res is not None:

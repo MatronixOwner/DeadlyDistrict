@@ -163,8 +163,8 @@ _add(Spec('tuner', 'Дрифт', 3.9, 1.7, 1.38, trunk=0.02, rw_rake=0.35, hood=
 _add(Spec('bike', 'Стрела', 2.10, 0.74, 1.16, bike=True, lean=True, seats=1, mass=230.0, top=64.0, accel=13.0,
           grip=9.0, brake=18.0, health=420.0, wheel_r=0.30, front_axle=0.70, rear_axle=-0.70, radio=False,
           value=2200, engine='bike', steer=0.50))
-_add(Spec('chopper', 'Ворон', 2.50, 0.84, 1.20, bike=True, lean=True, seats=2, mass=310.0, top=50.0, accel=9.0,
-          grip=7.6, brake=14.0, health=520.0, wheel_r=0.32, front_axle=0.89, rear_axle=-0.89, radio=False,
+_add(Spec('chopper', 'Ворон', 2.60, 0.86, 1.30, bike=True, lean=True, seats=2, mass=310.0, top=50.0, accel=9.0,
+          grip=7.6, brake=14.0, health=520.0, wheel_r=0.32, front_axle=0.81, rear_axle=-0.81, radio=False,
           value=1900, engine='bike', steer=0.44,
           paints=[(0.05, 0.05, 0.06), (0.60, 0.08, 0.20), (0.12, 0.26, 0.62), (0.36, 0.22, 0.14)]))
 _add(Spec('scooter', 'Оса', 1.80, 0.66, 1.16, bike=True, lean=True, seats=1, mass=120.0, top=27.0, accel=6.0,
@@ -173,8 +173,8 @@ _add(Spec('scooter', 'Оса', 1.80, 0.66, 1.16, bike=True, lean=True, seats=1, 
 _add(Spec('dirt', 'Кузнечик', 2.16, 0.80, 1.28, bike=True, lean=True, seats=1, mass=150.0, top=44.0, accel=11.0,
           grip=8.2, brake=15.0, health=380.0, wheel_r=0.34, front_axle=0.73, rear_axle=-0.73, radio=False,
           value=1200, engine='bike', steer=0.54, clear=0.34))
-_add(Spec('bicycle', 'Велосипед', 1.78, 0.58, 1.10, bike=True, lean=True, seats=1, mass=40.0, top=11.5, accel=3.2,
-          grip=8.5, brake=9.0, health=140.0, wheel_r=0.34, front_axle=0.54, rear_axle=-0.54, radio=False,
+_add(Spec('bicycle', 'Велосипед', 1.85, 0.58, 1.14, bike=True, lean=True, seats=1, mass=40.0, top=11.5, accel=3.2,
+          grip=8.5, brake=9.0, health=140.0, wheel_r=0.34, front_axle=0.585, rear_axle=-0.585, radio=False,
           value=60, engine='none', steer=0.6, nofire=True))
 _add(Spec('quad', 'Квадро', 2.20, 1.22, 1.20, bike=True, lean=False, seats=1, mass=280.0, top=34.0, accel=8.0,
           grip=8.8, brake=14.0, health=560.0, wheel_r=0.29, front_axle=0.63, rear_axle=-0.63, radio=False,
@@ -184,23 +184,23 @@ _add(Spec('moped', 'Стриж', 1.78, 0.60, 1.08, bike=True, lean=True, seats=1
           grip=7.6, brake=10.0, health=240.0, wheel_r=0.28, front_axle=0.59, rear_axle=-0.59, radio=False,
           value=180, engine='bike', steer=0.58,
           paints=[(0.80, 0.10, 0.09), (0.10, 0.42, 0.22), (0.12, 0.26, 0.62), (0.85, 0.42, 0.10), (0.30, 0.50, 0.62)]))
-_add(Spec('copbike', 'Патрульный мотоцикл', 2.40, 0.86, 1.46, bike=True, lean=True, seats=1, mass=320.0, top=58.0,
-          accel=11.5, grip=8.8, brake=17.0, health=640.0, wheel_r=0.31, front_axle=0.77, rear_axle=-0.77, radio=False,
+_add(Spec('copbike', 'Патрульный мотоцикл', 2.60, 0.86, 1.50, bike=True, lean=True, seats=1, mass=320.0, top=58.0,
+          accel=11.5, grip=8.8, brake=17.0, health=640.0, wheel_r=0.32, front_axle=0.81, rear_axle=-0.81, radio=False,
           value=0, engine='bike', steer=0.48, paints=[(0.92, 0.92, 0.94)]))
-_add(Spec('sidecar', 'Тайга', 2.40, 1.72, 1.20, bike=True, lean=False, seats=2, mass=380.0, top=38.0, accel=6.6,
-          grip=7.8, brake=12.0, health=620.0, wheel_r=0.32, front_axle=0.73, rear_axle=-0.73, radio=False,
+_add(Spec('sidecar', 'Тайга', 2.60, 1.72, 1.30, bike=True, lean=False, seats=2, mass=380.0, top=38.0, accel=6.6,
+          grip=7.8, brake=12.0, health=620.0, wheel_r=0.32, front_axle=0.81, rear_axle=-0.81, radio=False,
           value=800, engine='bike', steer=0.46,
           paints=[(0.24, 0.30, 0.20), (0.05, 0.05, 0.06), (0.36, 0.22, 0.14), (0.14, 0.24, 0.40)]))
-_add(Spec('trike', 'Мамонт', 2.60, 1.44, 1.22, bike=True, lean=False, seats=2, mass=430.0, top=46.0, accel=8.4,
-          grip=8.0, brake=13.0, health=680.0, wheel_r=0.32, front_axle=0.93, rear_axle=-0.93, radio=False,
+_add(Spec('trike', 'Мамонт', 2.60, 1.44, 1.30, bike=True, lean=False, seats=2, mass=430.0, top=46.0, accel=8.4,
+          grip=8.0, brake=13.0, health=680.0, wheel_r=0.32, front_axle=0.81, rear_axle=-0.81, radio=False,
           value=2100, engine='bike', steer=0.44,
           paints=[(0.60, 0.08, 0.20), (0.05, 0.05, 0.06), (0.85, 0.42, 0.10), (0.42, 0.10, 0.44)]))
-_add(Spec('bmx', 'Трюкач', 1.50, 0.62, 1.12, bike=True, lean=True, seats=1, mass=30.0, top=13.0, accel=4.2,
-          grip=9.0, brake=10.0, health=160.0, wheel_r=0.26, front_axle=0.47, rear_axle=-0.47, radio=False,
+_add(Spec('bmx', 'Трюкач', 1.60, 0.62, 1.12, bike=True, lean=True, seats=1, mass=30.0, top=13.0, accel=4.2,
+          grip=9.0, brake=10.0, health=160.0, wheel_r=0.26, front_axle=0.54, rear_axle=-0.54, radio=False,
           value=90, engine='none', steer=0.66, nofire=True,
           paints=[(0.80, 0.10, 0.09), (0.92, 0.72, 0.10), (0.16, 0.56, 0.66), (0.05, 0.05, 0.06), (0.42, 0.10, 0.44)]))
-_add(Spec('tourer', 'Странник', 2.50, 0.92, 1.46, bike=True, lean=True, seats=2, mass=400.0, top=52.0, accel=8.6,
-          grip=8.4, brake=15.0, health=640.0, wheel_r=0.32, front_axle=0.82, rear_axle=-0.82, radio=True,
+_add(Spec('tourer', 'Странник', 2.70, 0.92, 1.50, bike=True, lean=True, seats=2, mass=400.0, top=52.0, accel=8.6,
+          grip=8.4, brake=15.0, health=640.0, wheel_r=0.32, front_axle=0.81, rear_axle=-0.81, radio=True,
           value=2600, engine='bike', steer=0.46,
           paints=[(0.50, 0.08, 0.12), (0.10, 0.20, 0.42), (0.08, 0.08, 0.09), (0.60, 0.62, 0.64), (0.10, 0.34, 0.26)]))
 _add(Spec('courier', 'Курьер', 1.86, 0.66, 1.16, bike=True, lean=True, seats=1, mass=130.0, top=25.0, accel=5.6,
