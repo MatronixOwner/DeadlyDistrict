@@ -59,29 +59,29 @@ def suppressor(length=0.15, radius=0.017):
 # Таблица моделей.  Доли (grip, muzzle) считаются от приклада к дулу и снизу вверх — как на листе `sheet`.
 WEAPONS = {
     'pistol': dict(src='low-poly-glock/glock.glb', objs=None, tex='low-poly-glock/glock.png',
-                   fwd='-x', length=0.205, grip=(0.17, 0.36), muzzle=(1.0, 0.86)),
+                   fwd='+x', length=0.205, grip=(0.17, 0.36), muzzle=(1.0, 0.86)),
     'silenced': dict(src='low-poly-glock/glock.glb', objs=None, tex='low-poly-glock/glock.png',
-                     fwd='-x', length=0.205, grip=(0.17, 0.36), muzzle=(1.0, 0.86), extra=[suppressor()],
+                     fwd='+x', length=0.205, grip=(0.17, 0.36), muzzle=(1.0, 0.86), extra=[suppressor()],
                      dark_uv=(0.30, 0.85), muzzle_add=0.15),
     'uzi': dict(src='Heavy Weapons Pack/weaponPack.blend', objs=['Mauser', 'MauserClip'], tex='Heavy Weapons Pack/mauser.png',
-                fwd='+x', length=0.42, grip=(0.10, 0.45), muzzle=(1.0, 0.95)),
+                fwd='-x', length=0.42, grip=(0.10, 0.45), muzzle=(1.0, 0.95)),
     'shotgun': dict(src='Guns/You see Ivan Pack/weapon pack.blend', objs=['Cube.003'],
                     tex='Guns/You see Ivan Pack/textures/shotgun.png',
-                    fwd='+x', length=0.98, grip=(0.31, 0.62), muzzle=(1.0, 0.88)),
+                    fwd='-x', length=0.98, grip=(0.31, 0.62), muzzle=(1.0, 0.88)),
     'double': dict(src='DoubleBarrelShotgun/DoubleBarrelShotgun.blend', objs=['Barrel', 'Base', 'Trigger'],
-                   tex='DoubleBarrelShotgun/DoubleBarrel.png', fwd='-y', length=1.06, grip=(0.28, 0.62),
+                   tex='DoubleBarrelShotgun/DoubleBarrel.png', fwd='+y', length=1.06, grip=(0.28, 0.62),
                    muzzle=(1.0, 0.88), tex_size=128),
     'ak': dict(src='Guns/You see Ivan Pack/weapon pack.blend', objs=['Cube.001'], tex='Guns/You see Ivan Pack/textures/ak74.png',
-               fwd='+x', length=0.94, grip=(0.37, 0.36), muzzle=(1.0, 0.72)),
+               fwd='-x', length=0.94, grip=(0.37, 0.36), muzzle=(1.0, 0.72)),
     'm4': dict(src='M4A1/M4A1.blend', objs=None, tex='M4A1/M4A1Diffuse.png',
-               fwd='+y', length=0.85, grip=(0.27, 0.34), muzzle=(1.0, 0.70), tex_size=256),
+               fwd='-y', length=0.85, grip=(0.27, 0.34), muzzle=(1.0, 0.70), tex_size=256),
     'sniper': dict(src='Guns/You see Ivan Pack/weapon pack.blend', objs=['Cube'],
                    tex='Guns/You see Ivan Pack/textures/sniper.png',
-                   fwd='+x', length=1.22, grip=(0.37, 0.30), muzzle=(1.0, 0.60)),
+                   fwd='-x', length=1.22, grip=(0.37, 0.30), muzzle=(1.0, 0.60)),
     'rocket': dict(src='Heavy Weapons Pack/weaponPack.blend', objs=['Bazooka'], tex='Heavy Weapons Pack/bazooka.png',
-                   fwd='-x', length=1.02, grip=(0.46, 0.28), muzzle=(1.0, 0.55)),
+                   fwd='+x', length=1.02, grip=(0.46, 0.28), muzzle=(1.0, 0.55)),
     'knife': dict(src='Heavy Weapons Pack/weaponPack.blend', objs=['Cylinder'], tex='Heavy Weapons Pack/knife.png',
-                  fwd='+x', length=0.30, grip=(0.24, 0.55), muzzle=(1.0, 0.45)),
+                  fwd='-x', length=0.30, grip=(0.24, 0.55), muzzle=(1.0, 0.45)),
 }
 
 
@@ -94,7 +94,10 @@ def fetch():
     if not os.path.isdir(os.path.join(SRC, '.git')):
         os.makedirs(os.path.dirname(SRC), exist_ok=True)
         run(['git', 'clone', '--depth', '1', '--filter=blob:none', '--sparse', REPO, SRC])
-    run(['git', 'sparse-checkout', 'add', '/Weapons/'], cwd=SRC)
+    run(['git', 'sparse-checkout', 'init', '--no-cone'], cwd=SRC)
+    have = subprocess.run(['git', 'sparse-checkout', 'list'], cwd=SRC, capture_output=True, text=True).stdout.split('\n')
+    want = sorted(set(l for l in have if l.strip()) | {'/Weapons/'})
+    run(['git', 'sparse-checkout', 'set', '--no-cone'] + want, cwd=SRC)
 
 
 AX = {'+x': (0, 1), '-x': (0, -1), '+y': (1, 1), '-y': (1, -1), '+z': (2, 1), '-z': (2, -1)}
@@ -253,7 +256,7 @@ def sheet(out, names=None):
         film = max(1.25, (height + 0.12) * W / H)
         lens.setFilmSize(film, film * H / W)
         cx, cz = 0.5, height * 0.5
-        base.cam.setPos(-5.0, cx, cz)                # с левого борта: дуло (+Y) на картинке справа
+        base.cam.setPos(5.0, cx, cz)                 # с правого борта (+X): дуло (+Y) на картинке справа
         base.cam.lookAt(0.0, cx, cz)
         base.graphicsEngine.renderFrame()
         base.graphicsEngine.renderFrame()
@@ -365,7 +368,7 @@ def icons():
         film = max(sy, sz * W / H)
         lens.setFilmSize(film, film * H / W)
         lens.setNearFar(0.1, 50.0)
-        base.cam.setPos(-10.0, cy, cz)              # с левого борта: дуло смотрит вправо
+        base.cam.setPos(10.0, cy, cz)               # с правого борта (+X): дуло (+Y) смотрит вправо
         base.cam.lookAt(0.0, cy, cz)
         base.graphicsEngine.renderFrame()
         base.graphicsEngine.renderFrame()
