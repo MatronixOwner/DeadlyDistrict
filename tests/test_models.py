@@ -14,7 +14,7 @@ from game import missions as M
 from game.defs import (W_PISTOL, W_BAT, W_AK, W_FIST, WEAPONS, random_look, cop_look, swat_look, army_look,
                        fbi_look, gang_look, medic_look, player_look, make_look)
 from game.models import VEHICLE_MODELS, WEAPON_MODELS
-from game.vehicle import SPECS
+from game.vehicle import SPECS, Vehicle
 
 DT = 1.0 / 30.0
 
@@ -546,3 +546,132 @@ def test_bicycle_breaks_instead_of_exploding(game, world):
     w.remove_ped(fell[0])
     w.remove_vehicle(b)
     w.remove_vehicle(v)
+
+
+def test_buddy_rides_pillion_and_needs_a_second_seat(game, world):
+    """Брат садится пассажиром: в коляску — там его видно; на одноместный скутер не садится, и игре есть что сказать."""
+    from game import story
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(10.0)
+
+    class FakeMission(object):
+        pass
+    m = FakeMission()
+    m.w = w
+    m.ticks = []
+    bruce = w.spawn_ped(x + 1.0, y - 3.0, 0.0, story.person_look('bruce'))
+    bruce.keep = True
+    buddy = story.Buddy(m, bruce)
+
+    def run(sec):
+        for _ in range(int(sec * 60)):
+            for t in m.ticks:
+                t(1 / 60.0)
+            game.step(1 / 60.0)
+
+    side = w.spawn_vehicle('sidecar', x, y, yaw, paint=0)
+    pl.teleport(x, y - 2.0)
+    pl.enter_vehicle(side, silent=True)
+    run(4.0)
+    assert buddy.riding() and bruce.vehicle is side
+    assert not bruce.node.isHidden() and bruce.node.getParent() == side.tilt      # сидит в коляске, его видно
+    pv = bruce.vis.pelvis_pos(side.tilt)
+    assert pv.x > 0.2                                                           # именно в коляске, а не на мотоцикле
+    run(1.5)
+    pl.leave_vehicle(force=True)
+    run(1.0)
+    assert bruce.vehicle is None and bruce.node.getParent() != side.tilt and not bruce.node.isHidden()
+    # одноместный скутер: брат остаётся стоять, игрок видит подсказку
+    sc = w.spawn_vehicle('scooter', x + 6.0, y, yaw, paint=0)
+    pl.teleport(x + 6.0, y - 2.0)
+    pl.enter_vehicle(sc, silent=True)
+    w.hud.help('', 0.1)
+    run(3.0)
+    assert bruce.vehicle is None and 'вдвоём не уехать' in w.hud.help_text.getText()
+    pl.leave_vehicle(force=True)
+    buddy.stop()
+    w.remove_ped(bruce)
+    w.remove_vehicle(side)
+    w.remove_vehicle(sc)
+
+
+def test_police_motorcycle_serves(game, world):
+    """Патрульный мотоцикл: сирена на H, маячки светят там, где они стоят на модели, мотоциклист из потока
+    включается в погоню и слезает с мотоцикла, а в ателье и покраске служебный мотоцикл не берут."""
+    from game import tuning, bikes
+    from game.defs import cop_look
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    w.police.clear()
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(10.0)
+    v = w.spawn_vehicle('copbike', x, y, yaw)
+    assert tuning.parts_for(v) == []
+    pl.teleport(x, y - 2.0)
+    pl.enter_vehicle(v, silent=True)
+    harness.run(game, 0.2)
+    harness.press(game, 'h')
+    harness.run(game, 0.6)
+    assert v.siren and v.siren_np is not None
+    beacons = bikes.light_points('copbike')[2]
+    assert beacons and len(beacons) == 2
+    for np_, (bx, by, bz) in zip(v.siren_np, beacons):
+        b = np_.getTightBounds()
+        cx, cz = (b[0].x + b[1].x) * 0.5, (b[0].z + b[1].z) * 0.5
+        assert abs(cx - bx) < 0.12 and abs(cz - bz) < 0.25, (cx, cz, bx, bz)
+    harness.press(game, 'h')
+    harness.run(game, 0.3)
+    assert not v.siren
+    pl.leave_vehicle(force=True)
+    w.remove_vehicle(v)
+    harness.run(game, 0.5)
+    # мотоциклист из потока: розыск — и он в погоне
+    x2, y2, yaw2 = lane.pos(6.0)
+    b = w.spawn_vehicle('copbike', x2, y2, yaw2)
+    b.npc = True
+    b.traffic = True
+    b.mode = Vehicle.RAIL
+    b.link, b.s = lane, 6.0
+    b.add_rider(cop_look())
+    assert b.rider is not None
+    hx, hy, _ = lane.pos(44.0)                      # герой — впереди по ходу мотоцикла, у обочины
+    pl.teleport(hx, hy - 3.0)
+    w.police.set_level(2)
+    for _ in range(240):
+        game.step(1 / 60.0)
+        if b in w.police.units:
+            break
+    assert b in w.police.units and b.crew == 1 and b.siren and b.owner == 'police'
+    # подъехал к стоящему герою — слез: ровно один полицейский, в седле никого
+    pl.invincible = True
+    before = set(w.peds)
+    for _ in range(900):
+        game.step(1 / 60.0)
+        if b.crew == 0:
+            break
+    assert b.crew == 0 and b.rider is None
+    cops = [q for q in w.peds if q not in before and q.kind == 'cop']
+    assert len(cops) == 1 and not cops[0].node.isHidden()
+    pl.invincible = False
+    w.police.clear()
+    for q in cops:
+        w.remove_ped(q)
+    w.remove_vehicle(b)
+    pl.ped.health = 100.0
+    # наряд на мотоцикле приезжает с ездоком в седле
+    import random as _r
+    state = _r.getstate()
+    try:
+        kinds = set()
+        _r.seed(5)
+        w.police.level = 2
+        for _ in range(60):
+            kinds.add(w.police._unit_kind())
+        assert kinds == {'police', 'copbike'}
+    finally:
+        w.police.clear()
+        _r.setstate(state)

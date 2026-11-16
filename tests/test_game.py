@@ -1335,3 +1335,41 @@ def test_tuning_shop_and_garage_remember_parts(game, world):
     assert car.kind == 'muscle' and car.tune == {'engine': 2, 'spoiler': 2, 'neon': 4}
     assert car.k_acc > 1.1 and car.tune_np is not None and car.neon_np is not None
     w = harness.start_game(game)
+
+
+def test_chase_car_frees_itself_when_wedged(game, world):
+    """Патрульная машина, зажатая на тротуаре между стеной дома и деревом, не буксует на месте до конца погони:
+    мотор толкает её вперёд, дерево возвращает назад, скорость при этом не нулевая. Водитель должен заметить,
+    что машина не сдвинулась, сдать назад, отвернуть и объехать."""
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    w.police.clear()
+    tree = [c for c in w.static.circles if c[4] and abs(c[0] + 205.9) < 0.3 and abs(c[1] + 115.5) < 0.3]
+    lanes = [l for l in w.roadnet.lanes_near(-240.0, -175.8, 0.0, 60.0)
+             if l.turn is None and abs(l.x0 + 205.0) < 0.5 and abs(l.y0 + 175.8) < 0.5 and l.x1 < l.x0]
+    if not tree or not lanes:
+        pytest.skip('дерево или полоса у Адмиральского проспекта переехали: сцену нужно собрать заново')
+    # так машина и стояла в игре: нос на север, слева стена, справа спереди дерево, а её полоса осталась позади
+    v = w.spawn_vehicle('police', -206.7, -115.8, 1.79)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    hx, hy, _ = lane.pos(10.0)
+    pl.teleport(hx, hy - 3.0)
+    pl.invincible = True
+    w.police.set_level(2)
+    w.police.spawn_t = 1e9                          # подмога не нужна: смотрим на одну машину
+    w.police._make_unit(v)
+    v.link, v.s, v.next_link = lanes[0], 1.7, None
+    v.direct = False
+    v.route_t = 1e9                                 # маршрут не пересчитываем: важно только, выберется ли она
+    far = 0.0
+    for _ in range(60 * 14):
+        game.step(DT)
+        w.police.spawn_t = 1e9
+        far = max(far, math.hypot(v.x + 206.7, v.y + 115.8))
+        if far > 9.0:
+            break
+    pl.invincible = False
+    w.police.clear()
+    w.remove_vehicle(v)
+    assert far > 9.0, 'машина погони так и осталась у дерева: (%.1f, %.1f)' % (v.x, v.y)

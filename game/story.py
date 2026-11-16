@@ -88,6 +88,7 @@ class Buddy(object):
         self.p = ped
         self.active = True
         self.lost_t = 0.0
+        self.hint_t = 0.0
         self.trail = []
         ped.set_state('stand')
         m.ticks.append(self.tick)
@@ -147,7 +148,13 @@ class Buddy(object):
         board = False
         if v is not None:
             if v.spec.seats < 2:
-                return                              # второго места нет: ждёт, где стоял
+                # второго места нет: ждёт, где стоял, а игроку объясняем, почему он не садится
+                self.hint_t -= dt
+                if self.hint_t <= 0.0 and (p.x - px) ** 2 + (p.y - py) ** 2 < 40.0 * 40.0:
+                    self.hint_t = 12.0
+                    w.hud.help('На «%s» вдвоём не уехать: нужна машина или мотоцикл с местом для пассажира.'
+                               % v.spec.title, 6.0)
+                return
             gx, gy = v.door_pos(1)
             if w.static.overlap_circle(gx, gy, p.radius, F_PED):
                 gx, gy = v.door_pos(-1)            # правая дверь у стены — садится с другой стороны

@@ -253,7 +253,8 @@ class Police(object):
             return 'fbi' if r < 0.65 else 'enforcer'
         if lv == 4:
             return 'enforcer' if r < 0.5 else 'police'
-        return 'police'
+        # на первых звёздах в погоню выезжают и мотоциклисты
+        return 'copbike' if r < 0.22 else 'police'
 
     def _make_unit(self, v):
         w = self.w
@@ -279,6 +280,9 @@ class Police(object):
         v.dismount_t = 0.0
         v.recover_t = 0.0
         v.panic_t = 0.0
+        v.ref_x, v.ref_y, v.ref_t = v.x, v.y, 0.0
+        v.esc_t = 0.0
+        v.esc_side = 0.0
         if w.sky is not None and w.sky.lights_on:
             v.set_lights(True)
         self.units.append(v)
@@ -315,6 +319,8 @@ class Police(object):
             return None
         lane, s, x, y, yaw = best
         v = w.spawn_vehicle(self._unit_kind(), x, y, yaw)
+        if v.spec.bike:
+            v.add_rider(cop_look())                 # мотоциклиста видно в седле
         v.link, v.s = lane, s
         v.vx, v.vy = math.cos(yaw) * 10.0, math.sin(yaw) * 10.0
         v.speed = 10.0
@@ -545,14 +551,19 @@ class ChaseDriver(object):
         want = math.atan2(gy - v.y, gx - v.x)
         err = angle_diff(want, v.yaw)
         # --- задний ход, если застряли
+        if v.esc_t > 0.0:
+            v.esc_t -= dt
         if v.reverse_t > 0.0:
             v.reverse_t -= dt
             v.in_throttle = -1.0
             v.in_brake = 0.0
-            v.in_steer = clamp(-err * 2.0, -1.0, 1.0)
+            # зажатая машина, сдавая назад, отворачивает нос в свободную сторону
+            v.in_steer = -v.esc_side if v.esc_t > 0.0 else clamp(-err * 2.0, -1.0, 1.0)
             v.in_handbrake = False
             return
         steer = clamp(err * 2.6, -1.0, 1.0)
+        if v.esc_t > 0.0:
+            steer = clamp(steer * 0.3 + v.esc_side * 0.9, -1.0, 1.0)      # и объезжает то, во что упиралась
         fc, fl, fr = v.f_c, v.f_l, v.f_r
         target_block = d < fc + 2.5
         if not target_block:
@@ -597,12 +608,23 @@ class ChaseDriver(object):
             v.in_throttle = 1.0
             v.in_brake = 0.0
         v.in_handbrake = abs(err) > 1.2 and sp > 10.0
+        # Застряли?  Смотрим не только на скорость, но и на то, сдвинулась ли машина на самом деле:
+        # зажатая между стеной и деревом, она «едет» на месте — мотор толкает, препятствие возвращает.
+        wedged = False
+        v.ref_t += dt
+        if v.ref_t >= 1.5:
+            wedged = tgt > 2.0 and (v.x - v.ref_x) ** 2 + (v.y - v.ref_y) ** 2 < 1.0
+            v.ref_x, v.ref_y, v.ref_t = v.x, v.y, 0.0
         if sp < 0.7 and tgt > 2.0:
             v.stuck_t += dt
-            if v.stuck_t > 1.2:
-                v.stuck_t = 0.0
-                v.reverse_t = 1.2 + random.random() * 0.6
-                v.link = None                   # после манёвра выбираем полосу заново
-                v.route_t = 0.0
         else:
             v.stuck_t = max(0.0, v.stuck_t - dt * 0.5)
+        if v.stuck_t > 1.2 or wedged:
+            v.stuck_t = 0.0
+            v.reverse_t = 1.2 + random.random() * 0.6
+            v.link = None                       # после манёвра выбираем полосу заново
+            v.route_t = 0.0
+            v.ref_t = -v.reverse_t              # пока сдаём назад, отсчёт не идёт
+            if wedged:
+                v.esc_side = 1.0 if v.f_l > v.f_r else -1.0
+                v.esc_t = v.reverse_t + 1.3
