@@ -443,6 +443,11 @@ class Models(object):
         it = self._furn_meta()['items'].get(name)
         return (it['w'], it['d'], it['h']) if it else None
 
+    def furn_seat(self, name):
+        """Сиденье предмета мебели (см. tools/furn_seats.py) или None, если на нём не сидят."""
+        it = self._furn_meta()['items'].get(name)
+        return it.get('seat') if it else None
+
     def furn(self, name):
         """Образец предмета мебели: стоит на полу серединой в начале координат, лицом в -Y.  Копировать copyTo."""
         meta = self._furn_meta()

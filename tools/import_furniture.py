@@ -31,6 +31,9 @@ M3 = os.path.join(SRC, 'm3')
 PACKS = ('armchair', 'chairs', 'deds_others', 'electronics_kitchen', 'bath_hygiene')
 SKIP_MATS = ('Trans', 'Glass', 'Vidrio')            # прозрачные вставки: без них предметы выглядят так же
 TEX_MAX = 128                                       # сторона текстуры материала, пикселей
+# Самостоятельные вещи, которые в наборе стоят вплотную к другим: к соседям их не приклеивать.
+# (Stove_06 — переносная плитка рядом с плитой Stove_05: без этого она висела в воздухе сбоку от плиты.)
+LOOSE = ('Stove_06',)
 
 # Предметы, которые нужны игре: имя в игре -> (набор, имя в наборе, поворот на 90° x N, чтобы лицо смотрело в -Y)
 PICK = {
@@ -85,8 +88,10 @@ ALPHA_MATS = ('Plants',)        # листья: текстура с прозра
 
 def fetch():
     if not os.path.isdir(M3):
-        raise SystemExit('сначала: python tools/gen_city.py fetch')
-    subprocess.check_call(['git', 'sparse-checkout', 'add', '/Furniture/*.glb'], cwd=M3)
+        raise SystemExit('сначала: python tools/import_weapons.py fetch')
+    have = subprocess.check_output(['git', 'sparse-checkout', 'list'], cwd=M3).decode().split()
+    if '/Furniture/*.glb' not in have:
+        subprocess.check_call(['git', 'sparse-checkout', 'set', '--no-cone'] + have + ['/Furniture/*.glb'], cwd=M3)
 
 
 class Part(object):
@@ -170,6 +175,8 @@ def group(objs, margin=0.02):
         return a
     for i in range(len(names)):
         for j in range(i + 1, len(names)):
+            if names[i] in LOOSE or names[j] in LOOSE:
+                continue
             a, b = boxes[i], boxes[j]
             if np.all(a[0] - margin <= b[1]) and np.all(b[0] - margin <= a[1]):
                 par[find(i)] = find(j)
@@ -326,6 +333,9 @@ def build():
         json.dump(dict(items=meta, alpha=alpha), f, ensure_ascii=False, indent=0, sort_keys=True)
     print('мебель: %d предметов, %d треугольников, %d текстур (%d КБ), furn.bam %d КБ' % (
         len(meta), total, len(used), size // 1024, os.path.getsize(os.path.join(OUT, 'furn.bam')) // 1024))
+    # где у стульев и диванов сиденья: по ним в комнатах рассаживают людей
+    import furn_seats
+    furn_seats.measure(root, os.path.join(OUT, 'furn.json'))
 
 
 if __name__ == '__main__':

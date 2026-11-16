@@ -24,6 +24,14 @@ ST_W = 12.0            # улица: 2 полосы + 2 парковочных �
 PARK_STRIP = 2.5       # ширина парковочного кармана
 CAP_LEN = 6.0          # участок с «зеброй» перед перекрёстком
 BAY_W = 3.5            # ширина секции фасада (одна текстура)
+# Где на плитке первого этажа проём для двери: вид входа, середина проёма, его полуширина (в долях секции)
+# и высота (в долях высоты первого этажа).  Снято с самих текстур.
+ENTRY_TILES = {
+    'gf_shop_a': ('shop', 0.826, 0.135, 0.742), 'gf_shop_b': ('shop', 0.826, 0.135, 0.742),
+    'gf_shop_c': ('shop', 0.826, 0.135, 0.742), 'gf_shop_d': ('shop', 0.826, 0.135, 0.742),
+    'gf_office': ('office', 0.502, 0.158, 0.549),
+    'gf_garage': ('garage', 0.496, 0.402, 0.777),
+}
 FLOOR_H = 3.2          # высота этажа
 GF_H = 4.0             # высота первого этажа
 WATER_Z = -0.7
@@ -314,8 +322,53 @@ class City(object):
         self._gen_coast()
         self._gen_country()
         self._gen_extras()
+        self._align_doors()
         self._clear_driveways()
         self.n_chunks = self._outer_chunk_base + len(self._chunk_ids)
+
+    def landmark_building(self, name):
+        """Здание особого места (по его прямоугольнику) или None."""
+        lm = self.landmarks.get(name)
+        if lm is None:
+            return None
+        x0, y0, x1, y1 = lm['rect']
+        for b in self.buildings:
+            if abs(b.x0 - x0) < 0.01 and abs(b.y0 - y0) < 0.01 and abs(b.x1 - x1) < 0.01 and abs(b.y1 - y1) < 0.01:
+                return b
+        return None
+
+    def entry_bay(self, name):
+        """Секция первого этажа, в которой стоит дверь особого места: (x0 секции, ширина секции, вид входа).
+
+        Дверь ставится не посреди здания, а туда, где на плитке первого этажа нарисован проём: в дверь витрины,
+        в среднее стекло офисной стены, на место ворот гаража.  None — у здания такой плитки нет."""
+        lm = self.landmarks.get(name)
+        b = self.landmark_building(name)
+        if lm is None or b is None or lm.get('facing') != 's' or b.gf_h <= 0.01 or 's' not in b.sides_gf:
+            return None
+        ent = ENTRY_TILES.get(b.gf_tex)
+        if ent is None:
+            return None
+        L = b.x1 - b.x0
+        n = max(1, int(round(L / b.gf_bay)))
+        bw = L / n
+        k = min(n - 1, max(0, int(((b.x0 + b.x1) * 0.5 - b.x0) / bw)))
+        return b.x0 + k * bw, bw, ent
+
+    def _align_doors(self):
+        """Двери особых мест — в проёмы, нарисованные на фасаде; перед дверью на тротуаре ничего не стоит."""
+        for name, lm in self.landmarks.items():
+            if lm.get('facing') != 's':
+                continue
+            bay = self.entry_bay(name)
+            if bay is not None:
+                x = bay[0] + bay[2][1] * bay[1]
+                lm['door'] = (x, lm['door'][1])
+                lm['road'] = (x, lm['road'][1])
+            dx, wy = lm['door'][0], lm['rect'][1]
+            self.props = [p for p in self.props
+                          if not (abs(p["x"] - dx) < (2.6 if p["kind"] == "tree" else 1.5) and
+                                  wy - SIDEWALK - 0.3 < p["y"] < wy + 0.2)]
 
     def _clear_driveways(self):
         """Перед воротами гаража на тротуаре ничего не стоит: ни дерева, ни урны, ни фонаря."""

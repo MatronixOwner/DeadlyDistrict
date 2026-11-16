@@ -300,6 +300,7 @@ class Ped(object):
         self.act = None             # клип, заданный сценой: [имя, по кругу, темп, начать заново]
         self.room = None            # имя комнаты, если персонаж живёт в интерьере
         self.fixed = False          # не сдвигается, когда его толкают (сидит за столом, стоит за стойкой)
+        self.seat_dz = 0.0          # насколько его сиденье выше обычного стула: подъём фигуры в сидячей позе
         self.walk_clip = None       # особая походка: 'texting'
         self.vis = None             # модель со скелетной анимацией (pedvisual.PedVisual)
         if kind == 'civ':
@@ -940,6 +941,8 @@ class Ped(object):
                 self._was_lying = True
                 self.lie = 1.0
                 vis.play(vis.death, False, 1.5, 0.1)
+                if self.seat_dz:
+                    vis.root.setZ(0.0)
             if not vis.done or vis.fade > 0.0:
                 vis.update(dt)
             return
@@ -1009,4 +1012,6 @@ class Ped(object):
             vis.play(self.idle_clip or 'idle', True, 1.0)
         self._punch_prev = self.punch_t
         self._shot_prev = self.shot_t
+        if self.seat_dz:
+            vis.root.setZ(self.seat_dz if vis.cur in ('sit', 'sit_talk', 'write') else 0.0)
         vis.update(dt)

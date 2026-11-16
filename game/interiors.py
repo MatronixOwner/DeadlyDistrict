@@ -32,6 +32,16 @@ INT_Y0 = 0.0
 SLOT = 90.0
 PAD = 14.0                  # ровная площадка шире комнаты: камера свободно выходит за стены
 TALL = 1.32                 # предмет выше — может заслонить героя, прячем по необходимости
+# Сидячая поза (клипы sit, sit_talk, write), снято с моделей: фигура стоит своей опорной точкой под коленями.
+SIT_H = 0.46                # низ бёдер над полом: на такой высоте должна быть подушка
+SIT_BACK = 0.44             # от опорной точки назад до спины
+SIT_PELVIS = 0.34           # от опорной точки назад до таза
+SIT_SHIN = 0.02             # от опорной точки вперёд до задней стороны голеней
+SIT_CLIPS = ('sit', 'sit_talk', 'write')
+
+
+def clamp(v, lo, hi):
+    return lo if v < lo else (hi if v > hi else v)
 WALL_FLAGS = F_PED | F_BULLET | F_SIGHT
 YELLOW = (1.0, 0.86, 0.2, 1.0)
 WHITE = (1.0, 1.0, 1.0, 1.0)
@@ -96,6 +106,8 @@ class Builder(object):
         self.pieces = []            # [(MeshBuilder, x, y, r)]
         self._piece = None
         self.items = []             # (имя, x, y, z, поворот, масштаб)
+        self.seats = []             # на чём можно сидеть: (x, y, поворот, масштаб, сиденье)
+        self.sitters = []           # (описание жильца, x, y, курс): рассаживаются в finish()
         self.solids = []            # (x0, y0, x1, y1, z1)
         self.rounds = []            # (x, y, r, z1)
         self.holes = {'s': [], 'n': [], 'w': [], 'e': []}
@@ -249,6 +261,9 @@ class Builder(object):
         if size is None:
             return
         self.items.append((name, x, y, z, yaw, scale))
+        seat = self.world.models.furn_seat(name)
+        if seat is not None and z < 0.05:
+            self.seats.append((x, y, yaw, scale, seat))
         if solid and z < 0.3:
             x0, y0, x1, y1 = self._turned(x, y, yaw, size[0] * scale, size[1] * scale)
             self.solid(x0 + 0.04, y0 + 0.04, x1 - 0.04, y1 - 0.04, size[2] * scale)
@@ -347,13 +362,19 @@ class Builder(object):
         mb.clear_xform()
         x0, y0, x1, y1 = self._turned(x, y, yaw, w, 0.44)
         self.solid(x0, y0, x1, y1, 0.9)
+        self.seats.append((x, y, yaw, 1.0, dict(h=0.46, yf=-0.2, yb=0.17, u0=-(w * 0.5 - 0.3), u1=w * 0.5 - 0.3)))
 
-    def stool(self, x, y, color=(0.5, 0.1, 0.12, 1.0)):
+    def stool(self, x, y, color=(0.5, 0.1, 0.12, 1.0), h=0.78):
+        """Барный табурет на ножке.  Круглый: сидящий на нём смотрит туда, куда ему велено."""
         mb = self.mb
         mb.cylinder(None, x, y, 0.0, 0.04, 0.2, 8, STEEL)
-        mb.cylinder(None, x, y, 0.04, 0.70, 0.035, 6, STEEL, cap_top=False)
-        mb.cylinder('int_leather', x, y, 0.70, 0.78, 0.19, 10, color)
-        self.rounds.append((x, y, 0.2, 0.78))
+        mb.cylinder(None, x, y, 0.04, h - 0.08, 0.035, 6, STEEL, cap_top=False)
+        mb.cylinder('int_leather', x, y, h - 0.08, h, 0.19, 10, color)
+        # подножка-кольцо: на высоком табурете ноги не висят в воздухе
+        if h > 0.6:
+            mb.cylinder(None, x, y, h - 0.50, h - 0.47, 0.17, 10, STEEL)
+        self.rounds.append((x, y, 0.2, h))
+        self.seats.append((x, y, None, 1.0, dict(h=h, yf=-0.19, ye=0.19, u0=0.0, u1=0.0)))
 
     def barrel(self, x, y, color=(0.3, 0.42, 0.6, 1.0), h=0.9, r=0.29):
         self.mb.cylinder('metal_paint', x, y, 0.0, h, r, 10, color, uv_wrap=2.0)
@@ -431,8 +452,41 @@ class Builder(object):
         меняет время от времени; lines — что говорит, когда герой подходит."""
         r = self.room
         wx, wy = r.pos(x, y)
-        r.people.append(dict(key=key, look=look, x=wx, y=wy, yaw=math.radians(yaw), clips=tuple(clips), name=name,
-                             lines=lines, sit=sit))
+        if sit:
+            # сидящий остаётся сидеть: стоячие позы (например «пьёт») подняли бы его прямо сквозь стул
+            clips = [c if c in SIT_CLIPS else 'sit_talk' for c in clips]
+        info = dict(key=key, look=look, x=wx, y=wy, yaw=math.radians(yaw), clips=tuple(clips), name=name,
+                    lines=lines, sit=sit, dz=0.0)
+        r.people.append(info)
+        if sit:
+            self.sitters.append((info, x, y, yaw))
+
+    def seat_pose(self, x, y, yaw):
+        """Куда посадить человека, которого хотят видеть сидящим около (x, y): (x, y, курс в градусах, подъём).
+
+        Берётся ближайшее сиденье комнаты.  Человек встаёт так, чтобы спина пришлась к спинке, бёдра легли на
+        подушку, а голени оказались перед её краем; смотрит он туда же, куда стул.  None — сесть не на что."""
+        best = None
+        for seat in self.seats:
+            d = math.hypot(seat[0] - x, seat[1] - y)
+            if d < 1.3 and (best is None or d < best[0]):
+                best = (d, seat)
+        if best is None:
+            return None
+        sx, sy, syaw, sc, m = best[1]
+        if syaw is None:
+            # круглый табурет: таз над серединой
+            a = math.radians(yaw)
+            return (sx + math.cos(a) * SIT_PELVIS, sy + math.sin(a) * SIT_PELVIS, yaw, max(-0.02, m['h'] * sc - SIT_H))
+        a = math.radians(syaw)
+        c, sn = math.cos(a), math.sin(a)
+        # поперёк предмета — как можно ближе к запрошенному месту
+        u = clamp(((x - sx) * c + (y - sy) * sn) / sc, m['u0'], m['u1']) * sc
+        if 'yb' in m:
+            v = min(m['yb'] * sc - SIT_BACK, m['yf'] * sc + SIT_SHIN)
+        else:
+            v = (m['yf'] + m['ye']) * 0.5 * sc - SIT_PELVIS
+        return (sx + u * c - v * sn, sy + u * sn + v * c, syaw - 90.0, max(-0.02, m['h'] * sc - SIT_H))
 
     def spot(self, name, x, y, yaw=90.0):
         r = self.room
@@ -446,6 +500,14 @@ class Builder(object):
     def finish(self, assets, static, parent):
         r = self.room
         models = self.world.models
+        for (info, x, y, yaw) in self.sitters:
+            pose = self.seat_pose(x, y, yaw)
+            if pose is None:
+                info['sit'] = False
+                continue
+            info['x'], info['y'] = r.pos(pose[0], pose[1])
+            info['yaw'] = math.radians(pose[2])
+            info['dz'] = pose[3]
         mb = self.mb
         tex, tile, col = self.floor
         mb.flat(tex, 0.0, 0.0, r.w, r.d, 0.0, tile=(tile, tile), color=col)
@@ -515,8 +577,8 @@ def room_safehouse(b):
     b.cabinet(6.72, 1.9, 270, 1.3, 0.5, 0.62, 'int_panel', DARKWOOD, (0, 0, 2, 0.6))
     b.tv(6.6, 1.9, 270, 0.64, 0.9, 0.56)
     # кухонный угол вдоль южной стены
-    b.put('fridge', 2.5, 0.45, 180)
-    b.put('stove_old', 3.4, 0.42, 180)
+    b.put('fridge', 2.96, 0.45, 180)
+    b.put('stove_old', 3.67, 0.4, 180)
     b.counter(3.95, 0.0, 5.5, 0.6, 0.9, 'int_panel')
     b.put('microwave', 4.4, 0.3, 180, 0.9, solid=False)
     b.put('pot', 5.1, 0.3, 0, 0.9, solid=False)
@@ -667,18 +729,21 @@ def room_boss(b):
     b.door('s', 6.5, 'int_door_shop', main=True)
     # игорные столы: зелёное сукно
     for (x, y) in ((2.6, 3.2), (2.6, 6.2)):
-        b.box(x - 1.15, y - 0.75, x + 1.15, y + 0.75, 0.0, 0.8, 'int_wooddark', WHITE, 1.0, top_key='int_carpet',
-              top_color=(0.14, 0.46, 0.24, 1.0))
-        b.stool(x - 0.6, y - 1.15)
-        b.stool(x + 0.6, y - 1.15)
-        b.stool(x - 0.6, y + 1.15)
+        # тумба уже столешницы: под свесом помещаются колени игроков
+        b.box(x - 0.8, y - 0.4, x + 0.8, y + 0.4, 0.0, 0.7, 'int_wooddark', WHITE, 1.0, solid=False)
+        b.box(x - 1.15, y - 0.75, x + 1.15, y + 0.75, 0.7, 0.8, 'int_wooddark', WHITE, 1.0, top_key='int_carpet',
+              top_color=(0.14, 0.46, 0.24, 1.0), solid=False, faces='xXyYZz')
+        b.solid(x - 1.15, y - 0.75, x + 1.15, y + 0.75, 0.8)
+        b.stool(x - 0.6, y - 1.15, h=0.5)
+        b.stool(x + 0.6, y - 1.15, h=0.5)
+        b.stool(x - 0.6, y + 1.15, h=0.5)
         b.put('cup', x + 0.4, y + 0.1, 0, 0.8, solid=False)
     # стойка с бутылками у восточной стены
     b.counter(10.3, 1.4, 10.9, 5.2, 1.1)
     b.shelf('e', 1.4, 5.2, 0.0, 0.95, 'int_wooddark', (1.2, 1.2), 0.45)
     b.shelf('e', 1.4, 5.2, 1.15, 2.55, 'int_bottles', (1.6, 0.7), 0.3)
     for y in (2.0, 3.3, 4.6):
-        b.stool(9.85, y)
+        b.stool(9.68, y)
     # угол босса: диван, столик, кресла напротив
     b.rug(6.5, 7.3, 3.2, 4.6, 'int_rug', (1.0, 0.82, 0.7, 1.0))
     b.put('sofa_black', 6.5, 8.9, 0)
@@ -704,7 +769,7 @@ def room_boss(b):
     b.person('dealer', make_look(model='m_shirt_c'), 2.6, 4.25, -90.0, ('idle', 'arms', 'listen'), 'Крупье',
              ['Крупье: Ставки сделаны.', 'Крупье: Заведение всегда в плюсе.'])
     b.person('player1', make_look(model='m_old_h3'), 2.0, 2.05, 90.0, ('sit', 'sit_talk'), sit=True)
-    b.person('player2', make_look(model='f_goth', female=True), 9.85, 3.3, 0.0, ('sit', 'sit'), sit=True)
+    b.person('player2', make_look(model='f_goth', female=True), 9.68, 3.3, 0.0, ('sit', 'sit'), sit=True)
     b.spot('talk', 6.5, 5.9, 90.0)
     b.spot('side', 5.5, 6.1, 80.0)
 
@@ -1009,14 +1074,70 @@ class Interiors(object):
             room.out_pos = (ex, y0 - 1.5, -math.pi / 2)
             gz = c.ground_z(ex, y0 - 0.6)
             tex = DOOR_TEX.get(name, 'int_door')
-            dmb.box(None, ex - 0.72, y0 - 0.10, gz, ex + 0.72, y0 + 0.02, gz + 2.32, (0.16, 0.14, 0.13, 1.0), 'xXyZ')
-            dmb.quad(tex, (ex - 0.6, y0 - 0.11, gz), (ex + 0.6, y0 - 0.11, gz), (ex + 0.6, y0 - 0.11, gz + 2.2),
-                     (ex - 0.6, y0 - 0.11, gz + 2.2))
+            bay = c.entry_bay(lmk) if lm.get('yard') is None else None
+            bld = c.landmark_building(lmk)
+            if bay is not None:
+                self._entrance(dmb, bay[2], bay[1], bld, ex, y0, gz, tex)
+            else:
+                self._door(dmb, tex, ex, y0, gz, 0.6, 2.2)
+                if bld is not None and bld.gf_h > 0.01:
+                    # дверь в глухой стене склада: навес над ней
+                    dmb.box(None, ex - 1.0, y0 - 0.8, gz + 2.42, ex + 1.0, y0, gz + 2.5, (0.2, 0.22, 0.26, 1.0), 'xXyZz')
             dmb.box('concrete', ex - 0.9, y0 - 0.5, gz - 0.1, ex + 0.9, y0, gz + 0.04, (0.7, 0.7, 0.7, 1.0), 'xXyZ', 1.0)
             self.rooms[name] = room
             self.order.append(room)
         self.doors_np = dmb.build('doors', w.assets.apply_state)
         self.doors_np.reparentTo(w.citymesh.root)
+
+    @staticmethod
+    def _door(dmb, tex, ex, y0, gz, hw, h, frame=(0.16, 0.14, 0.13, 1.0), t=0.12):
+        """Дверь в раме на южной стене: полотно шириной 2*hw и высотой h."""
+        dmb.box(None, ex - hw - t, y0 - 0.10, gz, ex + hw + t, y0 + 0.02, gz + h + t, frame, 'xXyZ')
+        dmb.quad(tex, (ex - hw, y0 - 0.11, gz), (ex + hw, y0 - 0.11, gz), (ex + hw, y0 - 0.11, gz + h),
+                 (ex - hw, y0 - 0.11, gz + h))
+
+    def _entrance(self, dmb, ent, bw, bld, ex, y0, gz, tex):
+        """Вход в проёме, нарисованном на плитке первого этажа (см. city.ENTRY_TILES)."""
+        kind, _u, hwf, hf = ent
+        hw = hwf * bw                               # полуширина проёма
+        top = gz + hf * bld.gf_h                    # верх проёма
+        dark = (0.15, 0.15, 0.17, 1.0)
+        glass = (0.19, 0.25, 0.31, 1.0)
+        if kind == 'shop':
+            # стеклянная дверь витрины: рама во весь нарисованный проём, полотно и фрамуга над ним
+            dmb.box(None, ex - hw, y0 - 0.10, gz, ex + hw, y0 + 0.02, top, dark, 'xXyZ')
+            lw = hw - 0.07
+            dmb.quad(tex, (ex - lw, y0 - 0.11, gz), (ex + lw, y0 - 0.11, gz), (ex + lw, y0 - 0.11, gz + 2.2),
+                     (ex - lw, y0 - 0.11, gz + 2.2))
+            dmb.quad(None, (ex - lw, y0 - 0.11, gz + 2.27), (ex + lw, y0 - 0.11, gz + 2.27),
+                     (ex + lw, y0 - 0.11, top - 0.07), (ex - lw, y0 - 0.11, top - 0.07), color=glass)
+        elif kind == 'office':
+            # дверь на месте нижнего среднего стекла: рама в цвет переплётов и навес над входом
+            metal = (0.62, 0.66, 0.72, 1.0)
+            dmb.box(None, ex - hw, y0 - 0.10, gz, ex + hw, y0 + 0.02, top + 0.03, metal, 'xXyZ')
+            lw = hw - 0.07
+            dmb.quad(tex, (ex - lw, y0 - 0.11, gz), (ex + lw, y0 - 0.11, gz), (ex + lw, y0 - 0.11, top - 0.05),
+                     (ex - lw, y0 - 0.11, top - 0.05))
+            dmb.box(None, ex - hw - 0.5, y0 - 1.1, top + 0.2, ex + hw + 0.5, y0, top + 0.3, (0.24, 0.26, 0.3, 1.0),
+                    'xXyZz')
+            for sx in (-1, 1):                      # тяги навеса
+                xa = ex + sx * (hw + 0.42)
+                dmb.quad2(None, (xa, y0 - 1.05, top + 0.3), (xa, y0 - 0.02, top + 0.95), (xa + 0.03, y0 - 0.02, top + 0.95),
+                          (xa + 0.03, y0 - 1.05, top + 0.3), color=dark)
+        else:
+            # гараж: ворота этой секции заложены кирпичом, в кладке — железная дверь, над ней фонарь
+            w2 = hw * 2.0
+            hgt = top - gz
+            dmb.quad(bld.blank_tex, (ex - hw, y0 - 0.05, gz), (ex + hw, y0 - 0.05, gz), (ex + hw, y0 - 0.05, top),
+                     (ex - hw, y0 - 0.05, top), (0, 0, w2 / 4.0, hgt / 4.0),
+                     tuple(bld.blank_tint) + (1.0,) if len(bld.blank_tint) == 3 else bld.blank_tint)
+            for (xa, xb) in ((ex - hw, ex - hw + 0.02), (ex + hw - 0.02, ex + hw)):
+                dmb.box(None, xa, y0 - 0.05, gz, xb, y0, top, dark, 'xXy')
+            dmb.box('concrete', ex - hw, y0 - 0.09, top - 0.22, ex + hw, y0, top, (0.62, 0.62, 0.6, 1.0), 'xXyZz', 2.0)
+            self._door(dmb, tex, ex, y0, gz, 0.6, 2.2)
+            dmb.box(None, ex - 0.13, y0 - 0.26, gz + 2.5, ex + 0.13, y0 - 0.05, gz + 2.62, dark, 'xXyZz')
+            dmb.box((None, 'unlit'), ex - 0.1, y0 - 0.24, gz + 2.44, ex + 0.1, y0 - 0.07, gz + 2.5,
+                    (1.0, 0.9, 0.62, 1.0), 'xXyz')
 
     def reset(self):
         """Новая игра: расставить жильцов, машины-декорации и стрелки у дверей."""
@@ -1047,6 +1168,7 @@ class Interiors(object):
                 p.resident = info
                 p.money = 0
                 p.set_state('stand')
+                p.seat_dz = info.get('dz', 0.0)
                 p.idle_clip = info['clips'][0]
                 p.home = (info['x'], info['y'], info['yaw'])
                 p._act_t = random.uniform(3.0, 9.0)
