@@ -84,6 +84,8 @@ python setup.py build_apps
 Та же игра с меню тестера на клавише `F9`. Это рабочая сборка для проверки, а не выпуск: в обычную сборку
 меню не входит.
 
+![Меню тестера: F9](docs/tester.jpg)
+
 - Готовый архив: [`tester-build/DeadlyDistrict-tester-win64.zip`](tester-build/DeadlyDistrict-tester-win64.zip),
   внутри `DeadlyDistrict-tester.exe` и `README.txt` с описанием меню. В папку `release/` он не входит.
 - Из исходников: `python main.py --tester`.

@@ -212,7 +212,7 @@ def test_every_menu_row_works(tg):
         else:
             harness.press(tg, 'enter')
         assert t.note and t.note != before, title
-        assert t.note in main.subtitle                  # что сделано, написано внизу меню
+        assert t.note and t.note.lower() in main.subtitle.lower()       # что сделано, написано внизу меню
         assert t.opened, title
     harness.press(tg, 'f9')
     harness.run(tg, 0.5)
@@ -241,7 +241,7 @@ def test_failed_action_does_not_close_the_game(game, monkeypatch):
         main.sel = [it.label for it in main.items].index('Здоровье и броня')
         harness.press(game, 'enter')
         assert game._errors_total == errors + 1
-        assert t.opened and 'ошибка: сломалось' in main.subtitle
+        assert t.opened and 'Ошибка: сломалось' in main.subtitle
         # то же, если действие успело закрыть меню
         main.sel = [it.label for it in main.items].index('Всё оружие и патроны')
         harness.press(game, 'enter')

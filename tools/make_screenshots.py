@@ -2,6 +2,7 @@
 """Снимки для README (папка docs/).  Игра запускается без окна, на программном рендере.
 
     python tools/make_screenshots.py
+    python tools/make_screenshots.py --tester     только снимок меню тестера (docs/tester.jpg)
 
 Нужен pillow.  Настоящая видеокарта рисует чётче: здесь нет сглаживания краёв и анизотропной фильтрации.
 """
@@ -519,5 +520,51 @@ def main():
     print('общий лист:', os.path.join(TMP, 'sheet.png'))
 
 
+def tester_shot():
+    """Меню тестера (F9) для README: docs/tester.jpg."""
+    import game
+    from panda3d.core import ClockObject
+    game.TESTER = True                              # как в сборке для тестера: игра создаётся уже с меню
+    random.seed(int(os.environ.get('DD_SHOT_SEED', '1')))
+    g = harness.make_game(1280, 720)
+    clock = ClockObject.getGlobalClock()            # игра шагает вручную: счётчик кадров показал бы скорость
+    clock.setMode(ClockObject.MNonRealTime)         # программного рендера, а не игры
+    clock.setDt(1.0 / 60.0)
+    w = harness.start_game(g, story=True)
+    t = g.tester
+    by = dict((m['id'], m) for m in M.MISSIONS)
+    harness.run(g, 0.5)
+    t.open()
+    t.spawn('sports')
+    harness.run(g, 0.5)
+    t.open()
+    t.set_god(True)
+    t.start_mission(by['s2'])
+    for i in range(900):                            # звонок брата: реплики листает пробел
+        g.inp._dn('space') if i % 6 == 0 else g.inp._up('space')
+        g.step(1.0 / 30.0)
+        if i > 30 and not w.player.freeze and w.cam.override is None and not w.hud.phone_on:
+            break
+    g.inp._up('space')
+    harness.run(g, 1.0)
+    t.open()
+    t.set_wanted(2)
+    t.set_hold(True)
+    t.heal()
+    main_menu = g.ui.current()
+    main_menu.sel = [it.label for it in main_menu.items].index('Бессмертие')
+    g.ui.refresh()
+    for _ in range(40):                             # строка сведений обновляется пять раз в секунду
+        clock.tick()
+        g.step(1.0 / 30.0)
+    png = os.path.join(TMP, 'tester.png')
+    harness.shot(g, png)
+    Image.open(png).convert('RGB').save(os.path.join(DOCS, 'tester.jpg'), quality=88)
+    print('снимок: tester ->', DOCS, '|', t.line.getText())
+
+
 if __name__ == '__main__':
-    main()
+    if '--tester' in sys.argv:
+        tester_shot()
+    else:
+        main()

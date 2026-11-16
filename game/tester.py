@@ -255,8 +255,9 @@ class Tester(object):
             self.close()
             self.game.world.hud.help(u'Тестер: ' + text, 4.5)
         else:
+            line = text[:1].upper() + text[1:] + u'.      Esc  назад      F9  закрыть'
             for m in self.menus:
-                m.subtitle = text + u'.      Esc  назад      F9  закрыть'
+                m.subtitle = line
             if self.opened:
                 self.game.ui.refresh()
         return True
