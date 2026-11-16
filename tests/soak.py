@@ -2,6 +2,8 @@
 """Стресс-тест: бот хаотично жмёт кнопки, игра не должна падать.
 
     python tests/soak.py [секунд игрового времени] [seed]
+    python tests/soak.py [секунд] [seed] --tester     то же в сборке для тестера: бот ещё и открывает меню
+                                                      на F9 и жмёт в нём случайные клавиши
 """
 import math
 import random
@@ -13,12 +15,48 @@ import harness
 from game.defs import *            # noqa: F401,F403
 
 
+MENU_KEYS = ['arrow_down'] * 7 + ['arrow_up'] * 2 + ['enter'] * 4 + ['arrow_left', 'arrow_right', 'arrow_right', 'escape']
+
+
+def tester_keys(g, rnd, dt, used):
+    """Меню тестера: F9, несколько случайных клавиш, F9.  Возвращает, сколько прошло игрового времени."""
+    t = g.tester
+    frames = [0]
+
+    def tap(key):
+        g.inp._dn(key)
+        g.step(dt)
+        g.inp._up(key)
+        g.step(dt)
+        frames[0] += 2
+    tap('f9')
+    for _ in range(rnd.randint(1, 16)):
+        if not t.opened:
+            break
+        m = g.ui.current()
+        key = rnd.choice(MENU_KEYS)
+        if key in ('enter', 'arrow_left', 'arrow_right') and m.items:
+            used.add('%s / %s' % (m.title, m.items[m.sel].label if m.title in ('Тестер', 'Комнаты') else '…'))
+        tap(key)
+    if t.opened:
+        tap('f9')
+    if t.opened:
+        raise RuntimeError('меню тестера не закрылось клавишей F9')
+    return frames[0] * dt
+
+
 def main():
-    total = float(sys.argv[1]) if len(sys.argv) > 1 else 300.0
-    seed = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    total = float(args[0]) if len(args) > 0 else 300.0
+    seed = int(args[1]) if len(args) > 1 else 1
     rnd = random.Random(seed)
     random.seed(seed)
     g = harness.make_game()
+    tester = None
+    used = set()
+    if '--tester' in sys.argv:
+        from game.tester import Tester
+        tester = g.tester = Tester(g)
     w = harness.start_game(g)
     pl = w.player
     for wid, am in ((W_BAT, None), (W_PISTOL, 500), (W_UZI, 900), (W_SHOTGUN, 200), (W_AK, 900), (W_ROCKET, 40),
@@ -87,6 +125,11 @@ def main():
                             t += dt
                 elif r < 0.25 and pl.vehicle is not None:
                     pl.vehicle.health = pl.vehicle.max_health
+                elif r < 0.45 and tester is not None and g.state == 'play':
+                    for k in list(held):
+                        g.inp._up(k)
+                    held.clear()
+                    t += tester_keys(g, rnd, dt, used)
             # мышь
             g.inp.mouse_dx = rnd.uniform(-30, 30) if rnd.random() < 0.3 else 0.0
             w.cam.yaw += g.inp.mouse_dx * 0.003
@@ -98,6 +141,8 @@ def main():
             g.step(dt)
             t += dt
             frames += 1
+            if tester is not None and tester.god and (pl.ped.dead or w.respawn_kind is not None):
+                raise RuntimeError('бессмертие включено, а герой погиб или арестован (%s)' % w.respawn_kind)
             if frames % 1800 == 0:
                 print('t=%4.0fs state=%s pl=%s hp=%3.0f wanted=%d veh=%d peds=%d fx=%d mission=%s stats=%s' % (
                     t, g.state, pl.state, pl.ped.health, w.police.level, len(w.vehicles), len(w.peds),
@@ -112,6 +157,8 @@ def main():
         print('FAILED: %d ошибок в сценариях заданий (см. вывод выше)' % g._errors_total)
         return 1
     el = time.time() - t0
+    if tester is not None:
+        print('меню тестера: использовано строк %d — %s' % (len(used), ', '.join(sorted(used))))
     print('SOAK OK: %.0f s game time in %.1f s (%.1fx), %.2f ms/frame' % (t, el, t / el, el / frames * 1000))
     return 0
 

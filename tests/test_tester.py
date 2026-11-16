@@ -219,6 +219,43 @@ def test_every_menu_row_works(tg):
     assert sane(tg)
 
 
+def test_failed_action_does_not_close_the_game(game, monkeypatch):
+    """Сбой в действии меню записывается в журнал и показывается тестеру; игра идёт дальше."""
+    from game.tester import Tester
+    t = Tester(game)
+    game.tester = t
+    try:
+        w = harness.start_game(game)
+        errors = game._errors_total
+
+        def broken():
+            raise RuntimeError('сломалось')
+
+        def broken_after_close():
+            t.close()
+            raise RuntimeError('сломалось позже')
+        monkeypatch.setattr(t, 'heal', broken)
+        monkeypatch.setattr(t, 'arm', broken_after_close)
+        harness.press(game, 'f9')
+        main = game.ui.current()
+        main.sel = [it.label for it in main.items].index('Здоровье и броня')
+        harness.press(game, 'enter')
+        assert game._errors_total == errors + 1
+        assert t.opened and 'ошибка: сломалось' in main.subtitle
+        # то же, если действие успело закрыть меню
+        main.sel = [it.label for it in main.items].index('Всё оружие и патроны')
+        harness.press(game, 'enter')
+        assert game._errors_total == errors + 2
+        assert game.state == 'play' and not t.opened
+        harness.run(game, 0.5)
+        assert sane(game)
+        harness.press(game, 'f9')
+        assert t.opened                                   # меню открывается снова
+        harness.press(game, 'f9')
+    finally:
+        t.destroy()
+
+
 def test_status_line(tg):
     w, t, pl = start(tg)
     harness.run(tg, 0.5)
@@ -340,7 +377,8 @@ def test_god_mode_blocks_damage(tg):
     t.close()
     harness.run(tg, 0.2)
     assert v.immune
-    v.damage(5000.0, None) if hasattr(v, 'damage') else None
+    v.damage(5000.0, True, 'explosion')
+    v.damage(300.0, False, 'hit')
     harness.run(tg, 0.2)
     assert not v.dead and v.health == v.max_health
     pl.leave_vehicle(force=True)
@@ -349,6 +387,15 @@ def test_god_mode_blocks_damage(tg):
     pl.enter_vehicle(v, silent=True)
     harness.run(tg, 0.2)
     assert v.immune
+    # горящая машина под бессмертным гаснет, а не взрывается
+    pl.leave_vehicle(force=True)
+    harness.run(tg, 0.2)
+    v.health = v.max_health * 0.05
+    harness.run(tg, 1.0)
+    assert v.burn_t > 0.5
+    pl.enter_vehicle(v, silent=True)
+    harness.run(tg, 8.0)
+    assert not v.dead and pl.vehicle is v and v.burn_t == 0.0
     # выключили — урон снова проходит
     t.open()
     t.set_god(False)

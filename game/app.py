@@ -380,7 +380,8 @@ class Game(object):
         ]
         sub = 'Версия %s — стрелки или мышь, Enter — выбрать' % __version__
         if self.tester is not None:
-            sub = 'Версия %s, сборка для тестера — в игре F9 открывает меню тестера' % __version__
+            from .tester import LABEL
+            sub = 'Версия %s, сборка для тестера — в игре F9 открывает меню тестера' % LABEL
         m = Menu(self.ui, '', items, x=-0.45, top=0.22, spacing=0.14, scale=0.1, subtitle=sub)
         if has_save:
             m.sel = 1

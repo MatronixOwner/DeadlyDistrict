@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """Сборка игры в готовое приложение.
 
-    python setup.py build_apps      -> build/win_amd64/DeadlyDistrict.exe (+ DLL и assets)
+    python setup.py build_apps               -> build/win_amd64/DeadlyDistrict.exe (+ DLL и assets)
+    DD_TESTER=1 python setup.py build_apps   -> build/win_amd64/DeadlyDistrict-tester.exe: сборка для тестера
 
 Собирать можно на любой ОС: нужные файлы для Windows скачиваются из PyPI.
+
+Сборка для тестера — та же игра с меню тестера на F9 (game/tester.py, точка входа tester_main.py).
+В обычную сборку модуль game.tester не попадает: он исключён явно.
 """
 import os
 
@@ -11,16 +15,20 @@ from setuptools import setup
 
 from game import __version__
 
+TESTER = bool(os.environ.get('DD_TESTER'))
+APP = 'DeadlyDistrict-tester' if TESTER else 'DeadlyDistrict'
+MAIN = 'tester_main.py' if TESTER else 'main.py'
+
 setup(
-    name='DeadlyDistrict',
+    name=APP,
     version=__version__,
     description='Deadly District — криминальный боевик в открытом мире в духе GTA III',
     options={
         'build_apps': {
             'gui_apps': {
-                'DeadlyDistrict': 'main.py',
+                APP: MAIN,
             },
-            'console_apps': ({'DeadlyDistrict-selftest': 'main.py'} if os.environ.get('DD_SELFTEST') else {}),
+            'console_apps': ({APP + '-selftest': MAIN} if os.environ.get('DD_SELFTEST') else {}),
             # DD_PLATFORMS=manylinux2014_x86_64,win_amd64 — собрать под другие платформы
             'platforms': os.environ.get('DD_PLATFORMS', 'win_amd64').split(','),
             'plugins': ['pandagl', 'p3openal_audio', 'p3tinydisplay', 'p3ffmpeg'],
@@ -46,8 +54,10 @@ setup(
                 'assets/terrain/*',                 # рельеф: высоты и готовая геометрия
             ],
             'include_modules': {'*': ['game.*']},
+            # меню тестера — только в сборке для тестера
+            'exclude_modules': {} if TESTER else {'*': ['game.tester']},
             'icons': {
-                'DeadlyDistrict': [
+                APP: [
                     'assets/icon/icon-256.png',
                     'assets/icon/icon-128.png',
                     'assets/icon/icon-64.png',
@@ -56,7 +66,7 @@ setup(
                     'assets/icon/icon-16.png',
                 ],
             },
-            'log_filename': '$USER_APPDATA/DeadlyDistrict/output.log',
+            'log_filename': '$USER_APPDATA/%s/output.log' % APP,
             'log_append': False,
             'requirements_path': 'requirements.txt',
         },

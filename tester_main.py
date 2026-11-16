@@ -7,5 +7,8 @@
 import main
 
 if __name__ == '__main__':
-    main.enable_tester()
+    if not main.enable_tester():
+        # сборка для тестера без меню тестера — ошибка сборки; обычной игрой она не притворяется
+        main._message_box('В этой сборке нет меню тестера (game/tester.py). Сборку нужно пересобрать.')
+        raise SystemExit('tester menu (game/tester.py) is missing from this build')
     main.main()

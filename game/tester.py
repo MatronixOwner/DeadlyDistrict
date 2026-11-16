@@ -43,6 +43,12 @@ PLACES = (
     ('Аэродром: ворота', 'airfield'),
 )
 
+# Номер сборки для тестера: растёт с каждой новой сборкой, виден в строке сведений и в главном меню.
+# По нему тестер и автор понимают, о какой именно сборке речь в отчёте об ошибке.
+BUILD = 1
+LABEL = u'%s-t%d' % (__version__, BUILD)
+
+LINE_SCALE = 0.030            # размер букв строки сведений
 STARS = ('нет', '1 звезда', '2 звезды', '3 звезды', '4 звезды', '5 звёзд', '6 звёзд')
 HINT = u'↑↓  выбор      ←→  изменить      Enter  выполнить      Esc  назад      F9  закрыть'
 
@@ -67,7 +73,7 @@ class Tester(object):
         self._info_t = 0.0
         kit = game.world.hud.kit
         self.root = game.base.aspect2d.attachNewNode(PandaNode('tester'), sort=30)
-        self.line = kit.label(self.root, '', 0.0, 0.950, 0.030, ui.ACCENT, kit.bold, 'c', shadow=False)
+        self.line = kit.label(self.root, '', 0.0, 0.950, LINE_SCALE, ui.ACCENT, kit.bold, 'c', shadow=False)
         tn = self.line.textNode                # тёмная плашка под строкой: читается на любом фоне
         tn.setCardColor(LColor(*ui.rgba(ui.INK, 0.78)))
         tn.setCardAsMargin(0.5, 0.5, 0.28, 0.22)
@@ -114,6 +120,10 @@ class Tester(object):
         if self._info_t <= 0.0:
             self._info_t = 0.2
             self.line.setText(self.status() if self.info else '')
+            # на узком экране (4:3, 5:4) длинная строка ужимается, а не уходит за края
+            wide = self.line.textNode.getWidth() * LINE_SCALE
+            room = 2.0 * g.base.getAspectRatio() - 0.10
+            self.line.setScale(LINE_SCALE * min(1.0, room / wide) if wide > 0.0 else LINE_SCALE)
 
     def _upkeep(self):
         """Держать включённое: бессмертие и розыск."""
@@ -127,6 +137,10 @@ class Tester(object):
             self._immune = v
             if v is not None:
                 v.immune = True
+                if not v.dead and v.health < v.max_health * 0.15:
+                    # машина уже горела: под бессмертным она гаснет, а не взрывается через пару секунд
+                    v.health = v.max_health * 0.15
+                    v.burn_t = 0.0
         pol = w.police
         pol.enabled = not self.hold               # при удержании новые нарушения розыск не поднимают
         if self.hold and pol.level != self.level:
@@ -149,7 +163,7 @@ class Tester(object):
         g = self.game
         w = g.world
         if g.state not in ('play', 'pause', 'shop'):
-            return u'СБОРКА ДЛЯ ТЕСТЕРА %s      F9 в игре — меню тестера' % __version__
+            return u'СБОРКА ДЛЯ ТЕСТЕРА %s      F9 в игре — меню тестера' % LABEL
         pl = w.player
         x, y = pl.pos()
         v = pl.vehicle
@@ -162,7 +176,7 @@ class Tester(object):
             street = w.city.street_name(x, y)
             if street:
                 place = ('%s, %s' % (place, street)) if place else street
-        parts = [u'ТЕСТЕР %s' % __version__, u'x %.0f  y %.0f  курс %d°' % (x, y, int(math.degrees(yaw)) % 360)]
+        parts = [u'ТЕСТЕР %s' % LABEL, u'x %.0f  y %.0f  курс %d°' % (x, y, int(math.degrees(yaw)) % 360)]
         if place:
             parts.append(place)
         if v is not None:
@@ -210,7 +224,29 @@ class Tester(object):
 
     def _menu(self, title, items, back=None):
         from .menu import Menu
+        for it in items:
+            if it.action is not None:
+                it.action = self._safe(it.action)
+            if it.change is not None:
+                it.change = self._safe(it.change)
         return Menu(self.game.ui, title, items, back=back, wide=True)
+
+    def _safe(self, fn):
+        """Действие меню не должно закрывать игру: сбой записывается в crash.log и показывается в меню."""
+        def run(*args):
+            try:
+                return fn(*args)
+            except Exception as e:
+                g = self.game
+                g.report_error()
+                if self.opened:
+                    self._say(u'ошибка: %s (подробности в crash.log)' % e)
+                else:
+                    if g.state == 'pause':
+                        self.close()                    # действие успело убрать меню: игра не остаётся на паузе
+                    g.world.hud.help(u'Тестер: ошибка — %s. Подробности в crash.log.' % e, 6.0)
+                return False
+        return run
 
     def _say(self, text, close=False):
         """Сообщить, что сделано: в открытом меню — строкой внизу, после закрытия — подсказкой на экране."""
@@ -221,6 +257,8 @@ class Tester(object):
         else:
             for m in self.menus:
                 m.subtitle = text + u'.      Esc  назад      F9  закрыть'
+            if self.opened:
+                self.game.ui.refresh()
         return True
 
     # ------------------------------------------------------------------
@@ -238,8 +276,7 @@ class Tester(object):
             Item('Телепорт', lambda: self._push(self.places_menu())),
             Item('Транспорт', lambda: self._push(self.vehicles_menu())),
             Item('Розыск', value=lambda: STARS[self.level if self.hold else pol.level], change=self.set_wanted_by),
-            Item('Удерживать розыск', value=lambda: 'да' if self.hold else 'нет',
-                 change=lambda d: self.set_hold(not self.hold)),
+            Item('Удерживать розыск', value=lambda: _on(self.hold), change=lambda d: self.set_hold(not self.hold)),
             Item('Бессмертие', value=lambda: _on(self.god), change=lambda d: self.set_god(not self.god)),
             Item('Здоровье и броня', self.heal),
             Item('Всё оружие и патроны', self.arm),

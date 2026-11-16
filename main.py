@@ -174,9 +174,131 @@ def selftest():
     _need(len(kept) == 1 and kept[0]['kind'] == 'sedan' and kept[0].get('tune'), 'the garage did not keep the car')
     game.base.graphicsEngine.renderFrame()
     _need(not game.audio._missing, 'missing sounds: %s' % sorted(game.audio._missing))
-    print('SELFTEST OK: vehicles=%d peds=%d models=%d root=%s' % (
-        len(w.vehicles), len(w.peds), len(mdl.meta['chars']) + len(mdl.meta['vehicles']), game.assets.root))
+    import game as game_pkg
+    if game_pkg.TESTER:
+        _selftest_tester(game, dt)
+    else:
+        _need(game.tester is None, 'the regular game must not have the tester menu')
+        if not os.path.isfile(getattr(game_pkg, '__file__', None) or ''):
+            # собранное приложение: в обычной сборке модуля меню тестера быть не должно
+            _need(not enable_tester() and game_pkg.TESTER is False,
+                  'the regular build contains the tester menu (game.tester)')
+    _need(game._errors_total == 0, 'errors were reported during the self-test: %d' % game._errors_total)
+    print('SELFTEST OK: vehicles=%d peds=%d models=%d tester=%s root=%s' % (
+        len(w.vehicles), len(w.peds), len(mdl.meta['chars']) + len(mdl.meta['vehicles']),
+        'yes' if game.tester is not None else 'no', game.assets.root))
     return 0
+
+
+def _selftest_tester(game, dt):
+    """Сборка для тестера: меню на F9 открывается, и каждое его действие работает."""
+    import shutil
+    import tempfile
+    from game import settings
+    _need(game.tester is not None, 'the tester build has no tester menu')
+    _need(settings.APP_NAME == 'DeadlyDistrict-tester', 'the tester build must keep its saves in its own folder')
+    # засчитанное задание сохраняет игру: настоящее сохранение тестера самопроверка трогать не должна
+    keep = os.environ.get('DD_USER_DIR')
+    tmp = tempfile.mkdtemp(prefix='dd_selftest_')
+    os.environ['DD_USER_DIR'] = tmp
+    try:
+        _selftest_tester_menu(game, dt)
+        _need(os.path.isfile(os.path.join(tmp, 'save0.json')), 'passing a mission did not save the game')
+    finally:
+        if keep is None:
+            os.environ.pop('DD_USER_DIR', None)
+        else:
+            os.environ['DD_USER_DIR'] = keep
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _selftest_tester_menu(game, dt):
+    from game import missions as M
+    t = game.tester
+    w = game.world
+    pl = w.player
+    ms = w.missions
+
+    def steps(n):
+        for _ in range(n):
+            game.step(dt)
+
+    def key(name):
+        game.inp._dn(name)
+        game.step(dt)
+        game.inp._up(name)
+        game.step(dt)
+    key('f9')
+    _need(t.opened and game.state == 'pause', 'F9 did not open the tester menu')
+    game.base.graphicsEngine.renderFrame()
+    for name in ('arrow_down', 'enter', 'arrow_down', 'enter'):          # Телепорт -> Комнаты
+        key(name)
+    _need([m.title for m in game.ui.stack] == ['Тестер', 'Телепорт', 'Комнаты'], 'tester submenus do not open')
+    game.base.graphicsEngine.renderFrame()
+    key('f9')
+    _need(not t.opened and game.state == 'play', 'F9 did not close the tester menu')
+    # бессмертие и розыск
+    _need(t.open(), 'the tester menu did not open')
+    t.set_god(True)
+    t.set_wanted(3)
+    t.set_hold(True)
+    t.heal()
+    t.arm()
+    t.cash(10000)
+    t.shift_time(1)
+    t.shift_weather(1)
+    t.close()
+    pl.ped.hurt(500.0, None, 'bullet')
+    steps(10)
+    _need(pl.ped.health == pl.ped.max_health and w.police.level == 3, 'god mode or the wanted level did not hold')
+    _need(t.open(), 'the tester menu did not open')
+    t.set_hold(False)
+    t.set_wanted(0)
+    # задание, перенос к его цели, зачёт
+    spec = [s for s in M.MISSIONS if s['id'] == 'v2'][0]
+    t.start_mission(spec)
+    _need(ms.active is not None and ms.active.spec is spec and set(['s1', 's2', 'v1']) <= ms.done,
+          'the tester menu did not start a mission')
+    for i in range(600):
+        game.inp._dn('space') if i % 6 == 0 else game.inp._up('space')
+        game.step(dt)
+        if i > 30 and not pl.freeze and w.cam.override is None and not w.hud.phone_on:
+            break
+    game.inp._up('space')
+    _need(t.target() is not None and t.open(), 'the mission has no target after the briefing')
+    t.to_target()
+    steps(20)
+    _need(game.state == 'play' and ms.active is not None, 'teleport to the mission target failed')
+    _need(t.open(), 'the tester menu did not open')
+    t.pass_mission()
+    steps(20)
+    _need(ms.active is None and 'v2' in ms.done, 'the tester menu did not pass the mission')
+    # все места, все комнаты, весь транспорт
+    for title, foot, car in t.places():
+        _need(t.open(), 'the tester menu did not open')
+        t.go(title, foot, car)
+        steps(4)
+        _need(game.state == 'play' and pl.state == 'foot' and not pl.ped.dead, 'teleport failed: %s' % title)
+    for room in w.interiors.order:
+        _need(t.open(), 'the tester menu did not open')
+        t.go_room(room)
+        steps(4)
+        _need(w.interiors.current is room, 'teleport into a room failed: %s' % room.name)
+    title, foot, car = t.places()[0]
+    _need(t.open(), 'the tester menu did not open')
+    t.go(title, foot, car)
+    steps(4)
+    from game.vehicle import SPECS
+    for kind in sorted(SPECS):
+        _need(t.open(), 'the tester menu did not open')
+        t.spawn(kind)
+        steps(4)
+        _need(pl.vehicle is not None and pl.vehicle.kind == kind, 'vehicle was not spawned: %s' % kind)
+    _need(t.open(), 'the tester menu did not open')
+    t.set_god(False)
+    t.close()
+    steps(10)
+    game.base.graphicsEngine.renderFrame()
 
 
 def main():
