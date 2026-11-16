@@ -122,6 +122,18 @@ def recolor(img, what, hue=None, sat=1.0, val=1.0):
     h, s_, v = a[..., 0] * (360.0 / 255.0), a[..., 1] / 255.0, a[..., 2] / 255.0
     if what == 'red':
         mask = (s_ > 0.6) & ((h < 14.0) | (h > 340.0)) & (v > 0.12)
+        # кромка ткани: точки на границе с кожей уже не такие красные, но ещё и не кожа.  Без них у
+        # перекрашенной футболки по вороту и рукавам шла красная кайма.
+        soft = (s_ > 0.48) & ((h < 19.0) | (h > 335.0)) & (v > 0.12)
+        near = mask.copy()
+        for _ in range(2):
+            grown = near.copy()
+            grown[1:, :] |= near[:-1, :]
+            grown[:-1, :] |= near[1:, :]
+            grown[:, 1:] |= near[:, :-1]
+            grown[:, :-1] |= near[:, 1:]
+            near = grown
+        mask = mask | (soft & near)
     else:
         mask = (s_ > 0.10) & (h > 170.0) & (h < 265.0) & (v > 0.10)
     if hue is not None:
@@ -420,161 +432,342 @@ def mitten(ch):
     ch.ji, ch.jw = ji, jw
 
 
-HEAD_BONES = ('head', 'head_leaf', 'neck_01')
-CUT_BODY, CUT_HEAD = 0.35, 0.30         # где резать: доля пути от основания шеи до головы
-NECK_MARKS = (('m_red', 62, 195, 70, 203), ('m_red', 470, 181, 478, 191))      # (текстура, x0, y0, x1, y1)
-
-
-def clean_marks(img, x0, y0, x1, y1):
-    """Красные точки в прямоугольнике текстуры -> средний цвет кожи вокруг них."""
-    skin = []
-    red = []
-    for y in range(y0, y1 + 1):
-        for x in range(x0, x1 + 1):
-            r, g, b = img.getpixel((x, y))
-            if r > 140 and r > g * 1.6:
-                red.append((x, y))
-            elif r > 150 and g > 105:
-                skin.append((r, g, b))
-    if not skin:
-        return
-    c = tuple(sum(v[k] for v in skin) // len(skin) for k in range(3))
-    for xy in red:
-        img.putpixel(xy, c)
-NECK_SKIRT = 0.10                       # на сколько метров шея головы уходит вниз, в воротник
+# ---------------------------------------------------------------------------
+# сборные персонажи: тело одной модели, голова другой
+# ---------------------------------------------------------------------------
+# У моделей набора шея короткая: воротник кончается почти у подбородка.  Поэтому шея целиком остаётся телу,
+# а голова отрезается под самым подбородком — наклонной плоскостью: спереди она проходит под подбородком,
+# сзади — над воротником, под линией волос.  Плоскость у каждой модели своя (ищется по самой модели);
+# при сборке голова переносится так, чтобы срезы совпали, а верх шеи тела подгоняется к кольцу головы.
+NECK_TILT = math.radians(14.0)
+NECK_N = np.array([0.0, math.cos(NECK_TILT), math.sin(NECK_TILT)])      # нормаль среза: y — вверх, z — вперёд
+NECK_R = 0.2                            # режем только около оси шеи (плечи и руки не трогаем)
+NECK_FIT = 0.035                        # на такой глубине под срезом шея тела подгоняется к кольцу головы
+NECK_SKIRT = 0.03                       # «юбка» под срезом головы: уходит внутрь шеи тела, щели не видно
+NECK_PLANES = {}                        # ручные поправки: модель -> положение плоскости (n·p)
 HEAD_U = 4.0                            # сдвиг u, которым помечены вершины головы
 
 
-def combine(ref, body, head, head_tex):
-    """Тело одной модели и голова другой.  body и head — (pos, nrm, uv, ji, jw, idx) на скелете ref.
+LIPS = {'m_red': ((54, 192, 74, 212), (462, 174, 482, 194))}       # текстура -> где на ней губы (x0, y0, x1, y1)
 
-    Голова отрезается чуть ниже подбородка, у тела убирается всё выше воротника; шея головы уходит
-    внутрь воротника тела.  Текстуры у частей остаются свои: вершины головы помечаются сдвигом
-    текстурной координаты u на HEAD_U, и при записи модели уходят в отдельный узел «head».
-    """
-    hb = [k for k, n in enumerate(ref.jnames) if n in HEAD_BONES]
-    y_neck = float(ref.world[ref.jnames.index('neck_01')][1, 3])
-    y_head = float(ref.world[ref.jnames.index('head')][1, 3])
 
-    def headness(ji, jw):
-        return np.where(np.isin(ji, hb), jw, 0.0).sum(1)
-
-    bpos, bnrm, buv, bji, bjw, bidx = body
-    hpos, hnrm, huv, hji, hjw, hidx = head
-    bh = headness(bji, bjw)
-    hh = headness(hji, hjw)
-    cut_b = y_neck + CUT_BODY * (y_head - y_neck)   # у тела остаётся всё ниже этой высоты
-    cut_h = y_neck + CUT_HEAD * (y_head - y_neck)   # у головы — всё выше этой (шея с запасом вниз)
-    bt = bidx.reshape(-1, 3)
-    ht = hidx.reshape(-1, 3)
-    # тело: убираем треугольники, целиком лежащие выше среза; у тех, что срез пересекают, верхние
-    # вершины опускаем на срез и подтягиваем к оси шеи — они спрячутся внутри новой шеи
-    by = bpos[bt][:, :, 1]
-    drop = (by > cut_b).all(1) & (bh[bt] >= 0.25).all(1)
-    bt = bt[~drop]
-    bpos = bpos.copy()
-    neck = ref.world[ref.jnames.index('neck_01')][:3, 3]
-    up = (bpos[:, 1] > cut_b) & (bh >= 0.25)
-    bpos[up, 1] = cut_b
-    bpos[up, 0] = neck[0] + (bpos[up, 0] - neck[0]) * 0.7
-    bpos[up, 2] = neck[2] + (bpos[up, 2] - neck[2]) * 0.7
-    # голова: только то, что привязано к шее и голове (без плеч и воротника), и не ниже среза
-    keep = (hh[ht] >= 0.45).all(1) & (hpos[ht][:, :, 1] > cut_h).all(1)
-    ht = ht[keep]
-    # у отрезанной головы снизу открытый край; тянем его вниз «юбкой», чтобы шея уходила в воротник
-    weld = {}
-    wid = np.array([weld.setdefault(tuple(q), len(weld)) for q in np.round(hpos, 5)])
-    edges = {}
-    for a, b, c in ht:
-        for u, v in ((a, b), (b, c), (c, a)):
-            key = (min(wid[u], wid[v]), max(wid[u], wid[v]))
-            edges.setdefault(key, []).append((u, v))
-    ni = ref.jnames.index('neck_01')
-    # нижнее кольцо шеи в текстуре головы лежит на самой кромке воротника её прежнего тела (у красной
-    # футболки это красная кайма).  Сдвигаем текстурные координаты кольца внутрь шеи — кайма не видна.
-    ring = set()
-    for key, lst in edges.items():
-        if len(lst) == 1:
-            u, v = lst[0]
-            if not (hpos[u, 1] > cut_h + 0.06 and hpos[v, 1] > cut_h + 0.06):
-                ring.update((int(u), int(v)))
-    if ring:
-        huv = huv.copy()
-        above = {}
-        for tri in ht:
-            for p in tri:
-                p = int(p)
-                if p not in ring:
-                    continue
-                for q in tri:
-                    q = int(q)
-                    if q not in ring and hpos[q, 1] > hpos[p, 1] + 0.008 and (
-                            p not in above or hpos[q, 1] > hpos[above[p], 1]):
-                        above[p] = q
-        for p, q in above.items():
-            huv[p] = huv[p] + (huv[q] - huv[p]) * 0.35
-    add_pos, add_nrm, add_uv, add_tri = [], [], [], []
-    base_n = len(hpos)
-    # цвет «юбки» — обычная кожа шеи: берём точку текстуры с медианным цветом среди вершин шеи
-    used = np.unique(ht.reshape(-1))
-    band = used[(hpos[used, 1] > cut_h + 0.03) & (hpos[used, 1] < cut_h + 0.09)]
-    if len(band) == 0:
-        band = used
-    px = np.asarray(head_tex.convert('RGB'), dtype=np.float64)
-    th, tw = px.shape[:2]
-    cols = np.array([px[min(th - 1, max(0, int(huv[q, 1] * th))), min(tw - 1, max(0, int(huv[q, 0] * tw)))]
-                     for q in band])
-    med = np.median(cols, axis=0)
-    skin_uv = huv[band[int(np.argmin(((cols - med) ** 2).sum(1)))]]
-    for key, lst in edges.items():
-        if len(lst) != 1:
+def soften_lips(img, boxes, k=0.5):
+    """Губы на фото-текстуре слишком яркие — у героя они смотрелись как помада.  Подводим их к цвету кожи
+    вокруг (на долю k); тёмная линия рта остаётся."""
+    from PIL import Image
+    a = np.asarray(img.convert('RGB')).astype(np.float64)
+    for (x0, y0, x1, y1) in boxes:
+        part = a[y0:y1 + 1, x0:x1 + 1]
+        r, g, b = part[..., 0], part[..., 1], part[..., 2]
+        painted = part.max(2) > 2
+        lips = painted & (r > 110) & (r > g * 1.3) & (r > b * 1.25)
+        skin = painted & ~lips & (r > 150) & (g > 105)
+        if not lips.any() or not skin.any():
             continue
-        u, v = lst[0]
-        if hpos[u, 1] > cut_h + 0.06 and hpos[v, 1] > cut_h + 0.06:
-            continue                                # это не срез шеи, а другая дырка в модели
-        k = base_n + len(add_pos)
-        for q in (u, v):                            # верх «юбки»: те же точки, но цвета кожи
-            add_pos.append(hpos[q].copy())
-            add_nrm.append(hnrm[q])
-            add_uv.append(skin_uv)
-        for q in (u, v):                            # низ
-            pq = hpos[q].copy()
-            pq[1] -= NECK_SKIRT
-            pq[0] = neck[0] + (pq[0] - neck[0]) * 0.8
-            pq[2] = neck[2] + (pq[2] - neck[2]) * 0.8
-            add_pos.append(pq)
-            add_nrm.append(hnrm[q])
-            add_uv.append(skin_uv)
-        add_tri.append((k + 1, k, k + 2))
-        add_tri.append((k + 1, k + 2, k + 3))
-    if add_pos:
-        hpos = np.r_[hpos, np.array(add_pos)]
-        hnrm = np.r_[hnrm, np.array(add_nrm)]
-        huv = np.r_[huv, np.array(add_uv)]
-        nj = np.zeros((len(add_pos), hji.shape[1]), dtype=hji.dtype)
-        nj[:, 0] = ni
-        nw = np.zeros((len(add_pos), hjw.shape[1]))
-        nw[:, 0] = 1.0
-        hji = np.r_[hji, nj]
-        hjw = np.r_[hjw, nw]
-        ht = np.r_[ht, np.array(add_tri)]
+        tone = part[skin].mean(0)
+        lum = part[lips].mean(1, keepdims=True) / max(1.0, float(tone.mean()))
+        part[lips] = part[lips] * (1.0 - k) + (tone[None, :] * np.clip(lum, 0.55, 1.0)) * k
+    return Image.fromarray(np.clip(a + 0.5, 0, 255).astype(np.uint8), 'RGB')
 
-    def compact(tri, *arrs):
-        used = np.unique(tri.reshape(-1))
-        remap = np.full(int(tri.max()) + 1, -1, dtype=np.int64)
-        remap[used] = np.arange(len(used))
-        return remap[tri], [a[used] for a in arrs]
 
-    bt, (bpos, bnrm, buv, bji, bjw) = compact(bt, bpos, bnrm, buv, bji, bjw)
-    ht, (hpos, hnrm, huv, hji, hjw) = compact(ht, hpos, hnrm, huv, hji, hjw)
-    huv = huv + np.array([HEAD_U, 0.0])             # пометка «это голова»: у неё своя текстура
+def pad_islands(img, steps=8):
+    """Раздвинуть «острова» развёртки на несколько точек в чёрный фон.
+
+    У пары моделей треугольники у горла заходят за край нарисованного острова — на шее получался чёрный
+    клин.  Заодно на уменьшенной текстуре (вдали) чёрный фон больше не подмешивается в швы лица и одежды."""
+    from PIL import Image
+    a = np.asarray(img.convert('RGB')).astype(np.float64)
+    h, w = a.shape[:2]
+    filled = a.max(2) > 2
+    for _ in range(steps):
+        acc = np.zeros((h + 2, w + 2, 3))
+        cnt = np.zeros((h + 2, w + 2))
+        src = a * filled[..., None]
+        for dy in (0, 1, 2):
+            for dx in (0, 1, 2):
+                if dy == 1 and dx == 1:
+                    continue
+                acc[dy:dy + h, dx:dx + w] += src
+                cnt[dy:dy + h, dx:dx + w] += filled
+        acc, cnt = acc[1:-1, 1:-1], cnt[1:-1, 1:-1]
+        new = ~filled & (cnt > 0)
+        if not new.any():
+            break
+        a[new] = acc[new] / cnt[new][:, None]
+        filled = filled | new
+    return Image.fromarray(np.clip(a + 0.5, 0, 255).astype(np.uint8), 'RGB')
+
+
+def is_skin(c):
+    """Похож ли цвет точки текстуры на кожу (а не на ткань, волосы или тень)."""
+    r, g, b = float(c[0]), float(c[1]), float(c[2])
+    return (r > 95.0 and g > 40.0 and b > 20.0 and r > g > b * 0.95 and r - g > 12.0 and r - b > 25.0 and
+            g > r * 0.52 and b > r * 0.33)
+
+
+def neck_axis(ref, s):
+    """Точка оси шеи (от сустава шеи к суставу головы) на плоскости среза n·p = s."""
+    a = ref.world[ref.jnames.index('neck_01')][:3, 3]
+    b = ref.world[ref.jnames.index('head')][:3, 3]
+    k = (s - a @ NECK_N) / ((b - a) @ NECK_N)
+    return a + (b - a) * k
+
+
+def neck_section(part, tex_px, ref, s):
+    """Сечение сетки плоскостью среза около оси шеи: [(p0, p1, uv0, uv1)], длина кольца, доля кожи, цвет кожи."""
+    pos, nrm, uv, ji, jw, idx = part
+    c = neck_axis(ref, s)
+    d = pos @ NECK_N - s
+    th, tw = tex_px.shape[:2]
+    segs = []
+    total = 0.0
+    skin_len = 0.0
+    cols = []
+    for t in idx.reshape(-1, 3):
+        dt = d[t]
+        if (dt > 0).all() or (dt <= 0).all():
+            continue
+        pts = []
+        for a, b in ((0, 1), (1, 2), (2, 0)):
+            if (dt[a] > 0) != (dt[b] > 0):
+                k = dt[a] / (dt[a] - dt[b])
+                pts.append((pos[t[a]] + (pos[t[b]] - pos[t[a]]) * k, uv[t[a]] + (uv[t[b]] - uv[t[a]]) * k))
+        if len(pts) != 2:
+            continue
+        mid = (pts[0][0] + pts[1][0]) * 0.5
+        if math.hypot(mid[0] - c[0], mid[2] - c[2]) > NECK_R:
+            continue
+        ln = float(np.linalg.norm(pts[1][0] - pts[0][0]))
+        segs.append((pts[0][0], pts[1][0], pts[0][1], pts[1][1]))
+        n = max(1, int(ln / 0.004))
+        for i in range(n):
+            u = pts[0][1] + (pts[1][1] - pts[0][1]) * ((i + 0.5) / n)
+            col = tex_px[min(th - 1, max(0, int(u[1] * th))), min(tw - 1, max(0, int(u[0] * tw)))]
+            total += ln / n
+            if is_skin(col):
+                skin_len += ln / n
+                cols.append(col)
+    skin = np.median(np.array(cols), axis=0) if cols else None
+    return segs, total, (skin_len / total if total > 0 else 0.0), skin
+
+
+def neck_plane(name, part, tex, ref, log=None):
+    """Положение плоскости среза шеи у модели: самое низкое кольцо чистой кожи — сразу над воротником."""
+    if name in NECK_PLANES:
+        return NECK_PLANES[name]
+    px = np.asarray(tex.convert('RGB'), dtype=np.float64)
+    a = ref.world[ref.jnames.index('neck_01')][:3, 3]
+    b = ref.world[ref.jnames.index('head')][:3, 3]
+    s0 = (a + (b - a) * 0.45) @ NECK_N
+    s1 = (a + (b - a) * 1.55) @ NECK_N
+    rows = []
+    for s in np.arange(s0, s1, 0.0025):
+        segs, total, frac, skin = neck_section(part, px, ref, s)
+        if segs:
+            rows.append((float(s), total, frac))
+    lmin = min(r[1] for r in rows)
+    ok = [r for r in rows if r[1] <= lmin * 1.3]
+    fmax = max(r[2] for r in ok)
+    best = min(r[0] for r in ok if r[2] >= fmax - 0.015)
+    if log is not None:
+        log('  %-10s срез шеи: n·p = %.4f (кольцо %.0f мм, кожи %.0f%%)' % (
+            name, best + 0.003, [r[1] for r in rows if r[0] == best][0] * 1000.0, fmax * 100.0))
+    return best + 0.003
+
+
+def mix_weights(ja, wa, jb, wb, k):
+    """Веса костей между двумя вершинами (доля k от второй): не больше четырёх костей, сумма 1."""
+    d = {}
+    for j, x in zip(ja, wa):
+        if x > 0.0:
+            d[int(j)] = d.get(int(j), 0.0) + float(x) * (1.0 - k)
+    for j, x in zip(jb, wb):
+        if x > 0.0:
+            d[int(j)] = d.get(int(j), 0.0) + float(x) * k
+    top = sorted(d.items(), key=lambda kv: -kv[1])[:4]
+    tot = sum(x for _, x in top) or 1.0
+    ji = np.zeros(len(ja), dtype=np.int64)
+    jw = np.zeros(len(ja), dtype=np.float64)
+    for i, (j, x) in enumerate(top):
+        ji[i] = j
+        jw[i] = x / tot
+    return ji, jw
+
+
+def clip_mesh(part, s, above, center):
+    """Разрезать сетку плоскостью среза n·p = s около оси шеи.
+
+    above=True — оставить только то, что выше плоскости (голова); above=False — убрать то, что выше (тело
+    без головы; всё, что далеко от оси, не трогается).  Треугольники, которые плоскость пересекает,
+    режутся по ней, так что край получается ровным кольцом.
+    Возвращает (сетка, рёбра кольца [(i, j)] в порядке обхода оставшихся треугольников)."""
+    pos, nrm, uv, ji, jw, idx = part
+    d = pos @ NECK_N - s
+    P_, N_, U_, J_, W_ = list(pos), list(nrm), list(uv), list(ji), list(jw)
+    cache = {}
+
+    def cut(a, b):
+        key = (a, b) if a < b else (b, a)
+        v = cache.get(key)
+        if v is None:
+            k = float(d[a] / (d[a] - d[b]))
+            nn = nrm[a] + (nrm[b] - nrm[a]) * k
+            j_, w_ = mix_weights(ji[a], jw[a], ji[b], jw[b], k)
+            v = cache[key] = len(P_)
+            P_.append(pos[a] + (pos[b] - pos[a]) * k)
+            N_.append(nn / max(1e-9, float(np.linalg.norm(nn))))
+            U_.append(uv[a] + (uv[b] - uv[a]) * k)
+            J_.append(j_)
+            W_.append(w_)
+        return v
+    tris = []
+    rim = []
+    for t in idx.reshape(-1, 3):
+        t = [int(v) for v in t]
+        mid = (pos[t[0]] + pos[t[1]] + pos[t[2]]) / 3.0
+        near = math.hypot(mid[0] - center[0], mid[2] - center[2]) < NECK_R
+        if not near:
+            if not above:
+                tris.append(t)
+            continue
+        keep = [(d[v] > 0.0) == above for v in t]
+        n = sum(keep)
+        if n == 3:
+            tris.append(t)
+        elif n == 1:
+            i = keep.index(True)
+            a, b, c = t[i], t[(i + 1) % 3], t[(i + 2) % 3]
+            p, q = cut(a, b), cut(a, c)
+            tris.append([a, p, q])
+            rim.append((p, q))
+        elif n == 2:
+            i = keep.index(False)
+            a, b, c = t[i], t[(i + 1) % 3], t[(i + 2) % 3]
+            p, q = cut(a, b), cut(c, a)
+            tris.append([p, b, c])
+            tris.append([p, c, q])
+            rim.append((q, p))
+    tris = np.array(tris, dtype=np.int64)
+    used = np.unique(tris.reshape(-1))
+    remap = np.full(len(P_), -1, dtype=np.int64)
+    remap[used] = np.arange(len(used))
+    out = (np.array(P_)[used], np.array(N_)[used], np.array(U_)[used], np.array(J_)[used], np.array(W_)[used],
+           remap[tris].reshape(-1))
+    return out, [(int(remap[i]), int(remap[j])) for i, j in rim if i != j]
+
+
+def combine(ref, body, head, body_tex, head_tex, s_body, s_head):
+    """Тело одной модели и голова другой.  body и head — (pos, nrm, uv, ji, jw, idx) на скелете ref,
+    s_body и s_head — плоскости среза шеи у этих моделей (neck_plane).
+
+    Тело обрезается сразу над воротником, голова — там же у своей модели, так что видимая шея целиком
+    принадлежит голове: цвет кожи лица и шеи один.  Голова переносится на срез тела, верх тела подгоняется
+    к её кольцу и получает те же веса костей — в движении шов не расходится.  Под срезом у головы «юбка»,
+    уходящая внутрь тела.  Текстуры у частей свои: вершины головы помечаются сдвигом u на HEAD_U и при
+    записи модели уходят в отдельный узел «head».
+    Возвращает (pos, nrm, uv, ji, jw, idx, поправка цвета головы под кожу тела)."""
+    e1 = np.array([1.0, 0.0, 0.0])
+    e2 = np.array([0.0, -NECK_N[2], NECK_N[1]])
+    (bpos, bnrm, buv, bji, bjw, bidx), brim = clip_mesh(body, s_body, False, neck_axis(ref, s_body))
+    (hpos, hnrm, huv, hji, hjw, hidx), hrim = clip_mesh(head, s_head, True, neck_axis(ref, s_head))
+
+    def centre(pos, rim):
+        a = pos[[i for i, j in rim]]
+        b = pos[[j for i, j in rim]]
+        ln = np.linalg.norm(b - a, axis=1)
+        return ((a + b) * 0.5 * ln[:, None]).sum(0) / ln.sum()
+
+    def hit(pos, rim, c, ang):
+        """Дальнее пересечение луча из центра кольца под углом ang: (расстояние, ребро, доля вдоль ребра)."""
+        dx, dy = math.cos(ang), math.sin(ang)
+        best = None
+        for (i, j) in rim:
+            a, b = pos[i] - c, pos[j] - c
+            ax, ay = float(a @ e1), float(a @ e2)
+            ex, ey = float(b @ e1) - ax, float(b @ e2) - ay
+            den = dx * ey - dy * ex
+            if abs(den) < 1e-12:
+                continue
+            t = (ax * ey - ay * ex) / den
+            u = (ax * dy - ay * dx) / den
+            if t > 0.0 and -1e-6 <= u <= 1.0 + 1e-6 and (best is None or t > best[0]):
+                best = (t, (i, j), min(1.0, max(0.0, u)))
+        return best
+    cb = centre(bpos, brim)
+    hpos = hpos + (cb - centre(hpos, hrim))             # голова — на срез тела
+    hring = sorted(set(i for e in hrim for i in e))
+    # --- верх тела подгоняется к кольцу головы
+    was = bpos                                          # мерить нужно по исходному кольцу, а не по уже сдвинутому
+    bpos = bpos.copy()
+    bnrm = bnrm.copy()
+    bji = bji.copy()
+    bjw = bjw.copy()
+    depth = bpos @ NECK_N - cb @ NECK_N                  # 0 на срезе, ниже — отрицательная
+    for v in np.where(depth > -NECK_FIT)[0]:
+        q = was[v] - cb
+        x, y = float(q @ e1), float(q @ e2)
+        r = math.hypot(x, y)
+        if r < 1e-5 or r > NECK_R:
+            continue
+        ang = math.atan2(y, x)
+        hb_ = hit(was, brim, cb, ang)
+        hh_ = hit(hpos, hrim, cb, ang)
+        if hb_ is None or hh_ is None:
+            continue
+        f = 1.0 + depth[v] / NECK_FIT                   # 1 на срезе, 0 на глубине NECK_FIT
+        f = f * f * (3.0 - 2.0 * f)
+        g = min(1.0, max(0.0, 1.0 - (r - hb_[0]) / 0.04))       # плечи и концы воротника не тянем
+        k = f * g
+        if k <= 0.0:
+            continue
+        scale = min(1.4, max(0.7, hh_[0] / hb_[0]))
+        bpos[v] = bpos[v] + (e1 * x + e2 * y) * ((scale - 1.0) * k)
+        (i, j), u = hh_[1], hh_[2]
+        wj, ww = mix_weights(hji[i], hjw[i], hji[j], hjw[j], u)
+        bji[v], bjw[v] = mix_weights(bji[v], bjw[v], wj, ww, k)
+        if depth[v] > -1e-4:
+            out = (e1 * x + e2 * y) / r
+            bnrm[v] = out
+    # --- кольцо головы: нормали наружу, как у края тела, и «юбка» вниз, внутрь тела
+    hnrm = hnrm.copy()
+    add_pos, add_nrm, add_uv, add_ji, add_jw, add_tri = [], [], [], [], [], []
+    low = {}
+    base = len(hpos)
+    for v in hring:
+        q = hpos[v] - cb
+        x, y = float(q @ e1), float(q @ e2)
+        r = math.hypot(x, y) or 1.0
+        hnrm[v] = (e1 * x + e2 * y) / r
+        low[v] = base + len(add_pos)
+        add_pos.append(cb + (e1 * x + e2 * y) * 0.78 - NECK_N * NECK_SKIRT)
+        add_nrm.append(hnrm[v])
+        add_uv.append(huv[v])
+        add_ji.append(hji[v])
+        add_jw.append(hjw[v])
+    for (i, j) in hrim:
+        add_tri.append((j, i, low[i]))
+        add_tri.append((j, low[i], low[j]))
+    hpos = np.r_[hpos, np.array(add_pos)]
+    hnrm = np.r_[hnrm, np.array(add_nrm)]
+    huv = np.r_[huv, np.array(add_uv)]
+    hji = np.r_[hji, np.array(add_ji)]
+    hjw = np.r_[hjw, np.array(add_jw)]
+    ht = np.r_[hidx.reshape(-1, 3), np.array(add_tri, dtype=np.int64)]
+    # --- цвет: кожа головы подводится под кожу тела (шея, руки), чтобы шов в вырезе ворота не был виден
+    bskin = neck_section(body, np.asarray(body_tex.convert('RGB'), dtype=np.float64), ref, s_body + 0.002)[3]
+    hskin = neck_section(head, np.asarray(head_tex.convert('RGB'), dtype=np.float64), ref, s_head + 0.004)[3]
+    gain = [1.0, 1.0, 1.0]
+    if bskin is not None and hskin is not None:
+        # не до конца (степень 0.75) и в разумных пределах: лицо должно остаться узнаваемым и не выгореть
+        gain = [round(float(min(1.22, max(0.8, (b / max(1.0, h)) ** 0.75))), 3) for b, h in zip(bskin, hskin)]
+    huv = huv + np.array([HEAD_U, 0.0])                 # пометка «это голова»: у неё своя текстура
     pos = np.r_[bpos, hpos]
     nrm = np.r_[bnrm, hnrm]
     uv = np.r_[buv, huv]
     ji = np.r_[bji, hji]
     jw = np.r_[bjw, hjw]
-    idx = np.r_[bt.reshape(-1), ht.reshape(-1) + len(bpos)]
-    return pos, nrm, uv, ji, jw, idx
+    idx = np.r_[bidx, ht.reshape(-1) + len(bpos)]
+    return pos, nrm, uv, ji, jw, idx, gain
 
 
 def retarget(ch, ref):
@@ -824,13 +1017,15 @@ def do_chars(meta):
 
         def save_tex(name, img):
             img = img.convert('RGB')
-            for (tex, x0, y0, x1, y1) in NECK_MARKS:
-                # метки шва на шее (красные штрихи у края «острова» головы): закрашиваем цветом кожи,
-                # иначе они видны на затылке героя в сценках
-                if tex == name and img.size == (512, 512):
-                    clean_marks(img, x0, y0, x1, y1)
-            # 256 цветов с подобранной палитрой: вдвое меньше файл, на глаз разницы нет
-            img.quantize(256, method=Image.MEDIANCUT, dither=Image.NONE).save(
+            if name in LIPS and img.size == (512, 512):
+                img = soften_lips(img, LIPS[name])
+            img = pad_islands(img)
+            # 256 цветов с подобранной палитрой: вдвое меньше файл, на глаз разницы нет.  Палитру уточняем
+            # (kmeans): без этого редкие оттенки попадали в «чужую» ячейку — губы на лице человека в красной
+            # футболке становились ярко-красными, как сама футболка.
+            # (Красные штрихи у края «острова» головы в этой текстуре — губы в профиль, а не метки шва:
+            # раньше они закрашивались кожей, и от рта оставались две красные точки.)
+            img.quantize(256, method=Image.MEDIANCUT, dither=Image.NONE, kmeans=3).save(
                 os.path.join(cdir, name + '.png'), optimize=True)
 
         def write_char(name, src, pos, nrm, uv, ji, jw, idx):
@@ -883,10 +1078,15 @@ def do_chars(meta):
             parts[name] = (pos, nrm, ch.uv, ji, jw, ch.idx)
             if name not in PARTS_ONLY:
                 meta['chars'][name] = dict(write_char(name, src, pos, nrm, ch.uv, ji, jw, ch.idx), tex=name)
+        planes = {}
+        for name in sorted(set(n for pair in COMBOS.values() for n in pair)):
+            planes[name] = neck_plane(name, parts[name], raw[name], ref, print)
         for name, (body, head) in sorted(COMBOS.items()):
-            pos, nrm, uv, ji, jw, idx = combine(ref, parts[body], parts[head], textures[head])
+            pos, nrm, uv, ji, jw, idx, gain = combine(ref, parts[body], parts[head], raw[body], raw[head],
+                                                      planes[body], planes[head])
             info = write_char(name, '%s + %s' % (CHARS[body], CHARS[head]), pos, nrm, uv, ji, jw, idx)
-            meta['chars'][name] = dict(info, tex=body, head_tex=head)
+            meta['chars'][name] = dict(info, tex=body, head_tex=head, head_gain=gain)
+            print('  %-12s цвет головы под кожу тела: x%.2f x%.2f x%.2f' % ((name,) + tuple(gain)))
         for name, (model, what, op) in sorted(RECOLORS.items()):
             op = dict(op)
             legs = op.pop('legs', None)

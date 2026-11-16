@@ -9,7 +9,7 @@ PlayStation 1) и tools/import_models.py (оружие).  Здесь — тол�
 import json
 import os
 
-from panda3d.core import Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture
+from panda3d.core import Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture, LColorf
 
 from .defs import (W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV, W_SILENCED,
                    W_M4, W_DOUBLE, W_SNIPER, W_KNIFE)
@@ -394,7 +394,7 @@ class Models(object):
         if head:
             # сборный персонаж: у тела и головы свои текстуры
             a.find('**/skin').setTexture(self.char_texture(info['tex']), 1)
-            a.find('**/head').setTexture(self.char_texture(head), 1)
+            a.find('**/head').setTexture(self.char_texture(head, info.get('head_gain')), 1)
         else:
             a.setTexture(self.char_texture(info.get('tex', key)), 1)
         # рамки для отсечения считаем один раз: поза меняется, а рост — нет
@@ -411,13 +411,27 @@ class Models(object):
             names.append(info['head_tex'])
         return names
 
-    def char_texture(self, name):
-        """Текстура assets/models/chars/<name>.png."""
-        t = self._ctex.get(name)
+    def char_texture(self, name, gain=None):
+        """Текстура assets/models/chars/<name>.png.
+
+        gain — поправка цвета (r, g, b): у сборного персонажа кожа головы подводится под кожу тела,
+        иначе лицо и шея одного оттенка, а грудь в вырезе ворота и руки — другого."""
+        if gain is not None and max(abs(g - 1.0) for g in gain) < 0.02:
+            gain = None
+        key = name if gain is None else (name, tuple(gain))
+        t = self._ctex.get(key)
         if t is None:
-            t = self.loader.loadTexture(self.path('chars', name + '.png'))
+            if gain is None:
+                t = self.loader.loadTexture(self.path('chars', name + '.png'))
+            else:
+                img = PNMImage()
+                img.read(Filename.fromOsSpecific(os.path.join(self.dir, 'chars', name + '.png')))
+                img.makeRgb()
+                img *= LColorf(gain[0], gain[1], gain[2], 1.0)
+                t = Texture(name + '_tone')
+                t.load(img)
             self.assets.setup_filter(t, True)
-            self._ctex[name] = t
+            self._ctex[key] = t
         return t
 
     # ------------------------------------------------------------------

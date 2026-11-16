@@ -823,3 +823,93 @@ def test_rider_is_exposed_to_bullets_and_crashes(game, world):
     w.remove_ped(shooter)
     w.remove_vehicle(mine)
     w.police.clear()
+
+
+def _node_mesh(np_, animated=False):
+    """Вершины и треугольники узла модели: ([(x, y, z)], [(i, j, k)])."""
+    from panda3d.core import GeomNode, GeomVertexReader, Thread
+    nodes = [np_] if isinstance(np_.node(), GeomNode) else list(np_.findAllMatches('**/+GeomNode'))
+    pts, tris = [], []
+    for gp in nodes:
+        gn = gp.node()
+        for i in range(gn.getNumGeoms()):
+            geom = gn.getGeom(i).decompose()
+            vd = geom.getVertexData()
+            if animated:
+                vd = vd.animateVertices(True, Thread.getCurrentThread())
+            base = len(pts)
+            r = GeomVertexReader(vd, 'vertex')
+            while not r.isAtEnd():
+                v = r.getData3()
+                pts.append((v.x, v.y, v.z))
+            for k in range(geom.getNumPrimitives()):
+                prim = geom.getPrimitive(k)
+                for t in range(prim.getNumPrimitives()):
+                    a = prim.getPrimitiveStart(t)
+                    tris.append(tuple(base + prim.getVertex(a + j) for j in range(3)))
+    return pts, tris
+
+
+def test_head_sits_on_the_neck_without_a_gap(world):
+    """Сборный персонаж (тело одной модели, голова другой): между шеей и воротником не должно быть щели.
+
+    Раньше тело обрезалось ниже воротника, а в него вставлялась «шея» головы: у футболки и поло в вороте
+    зияла дыра, в движении шея отходила от тела.  Теперь край тела (кольцо над воротником) лежит точно на
+    кольце головы и привязан к тем же костям — проверяем и в позе покоя, и с наклонённой головой."""
+    import numpy as np
+    m = world.models
+    combos = sorted(k for k, i in m.meta['chars'].items() if i.get('head_tex') and i['model'] == k)
+    assert len(combos) >= 12, combos
+    for key in combos:
+        a = m.actor(key)
+        body, head = a.find('**/skin'), a.find('**/head')
+        rest, tris = _node_mesh(body)
+        rest = np.array(rest)
+        # край тела у шеи: рёбра, у которых только один треугольник (вершины склеиваем по положению)
+        weld = {}
+        wid = [weld.setdefault(tuple(np.round(p, 4)), len(weld)) for p in rest]
+        count = {}
+        for t in tris:
+            for u, v in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+                e = (min(wid[u], wid[v]), max(wid[u], wid[v]))
+                count.setdefault(e, []).append((u, v))
+        free = sorted(set(u for e, uses in count.items() if len(uses) == 1 for u in uses[0]
+                          if 1.40 < rest[u][2] < 1.75 and abs(rest[u][0]) < 0.2 and abs(rest[u][1]) < 0.2))
+        # срез шеи — наклонная плоскость (спереди ниже; в файле модель смотрит на −Y); её край — самые
+        # верхние из свободных вершин (у поло свободный край есть ещё и у отложного воротника — он ниже)
+        cut = rest[free] @ np.array([0.0, -math.sin(math.radians(14.0)), math.cos(math.radians(14.0))])
+        rim = [u for u, c in zip(free, cut) if c > cut.max() - 0.0015]
+        assert len(rim) >= 8, (key, len(rim))
+        for clip, frame, limit in ((None, 0, 0.002), ('phone', 12, 0.006), ('talk', 20, 0.006)):
+            if clip is not None:
+                a.pose(clip, frame)
+                a.update(force=True)
+            bp = np.array(_node_mesh(body, clip is not None)[0])
+            hp, ht = _node_mesh(head, clip is not None)
+            hp = np.array(hp)
+            ht = np.array(ht)
+            ea = np.concatenate([hp[ht[:, 0]], hp[ht[:, 1]], hp[ht[:, 2]]])
+            eb = np.concatenate([hp[ht[:, 1]], hp[ht[:, 2]], hp[ht[:, 0]]])
+            d = eb - ea
+            dd = np.maximum((d * d).sum(1), 1e-12)
+            worst = 0.0
+            for u in rim:
+                k = np.clip(((bp[u] - ea) * d).sum(1) / dd, 0.0, 1.0)
+                gap = float(np.sqrt((((ea + d * k[:, None]) - bp[u]) ** 2).sum(1)).min())
+                worst = max(worst, gap)
+            assert worst < limit, (key, clip, round(worst, 4))
+        a.cleanup()
+        a.removeNode()
+
+
+def test_head_skin_is_toned_to_the_body(world):
+    """Кожа головы сборного персонажа подведена под кожу тела: текстура головы у него своя, с поправкой цвета."""
+    m = world.models
+    info = m.meta['chars']['m_shirt_h4']
+    gain = info['head_gain']
+    assert len(gain) == 3 and all(0.79 <= g <= 1.23 for g in gain) and max(gain) > 1.1, gain
+    plain = m.char_texture(info['head_tex'])
+    toned = m.char_texture(info['head_tex'], gain)
+    assert toned is not plain and toned.getXSize() == plain.getXSize()
+    assert m.char_texture(info['head_tex'], gain) is toned              # вторая такая же — из кэша
+    assert m.char_texture(info['head_tex'], [1.0, 1.01, 0.99]) is plain   # поправка меньше 2 % не нужна
