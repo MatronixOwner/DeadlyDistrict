@@ -1,19 +1,19 @@
 # Модели и материалы
 
 Что в игре сделано не нами, чьё это и на каких условиях взято. Всё остальное — город и берега, здания,
-комнаты, сухогруз, автобус, мотоциклы и прочая мелкая техника, вывески, значки, звуки и музыка — создаётся
-кодом проекта.
+комнаты, сухогруз, автобус, вывески, значки, звуки и музыка — создаётся кодом проекта.
 
 | Что | Автор и набор | Лицензия | Откуда взяты файлы |
 |---|---|---|---|
 | Люди: модели и текстуры (`chars/`) | **Elbolilloduro** — «Characters PSX» | см. примечание | репозиторий `Mesh2Motion/mesh2motion-app` (`static/assets/human/variations`) |
 | Скелет и клипы анимации (`anims/`) | проект **Mesh2Motion** | CC0 | там же (`static/assets/human/animations`) |
 | Машины: 10 моделей (`veh/`) | **GGBot** — «PSX Style Cars» | CC0 | копия набора в репозитории `Raccoon-Formality/Parking_Ticket_Mayhem` |
-| Такси (`veh/taxi`) | **MoiDev** — «Yellow Taxi/Cab - PS1 Car» | CC-BY-SA-4.0 | копия набора в репозитории `Langorithm/3d-models` (`yellow_taxicab_-_ps1_car`) |
+| Седан `moidev` и такси `taxi` (`veh/`) | **MoiDev** — «Suspicious Car» (CC0) и «Yellow Taxi/Cab - PS1 Car» (CC-BY-SA-4.0) | CC0 / CC-BY-SA-4.0 | репозитории `muricristino/walking-simulator-paulista` и `Langorithm/3d-models` |
+| Пикап `pickup` и старый седан `beater` (`veh/`) | **heyheythere** — «PSX Vehicles Free» | CC BY 4.0 | копия набора в репозитории `webbertakken/citymap` (`pickup.glb`, `sedan.glb`) |
+| Микроавтобус `hiace` (`veh/`) | набор `psxpack` | см. набор | `psxpack/models.dae` |
 | Автобус (`veh/bus`) | код проекта, `tools/gen_bus.py` | — | — |
 | Мотоцикл-круизер (`veh/b_moto`) | **Duhgless** — «Another PSX Style Low-poly Bike» | CC0 | копия в репозитории `webbertakken/citymap` (`motorbike.glb`) |
 | Велосипеды (`veh/b_cycle`, `veh/b_bmx`) | **Kenney** — «Starter Kit: Racing» / «Car Kit» | CC0 | `KenneyNL/Starter-Kit-Racing` |
-| Скутеры, мопед, спортбайк, кросс, квадроцикл, карт, гольф-кар и детали коляски/трайка | код проекта, `game/bikes.py` | — | — |
 | Панели интерфейса (`assets/tex/ui_panel.png`, `ui_row.png`) | **rohhsa** — «FREEPSXUI» | CC0 | копия в репозитории `Balwanek-ola/haven-2026` (`FREEPSXUI`) |
 | Мебель и техника в комнатах: 74 предмета (`furn/`) | **Elbolilloduro** — «Pack of low poly psx style models» | см. примечание | сборник `M3-org/retro3d-assets` (папка `Furniture`) |
 | Пистолет и пистолет с глушителем (`weapons/pistol`, `silenced`) | **Mextie** — «Low-Poly Glock Model»; глушитель добавлен кодом | см. примечание | сборник `M3-org/retro3d-assets` (`Weapons/low-poly-glock`) |
@@ -88,11 +88,9 @@ Elbolilloduro (`src/lib/RigConfig.ts`).
 
 ## Примечание о мотоциклах и велосипедах
 
-Круизер `b_moto` (используется для «Ворона», «Странника», патрульного мотоцикла, трайка и «Тайги» с коляской)
-импортирован из CC0-набора **Duhgless** «Another PSX Style Low-poly Bike» с отделением поворотной вилки и
-колёс в `tools/import_vehicles.py`, а велосипеды `b_cycle` и `b_bmx` — из CC0-набора Kenney. Остальные виды
-(спортивный и кроссовый мотоциклы, скутеры, мопед, квадроцикл, грузовой мотороллер, карт и гольф-кар)
-собирает код (`game/bikes.py`) — из колёс, труб и обтекаемых деталей, подогнанных под посадку ездока.
+Круизер `b_moto` («Ворон») импортирован из CC0-набора **Duhgless** «Another PSX Style Low-poly Bike» с отделением
+поворотной вилки и колёс в `tools/import_vehicles.py`, а велосипеды `b_cycle` и `b_bmx` — из CC0-набора Kenney.
+Процедурно генерируемые мотоциклы из игры убраны: весь двухколёсный транспорт использует готовые модели.
 
 ## Шрифты
 

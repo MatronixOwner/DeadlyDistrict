@@ -47,15 +47,19 @@ VEH = os.path.join(OUT, 'veh')
 SOURCES = [
     ('M3-org/retro3d-assets', None, [
         ('Large_kits/Models pack psx/Models/models.dae', 'psxpack/models.dae'),
-        ('Large_kits/Models pack psx/Texture/Auto.jpg', 'psxpack/Auto.jpg'),
         ('Large_kits/Models pack psx/Texture/Auto2.jpg', 'psxpack/Auto2.jpg'),
-        ('Vehicles/volvo.blend', 'm3/volvo.blend'),
-        ('Vehicles/Materials/volvo.jpg', 'm3/volvo.jpg'),
         ('Vehicles/bike_vintage (unfinished).blend', 'm3/bike_vintage.blend'),
         ('Vehicles/Materials/bike_vintage.png', 'm3/bike_vintage.png'),
     ]),
     ('webbertakken/citymap', None, [
         ('apps/web/public/models/vehicles/motorbike.glb', 'itch_gh/Bike3.glb'),
+        ('apps/web/public/models/vehicles/pickup.glb', 'itch_gh/hey/pickup.glb'),
+        ('apps/web/public/models/vehicles/sedan.glb', 'itch_gh/hey/sedan.glb'),
+    ]),
+    ('muricristino/walking-simulator-paulista', None, [
+        ('assets/cars/moidev/' + f, 'itch_gh/moidev/' + f)
+        for f in ('sedan.obj', 'sedan.mtl', 'sedan_blue.png', 'sedan_red.png', 'sedan_black.png',
+                  'sedan_white.png', 'sedan_brown.png', 'sedan_persian_blue.png')
     ]),
     ('Langorithm/3d-models', None, [
         ('yellow_taxicab_-_ps1_car/' + f, 'itch_gh/taxi/' + f)
@@ -326,13 +330,6 @@ DARK_INSIDE = (30, 30, 32)
 #   flat     — материалы без текстуры: имя -> цвет (None — грани убрать)
 #   head/tail — высота фар и задних фонарей в долях высоты кузова, и разнос в долях полуширины
 CARS = {
-    'dacia': dict(
-        file=('psxpack', 'models.dae'), tex=('psxpack', 'Auto.jpg'),
-        parts=('Auto.002', 'Auto.001', 'Auto.003', 'Auto.004', 'Auto.005', 'Auto.006'),
-        wheels=('Cylinder.043', 'Cylinder.044', 'Cylinder.046', 'Cylinder.047'),
-        turn='x-', width=1.64, paint=dict(hue=(190.0, 240.0), sat=(0.16, 1.0), val=0.16),
-        flat={'Material_155': GLASS, 'Plastic_02': None, 'Leather': None, 'Material_180': None},
-        head=(0.50, 0.70), tail=(0.56, 0.72)),
     'hiace': dict(
         file=('psxpack', 'models.dae'), tex=('psxpack', 'Auto2.jpg'),
         parts=('Auto', 'Puerta', 'Puerta.001', 'Puerta.002', 'Puerta.003'),
@@ -340,15 +337,6 @@ CARS = {
         turn='x-', width=1.70, paint=dict(tint=(0.34, 0.30), keep=[(13, 203, 30, 220), (99, 203, 115, 220)]),
         flat={'Material_155': GLASS},
         head=(0.36, 0.72), tail=(0.42, 0.80)),
-    'volvo': dict(
-        file=('m3', 'volvo.blend'), tex=('m3', 'volvo.jpg'),
-        parts=('Plane',), wheels=None, mirror=True,
-        turn='y-', width=1.71,
-        paint=dict(hue=(18.0, 62.0), sat=(0.10, 0.62), val=0.30, white=(0.16, 0.50),
-                   keep=[(13, 89, 63, 135), (81, 31, 127, 64), (73, 87, 137, 119), (96, 127, 113, 149), (27, 185, 45, 207),
-                         (147, 125, 219, 166)]),
-        flat={},
-        head=(0.50, 0.74), tail=(0.56, 0.74)),
 }
 TEX_SIZE = 256
 
@@ -492,7 +480,10 @@ def convert_car(name, d):
     wo.part(w, xf=lambda q: q - c)
     root.attachNewNode(wo.node('wheel'))
     for w, c, r in sorted(ws, key=lambda q: (0 if q[1][1] > 0 else 1, q[1][0])):
-        info['wheels'].append(dict(x=round(float(c[0]), 3), y=round(float(c[1]), 3), r=round(r, 3)))
+        wx = float(c[0])
+        if name == 'hiace':
+            wx = 0.74 if wx > 0 else -0.74               # у hiace колёса в исходнике сдвинуты внутрь и асимметричны
+        info['wheels'].append(dict(x=round(wx, 3), y=round(float(c[1]), 3), r=round(r, 3)))
     hw, hl, H = info['W'] * 0.5, info['L'] * 0.5, info['H']
     info['head'] = [[-hw * d['head'][1], round(hl - 0.03, 3), round(H * d['head'][0], 3)],
                     [hw * d['head'][1], round(hl - 0.03, 3), round(H * d['head'][0], 3)]]
@@ -559,11 +550,165 @@ def do_taxi(meta):
         info['W'], info['L'], info['H'], len(out), info['wheels'][0]['r']))
 
 
+def do_moidev(meta):
+    """Седан MoiDev («Suspicious Car», CC0) -> moidev.bam + moidev.png + moidev_shade.png (краска из 6 скинов)."""
+    from PIL import Image
+    from panda3d.core import NodePath
+    _panda()
+    os.makedirs(VEH, exist_ok=True)
+    parts = ms.read_obj(src('itch_gh', 'moidev', 'sedan.obj'))
+    rot = np.array([[-1.0, 0, 0], [0, 0, 1.0], [0, 1.0, 0]])
+    for p in parts:
+        p.transform(rot)
+    P = named(parts)
+    body = [P['Body_Cube.001']]
+    wheels = [P[n] for n in ('Wheel_FR_Cylinder', 'Wheels_FL_Cylinder.002',
+                             'Wheels_RL_Cylinder.001', 'Wheels_RR_Cylinder.003')]
+    pts = np.concatenate([tri_points(p) for p in body])
+    width = pts[:, 0].max() - pts[:, 0].min()
+    k = 1.84 / width
+    cx = (pts[:, 0].max() + pts[:, 0].min()) * 0.5
+    cy = (pts[:, 1].max() + pts[:, 1].min()) * 0.5
+    z0 = min(tri_points(w)[:, 2].min() for w in wheels)
+    for p in body + wheels:
+        p.verts = (p.verts - (cx, cy, z0)) * k
+    pts = np.concatenate([tri_points(p) for p in body])
+
+    # сравниваем три разных скина: где цвет меняется — там краска кузова
+    sb = np.asarray(Image.open(src('itch_gh', 'moidev', 'sedan_blue.png')).convert('RGB').resize(
+        (TEX_SIZE, TEX_SIZE), Image.LANCZOS), dtype=np.int16)
+    sr = np.asarray(Image.open(src('itch_gh', 'moidev', 'sedan_red.png')).convert('RGB').resize(
+        (TEX_SIZE, TEX_SIZE), Image.LANCZOS), dtype=np.int16)
+    sw = np.asarray(Image.open(src('itch_gh', 'moidev', 'sedan_white.png')).convert('RGB').resize(
+        (TEX_SIZE, TEX_SIZE), Image.LANCZOS), dtype=np.int16)
+    diff = np.abs(sb - sr).sum(2) + np.abs(sb - sw).sum(2) + np.abs(sr - sw).sum(2)
+    used = uv_mask(body, TEX_SIZE)
+    m = (diff > 28) & dilate(used, 2) & ~uv_mask(wheels, TEX_SIZE)
+    m = dilate(erode(m, 1), 1) | (m & erode(dilate(m, 2), 2))
+    L = lum(sw.astype(np.float64))
+    ref = float(np.median(L[m])) if m.any() else 200.0
+    shade = np.where(m, np.clip(L / ref * 127.5, 0, 255), 128.0)
+    rgba = np.zeros((TEX_SIZE, TEX_SIZE, 4), np.uint8)
+    rgba[..., :3] = np.where(m[..., None], shade[..., None], sb).astype(np.uint8)
+    rgba[..., 3] = np.where(m, 0, 255)
+    Image.fromarray(rgba, 'RGBA').save(os.path.join(VEH, 'moidev.png'), optimize=True)
+    Image.fromarray(shade.astype(np.uint8), 'L').save(os.path.join(VEH, 'moidev_shade.png'), optimize=True)
+
+    out = Out()
+    for p in body:
+        out.part(p)
+    root = NodePath('car')
+    b = root.attachNewNode('body')
+    b.attachNewNode(out.node('skin'))
+    info = dict(W=round(float(pts[:, 0].max() - pts[:, 0].min()), 3), L=round(float(pts[:, 1].max() - pts[:, 1].min()), 3),
+                H=round(float(pts[:, 2].max()), 3), tex=True, wheels=[])
+    ws = []
+    for w in wheels:
+        wp = tri_points(w)
+        lo, hi = wp.min(0), wp.max(0)
+        ws.append((w, (lo + hi) * 0.5, float((hi[1] - lo[1] + hi[2] - lo[2]) * 0.25)))
+    w, c, r = sorted(ws, key=lambda q: (0 if q[1][0] > 0 else 1, -q[1][1]))[0]
+    wo = Out()
+    wo.part(w, xf=lambda q: q - c)
+    root.attachNewNode(wo.node('wheel'))
+    for w, c, r in sorted(ws, key=lambda q: (0 if q[1][1] > 0 else 1, q[1][0])):
+        wx = float(c[0]) + (0.068 if c[0] > 0 else -0.068)
+        info['wheels'].append(dict(x=round(wx, 3), y=round(float(c[1]), 3), r=round(r, 3)))
+    hw, hl, H = info['W'] * 0.5, info['L'] * 0.5, info['H']
+    info['head'] = [[-hw * 0.74, round(hl - 0.03, 3), round(H * 0.44, 3)],
+                    [hw * 0.74, round(hl - 0.03, 3), round(H * 0.44, 3)]]
+    info['tail'] = [[-hw * 0.74, round(-hl + 0.03, 3), round(H * 0.50, 3)],
+                    [hw * 0.74, round(-hl + 0.03, 3), round(H * 0.50, 3)]]
+    root.writeBamFile(os.path.join(VEH, 'moidev.bam'))
+    meta['vehicles']['moidev'] = info
+    print('  moidev  Ш %.2f  Д %.2f  В %.2f  треугольников %d, колесо r %.2f, краски %d%%' % (
+        info['W'], info['L'], info['H'], len(out), info['wheels'][0]['r'], round(m.sum() / max(1, used.sum()) * 100)))
+
+
+def do_hey_car(meta, name, glb_file, width, hue_rule, sat_min=0.22):
+    """Модель heyheythere («PSX Vehicles Free», CC BY 4.0) -> <name>.bam + <name>.png + <name>_shade.png."""
+    import io
+    from PIL import Image
+    from panda3d.core import NodePath
+    _panda()
+    os.makedirs(VEH, exist_ok=True)
+    parts, imgs = ms.read_glb(src('itch_gh', 'hey', glb_file))
+    rot = np.array([[-1.0, 0, 0], [0, 0, 1.0], [0, 1.0, 0]])
+    for p in parts:
+        p.transform(rot)
+        # вся палитра набора лежит в верхней полосе 128 px из 1024 px: разворачиваем её на весь квадрат
+        if p.uvs is not None:
+            p.uvs = p.uvs.copy()
+            p.uvs[..., 1] = 1.0 - (1.0 - p.uvs[..., 1]) * 8.0
+    body = [p for p in parts if 'wheel' not in p.name]
+    wheels = [p for p in parts if 'wheel' in p.name]
+    assert len(wheels) == 4, (name, len(wheels))
+    b0 = body[0]
+    bpts = tri_points(b0)
+    k = width / (bpts[:, 0].max() - bpts[:, 0].min())
+    cx = (bpts[:, 0].max() + bpts[:, 0].min()) * 0.5
+    cy = (bpts[:, 1].max() + bpts[:, 1].min()) * 0.5
+    z0 = min(tri_points(w)[:, 2].min() for w in wheels)
+    for p in body + wheels:
+        p.verts = (p.verts - (cx, cy, z0)) * k
+    pts = np.concatenate([tri_points(p) for p in body])
+
+    im = Image.open(io.BytesIO(imgs[0])).convert('RGB')
+    im = im.crop((0, 0, im.width, im.height // 8)).resize((TEX_SIZE, TEX_SIZE), Image.LANCZOS)
+    a = np.asarray(im)
+    h, s, v = hsv(a)
+    h0, h1 = hue_rule
+    hm = (h >= h0) | (h <= h1) if h0 > h1 else (h >= h0) & (h <= h1)
+    used = uv_mask(body, TEX_SIZE)
+    m = hm & (s >= sat_min) & (v >= 0.14) & dilate(used, 2) & ~uv_mask(wheels, TEX_SIZE)
+    m = dilate(erode(m, 1), 1) | (m & erode(dilate(m, 2), 2))
+    L = lum(a.astype(np.float64))
+    ref = float(np.median(L[m])) if m.any() else 128.0
+    shade = np.where(m, np.clip(L / ref * 127.5, 0, 255), 128.0)
+    rgba = np.zeros((TEX_SIZE, TEX_SIZE, 4), np.uint8)
+    rgba[..., :3] = np.where(m[..., None], shade[..., None], a).astype(np.uint8)
+    rgba[..., 3] = np.where(m, 0, 255)
+    Image.fromarray(rgba, 'RGBA').save(os.path.join(VEH, name + '.png'), optimize=True)
+    Image.fromarray(shade.astype(np.uint8), 'L').save(os.path.join(VEH, name + '_shade.png'), optimize=True)
+
+    out = Out()
+    for p in body:
+        out.part(p)
+    root = NodePath('car')
+    b = root.attachNewNode('body')
+    b.attachNewNode(out.node('skin'))
+    info = dict(W=round(float(pts[:, 0].max() - pts[:, 0].min()), 3), L=round(float(pts[:, 1].max() - pts[:, 1].min()), 3),
+                H=round(float(pts[:, 2].max()), 3), tex=True, wheels=[])
+    ws = []
+    for w in wheels:
+        wp = tri_points(w)
+        lo, hi = wp.min(0), wp.max(0)
+        ws.append((w, (lo + hi) * 0.5, float((hi[1] - lo[1] + hi[2] - lo[2]) * 0.25)))
+    w, c, r = sorted(ws, key=lambda q: (0 if q[1][0] > 0 else 1, -q[1][1]))[0]
+    wo = Out()
+    wo.part(w, xf=lambda q: q - c)
+    root.attachNewNode(wo.node('wheel'))
+    for w, c, r in sorted(ws, key=lambda q: (0 if q[1][1] > 0 else 1, q[1][0])):
+        info['wheels'].append(dict(x=round(float(c[0]), 3), y=round(float(c[1]), 3), r=round(r, 3)))
+    hw, hl, H = info['W'] * 0.5, info['L'] * 0.5, info['H']
+    info['head'] = [[-hw * 0.72, round(hl - 0.04, 3), round(H * 0.48, 3)],
+                    [hw * 0.72, round(hl - 0.04, 3), round(H * 0.48, 3)]]
+    info['tail'] = [[-hw * 0.74, round(-hl + 0.04, 3), round(H * 0.50, 3)],
+                    [hw * 0.74, round(-hl + 0.04, 3), round(H * 0.50, 3)]]
+    root.writeBamFile(os.path.join(VEH, name + '.bam'))
+    meta['vehicles'][name] = info
+    print('  %-7s Ш %.2f  Д %.2f  В %.2f  треугольников %d, колесо r %.2f, краски %d%%' % (
+        name, info['W'], info['L'], info['H'], len(out), info['wheels'][0]['r'], round(m.sum() / max(1, used.sum()) * 100)))
+
+
 def do_cars(meta):
     os.makedirs(VEH, exist_ok=True)
     for name in sorted(CARS):
         meta['vehicles'][name] = convert_car(name, CARS[name])
     do_taxi(meta)
+    do_moidev(meta)
+    do_hey_car(meta, 'pickup', 'pickup.glb', 1.92, (335.0, 22.0))
+    do_hey_car(meta, 'beater', 'sedan.glb', 1.82, (205.0, 238.0), sat_min=0.38)
 
 
 # ---------------------------------------------------------------------------
@@ -995,6 +1140,12 @@ def main():
         do_cars(meta)
     if cmd == 'taxi':
         do_taxi(meta)
+    if cmd == 'newcars':
+        os.makedirs(VEH, exist_ok=True)
+        do_moidev(meta)
+        do_hey_car(meta, 'pickup', 'pickup.glb', 1.92, (335.0, 22.0))
+        do_hey_car(meta, 'beater', 'sedan.glb', 1.82, (195.0, 250.0))
+        meta['vehicles']['hiace'] = convert_car('hiace', CARS['hiace'])
     if cmd in ('all', 'bikes'):
         do_bikes(meta)
     if cmd == 'moto':

@@ -169,7 +169,7 @@ class Fx(object):
                 d = self.decals.pop(0)
                 d[0].removeNode()
         if self.shake > 0.0:
-            self.shake = max(0.0, self.shake - dt * 1.6)
+            self.shake = max(0.0, self.shake - dt * 2.4)
 
     # ------------------------------------------------------------------
     def smoke(self, x, y, z, size=1.0, dark=False, life=1.6):
@@ -286,7 +286,7 @@ class Fx(object):
         return np_
 
     def add_shake(self, amount):
-        self.shake = min(1.5, self.shake + amount)
+        self.shake = min(0.8, self.shake + amount)
 
     def clear(self):
         for p in self.active:

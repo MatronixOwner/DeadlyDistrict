@@ -1384,20 +1384,20 @@ def test_garage_keeps_a_motorcycle(game, world):
     gar = w.garage
     gar.reset()
     sx, sy = gar.slots[0]
-    bike = w.spawn_vehicle('sidecar', sx, sy, math.pi / 2, paint=2)
+    bike = w.spawn_vehicle('chopper', sx, sy, math.pi / 2, paint=2)
     bike.apply_tune({'engine': 1, 'neon': 2, 'rims': 3})
     pl.teleport(sx, sy - 9.0)
     harness.run(game, 1.0)
     assert bike in gar.cars
     saved = settings_mod.load_save()['garage'][0]
-    assert saved['kind'] == 'sidecar' and saved['paint'] == 2 and saved['tune'] == {'engine': 1, 'neon': 2, 'rims': 3}
+    assert saved['kind'] == 'chopper' and saved['paint'] == 2 and saved['tune'] == {'engine': 1, 'neon': 2, 'rims': 3}
     game.to_main_menu()
     game.continue_game()
     w = game.world
     pl = w.player
     assert len(w.garage.cars) == 1
     bike = w.garage.cars[0]
-    assert bike.kind == 'sidecar' and bike.bparts is not None and bike.paint == 2
+    assert bike.kind == 'chopper' and bike.bparts is not None and bike.paint == 2
     assert bike.tune == {'engine': 1, 'neon': 2, 'rims': 3}
     if w.interiors.current is not None:
         w.interiors.leave(instant=True)

@@ -437,7 +437,7 @@ class World(object):
         zone = self.city.zone_style(self.city.zone_at(v.x, v.y))
         if zone not in 'DOGRIB' or len(zone) != 1:
             zone = 'D'
-        if v.kind in ('police', 'enforcer', 'fbi', 'army', 'copbike') or v.owner == 'police':
+        if v.kind in ('police', 'enforcer', 'fbi', 'army') or v.owner == 'police':
             p = self.police.make_cop(v.x, v.y, v.yaw, v.kind)
         elif v.kind == 'ambulance':
             p = self.spawn_ped(v.x, v.y, v.yaw, medic_look(), 'civ')
@@ -607,7 +607,8 @@ class World(object):
             if imp > 7.0:
                 self.fx.debris(x, y, 0.7, 3, (0.25, 0.25, 0.27), 4.0, 0.2)
         if v.is_player:
-            self.fx.add_shake(min(0.5, imp * 0.03))
+            if imp > 5.0:
+                self.fx.add_shake(min(0.4, (imp - 5.0) * 0.03))
             if v.spec.bike and imp > 9.0:
                 self.player.thrown_off(v, imp)          # мотоциклиста выбивает из седла
             elif imp > 13.0:

@@ -36,6 +36,7 @@ class Camera(object):
         self.look_back = False
         self.hid_player = False           # персонаж скрыт, потому что камера вплотную
         self.scope = False                # смотрим в оптический прицел
+        self._sh_t = 0.0
 
     def snap(self):
         self.cut = True
@@ -126,11 +127,9 @@ class Camera(object):
             self.dist = dist
             self.fov = fov
         else:
-            k = 1.0 - math.exp(-18.0 * dt)
-            self.tx += (tx - self.tx) * k
-            self.ty += (ty - self.ty) * k
-            self.tz += (tz - self.tz) * (1.0 - math.exp(-10.0 * dt))
-            self.fov = damp(self.fov, fov, 5.0, dt)
+            self.tx, self.ty = tx, ty
+            self.tz = damp(self.tz, tz, 12.0, dt)
+            self.fov = damp(self.fov, fov, 6.0, dt)
         cp, sp_ = math.cos(self.pitch), math.sin(self.pitch)
         dx, dy, dz = math.cos(yaw) * cp, math.sin(yaw) * cp, sp_
         # смещение «из-за плеча»
@@ -143,10 +142,12 @@ class Camera(object):
         hit = None if scope else w.static.raycast(ox, oy, oz, -dx, -dy, -dz, dist + 0.4, F_CAM)
         if hit is not None:
             want = max(0.7, hit[0] - 0.35)
-        if want < self.dist or self.cut:
+        if self.cut:
             self.dist = want
+        elif want < self.dist:
+            self.dist = damp(self.dist, want, 18.0, dt)
         else:
-            self.dist = min(want, self.dist + dt * 6.0)
+            self.dist = damp(self.dist, want, 6.0, dt)
         d = self.dist
         cx, cy, cz = ox - dx * d, oy - dy * d, oz - dz * d
         ceil = w.city.ceiling(cx, cy) if w.city.covered else None
@@ -172,14 +173,16 @@ class Camera(object):
             cz = gz + 0.3
         sh = w.fx.shake
         if sh > 0.0:
-            cx += random.uniform(-1, 1) * sh * 0.25
-            cy += random.uniform(-1, 1) * sh * 0.25
-            cz += random.uniform(-1, 1) * sh * 0.25
+            self._sh_t += dt
+            amp = sh * sh * 0.14
+            cx += math.sin(self._sh_t * 41.0) * amp
+            cy += math.cos(self._sh_t * 37.0) * amp
+            cz += math.sin(self._sh_t * 29.0) * amp * 0.7
         self.x, self.y, self.z = cx, cy, cz
         self.cut = False
         cam.setPosHpr(cx, cy, cz, yaw_to_h(yaw), self.pitch * DEG, 0)
         lens = self.base.camLens
-        if abs(lens.getFov()[0] - self.fov) > 0.2:
+        if abs(lens.getFov()[0] - self.fov) > 0.02:
             lens.setFov(self.fov)
 
     def aim_ray(self):
@@ -739,7 +742,7 @@ class Player(object):
         w.cam.look_back = inp.held('b')
         # сигнал / сирена
         if inp.hit('h'):
-            if v.kind in ('police', 'ambulance', 'enforcer', 'fbi', 'firetruck', 'copbike'):
+            if v.kind in ('police', 'ambulance', 'enforcer', 'fbi', 'firetruck'):
                 v.siren = not v.siren
             else:
                 w.audio.play(v.horn or ('horn_truck' if v.spec.engine == 'truck' else 'horn'), 0.9)

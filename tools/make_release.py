@@ -97,9 +97,10 @@ README_TXT = u"""DEADLY DISTRICT — «Гиблый район»
 АВТОРЫ МОДЕЛЕЙ И МАТЕРИАЛОВ
   Люди — Elbolilloduro («Characters PSX»), анимация — Mesh2Motion.
   Мебель — Elbolilloduro («Pack of low poly psx style models»).
-  Машины — GGBot («PSX Style Cars»), такси — MoiDev (CC-BY-SA-4.0).
-  Круизер — Duhgless (CC0), велосипеды — Kenney (CC0), остальная мелкая
-  техника собрана кодом игры. Панели меню и HUD — rohhsa («FREEPSXUI», CC0).
+  Машины — GGBot («PSX Style Cars»), MoiDev (CC0 и CC-BY-SA-4.0),
+  heyheythere («PSX Vehicles Free», CC BY 4.0).
+  Круизер — Duhgless (CC0), велосипеды — Kenney (CC0). Панели меню
+  и HUD — rohhsa («FREEPSXUI», CC0).
   Оружие — Mextie, Ace Spectre, Cemckrc и другие авторы сборника
   M3-org/retro3d-assets; бита, гранаты и бутылка — Quaternius.
   Материалы города и комнат — Classic64 Asset Library (Craig Snedeker).

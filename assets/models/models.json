@@ -1,1745 +1,1797 @@
 {
- "anims": {
-  "air": {
-   "fps": 30.0,
-   "frames": 93
-  },
-  "angry": {
-   "fps": 30.0,
-   "frames": 23
-  },
-  "arms": {
-   "fps": 30.0,
-   "frames": 74
-  },
-  "clap": {
-   "fps": 30.0,
-   "frames": 44
-  },
-  "confused": {
-   "fps": 30.0,
-   "frames": 85
-  },
-  "cower": {
-   "fps": 30.0,
-   "frames": 28
-  },
-  "crouch": {
-   "fps": 30.0,
-   "frames": 109
-  },
-  "dance_a": {
-   "fps": 30.0,
-   "frames": 37
-  },
-  "dance_b": {
-   "fps": 30.0,
-   "frames": 59
-  },
-  "death_a": {
-   "fps": 30.0,
-   "frames": 60
-  },
-  "death_b": {
-   "fps": 30.0,
-   "frames": 75
-  },
-  "death_c": {
-   "fps": 30.0,
-   "frames": 66
-  },
-  "dizzy": {
-   "fps": 30.0,
-   "frames": 72
-  },
-  "door": {
-   "fps": 30.0,
-   "frames": 137
-  },
-  "drink": {
-   "fps": 30.0,
-   "frames": 39
-  },
-  "drive": {
-   "fps": 30.0,
-   "frames": 60
-  },
-  "fix": {
-   "fps": 30.0,
-   "frames": 194
-  },
-  "getup": {
-   "fps": 30.0,
-   "frames": 47
-  },
-  "greet": {
-   "fps": 30.0,
-   "frames": 148
-  },
-  "hit_a": {
-   "fps": 30.0,
-   "frames": 12
-  },
-  "hit_b": {
-   "fps": 30.0,
-   "frames": 15
-  },
-  "hurt": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "idle": {
-   "fps": 30.0,
-   "frames": 77
-  },
-  "idle_wide": {
-   "fps": 30.0,
-   "frames": 93
-  },
-  "interact": {
-   "fps": 30.0,
-   "frames": 74
-  },
-  "jog": {
-   "fps": 30.0,
-   "frames": 35
-  },
-  "kick": {
-   "fps": 30.0,
-   "frames": 41
-  },
-  "kneel": {
-   "fps": 30.0,
-   "frames": 88
-  },
-  "knock": {
-   "fps": 30.0,
-   "frames": 87
-  },
-  "knockback": {
-   "fps": 30.0,
-   "frames": 24
-  },
-  "listen": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "no": {
-   "fps": 30.0,
-   "frames": 112
-  },
-  "nod": {
-   "fps": 30.0,
-   "frames": 24
-  },
-  "phone": {
-   "fps": 30.0,
-   "frames": 87
-  },
-  "pickup": {
-   "fps": 30.0,
-   "frames": 70
-  },
-  "pistol_aim": {
-   "fps": 30.0,
-   "frames": 58
-  },
-  "pistol_idle": {
-   "fps": 30.0,
-   "frames": 62
-  },
-  "pistol_shoot": {
-   "fps": 30.0,
-   "frames": 23
-  },
-  "pistol_walk": {
-   "fps": 30.0,
-   "frames": 39
-  },
-  "punch_a": {
-   "fps": 30.0,
-   "frames": 32
-  },
-  "punch_b": {
-   "fps": 30.0,
-   "frames": 37
-  },
-  "push": {
-   "fps": 30.0,
-   "frames": 99
-  },
-  "ride": {
-   "fps": 30.0,
-   "frames": 112
-  },
-  "rifle_fire": {
-   "fps": 30.0,
-   "frames": 37
-  },
-  "rifle_idle": {
-   "fps": 30.0,
-   "frames": 58
-  },
-  "rifle_run": {
-   "fps": 30.0,
-   "frames": 24
-  },
-  "rifle_walk": {
-   "fps": 30.0,
-   "frames": 39
-  },
-  "run_f": {
-   "fps": 30.0,
-   "frames": 25
-  },
-  "sit": {
-   "fps": 30.0,
-   "frames": 62
-  },
-  "sit_down": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "sit_ground": {
-   "fps": 30.0,
-   "frames": 89
-  },
-  "sit_talk": {
-   "fps": 30.0,
-   "frames": 109
-  },
-  "sit_up": {
-   "fps": 30.0,
-   "frames": 39
-  },
-  "sleep": {
-   "fps": 30.0,
-   "frames": 48
-  },
-  "sprint": {
-   "fps": 30.0,
-   "frames": 24
-  },
-  "swing": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "talk": {
-   "fps": 30.0,
-   "frames": 109
-  },
-  "texting": {
-   "fps": 30.0,
-   "frames": 34
-  },
-  "throw": {
-   "fps": 30.0,
-   "frames": 58
-  },
-  "tired": {
-   "fps": 30.0,
-   "frames": 29
-  },
-  "victory": {
-   "fps": 30.0,
-   "frames": 56
-  },
-  "walk": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "walk_back": {
-   "fps": 30.0,
-   "frames": 29
-  },
-  "walk_f": {
-   "fps": 30.0,
-   "frames": 41
-  },
-  "walk_formal": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "walk_hurt": {
-   "fps": 30.0,
-   "frames": 49
-  },
-  "walk_relaxed": {
-   "fps": 30.0,
-   "frames": 42
-  },
-  "write": {
-   "fps": 30.0,
-   "frames": 119
+  "anims": {
+    "air": {
+      "fps": 30.0,
+      "frames": 93
+    },
+    "angry": {
+      "fps": 30.0,
+      "frames": 23
+    },
+    "arms": {
+      "fps": 30.0,
+      "frames": 74
+    },
+    "clap": {
+      "fps": 30.0,
+      "frames": 44
+    },
+    "confused": {
+      "fps": 30.0,
+      "frames": 85
+    },
+    "cower": {
+      "fps": 30.0,
+      "frames": 28
+    },
+    "crouch": {
+      "fps": 30.0,
+      "frames": 109
+    },
+    "dance_a": {
+      "fps": 30.0,
+      "frames": 37
+    },
+    "dance_b": {
+      "fps": 30.0,
+      "frames": 59
+    },
+    "death_a": {
+      "fps": 30.0,
+      "frames": 60
+    },
+    "death_b": {
+      "fps": 30.0,
+      "frames": 75
+    },
+    "death_c": {
+      "fps": 30.0,
+      "frames": 66
+    },
+    "dizzy": {
+      "fps": 30.0,
+      "frames": 72
+    },
+    "door": {
+      "fps": 30.0,
+      "frames": 137
+    },
+    "drink": {
+      "fps": 30.0,
+      "frames": 39
+    },
+    "drive": {
+      "fps": 30.0,
+      "frames": 60
+    },
+    "fix": {
+      "fps": 30.0,
+      "frames": 194
+    },
+    "getup": {
+      "fps": 30.0,
+      "frames": 47
+    },
+    "greet": {
+      "fps": 30.0,
+      "frames": 148
+    },
+    "hit_a": {
+      "fps": 30.0,
+      "frames": 12
+    },
+    "hit_b": {
+      "fps": 30.0,
+      "frames": 15
+    },
+    "hurt": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "idle": {
+      "fps": 30.0,
+      "frames": 77
+    },
+    "idle_wide": {
+      "fps": 30.0,
+      "frames": 93
+    },
+    "interact": {
+      "fps": 30.0,
+      "frames": 74
+    },
+    "jog": {
+      "fps": 30.0,
+      "frames": 35
+    },
+    "kick": {
+      "fps": 30.0,
+      "frames": 41
+    },
+    "kneel": {
+      "fps": 30.0,
+      "frames": 88
+    },
+    "knock": {
+      "fps": 30.0,
+      "frames": 87
+    },
+    "knockback": {
+      "fps": 30.0,
+      "frames": 24
+    },
+    "listen": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "no": {
+      "fps": 30.0,
+      "frames": 112
+    },
+    "nod": {
+      "fps": 30.0,
+      "frames": 24
+    },
+    "phone": {
+      "fps": 30.0,
+      "frames": 87
+    },
+    "pickup": {
+      "fps": 30.0,
+      "frames": 70
+    },
+    "pistol_aim": {
+      "fps": 30.0,
+      "frames": 58
+    },
+    "pistol_idle": {
+      "fps": 30.0,
+      "frames": 62
+    },
+    "pistol_shoot": {
+      "fps": 30.0,
+      "frames": 23
+    },
+    "pistol_walk": {
+      "fps": 30.0,
+      "frames": 39
+    },
+    "punch_a": {
+      "fps": 30.0,
+      "frames": 32
+    },
+    "punch_b": {
+      "fps": 30.0,
+      "frames": 37
+    },
+    "push": {
+      "fps": 30.0,
+      "frames": 99
+    },
+    "ride": {
+      "fps": 30.0,
+      "frames": 112
+    },
+    "rifle_fire": {
+      "fps": 30.0,
+      "frames": 37
+    },
+    "rifle_idle": {
+      "fps": 30.0,
+      "frames": 58
+    },
+    "rifle_run": {
+      "fps": 30.0,
+      "frames": 24
+    },
+    "rifle_walk": {
+      "fps": 30.0,
+      "frames": 39
+    },
+    "run_f": {
+      "fps": 30.0,
+      "frames": 25
+    },
+    "sit": {
+      "fps": 30.0,
+      "frames": 62
+    },
+    "sit_down": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "sit_ground": {
+      "fps": 30.0,
+      "frames": 89
+    },
+    "sit_talk": {
+      "fps": 30.0,
+      "frames": 109
+    },
+    "sit_up": {
+      "fps": 30.0,
+      "frames": 39
+    },
+    "sleep": {
+      "fps": 30.0,
+      "frames": 48
+    },
+    "sprint": {
+      "fps": 30.0,
+      "frames": 24
+    },
+    "swing": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "talk": {
+      "fps": 30.0,
+      "frames": 109
+    },
+    "texting": {
+      "fps": 30.0,
+      "frames": 34
+    },
+    "throw": {
+      "fps": 30.0,
+      "frames": 58
+    },
+    "tired": {
+      "fps": 30.0,
+      "frames": 29
+    },
+    "victory": {
+      "fps": 30.0,
+      "frames": 56
+    },
+    "walk": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "walk_back": {
+      "fps": 30.0,
+      "frames": 29
+    },
+    "walk_f": {
+      "fps": 30.0,
+      "frames": 41
+    },
+    "walk_formal": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "walk_hurt": {
+      "fps": 30.0,
+      "frames": 49
+    },
+    "walk_relaxed": {
+      "fps": 30.0,
+      "frames": 42
+    },
+    "write": {
+      "fps": 30.0,
+      "frames": 119
+    }
+  },
+  "bikes": {
+    "bmx": {
+      "H": 1.042,
+      "L": 1.596,
+      "W": 0.62,
+      "bend": [
+        -0.03,
+        0.141
+      ],
+      "foot": [
+        0.28,
+        -0.018,
+        0.241
+      ],
+      "grips": [
+        0.26,
+        0.363,
+        0.982
+      ],
+      "pose": "std",
+      "seat": [
+        -0.207,
+        0.867
+      ],
+      "seat_top": 0.767,
+      "tris": 3027,
+      "wheel_f": [
+        0.538,
+        0.26,
+        0.07
+      ],
+      "wheel_r": [
+        -0.538,
+        0.26,
+        0.07
+      ],
+      "y0": -0.798,
+      "y1": 0.798
+    },
+    "cycle": {
+      "H": 1.148,
+      "L": 1.85,
+      "W": 0.498,
+      "bend": [
+        -0.028,
+        -0.086
+      ],
+      "foot": [
+        0.28,
+        -0.014,
+        0.321
+      ],
+      "grips": [
+        0.199,
+        0.373,
+        1.088
+      ],
+      "pose": "std",
+      "seat": [
+        -0.197,
+        0.973
+      ],
+      "seat_top": 0.873,
+      "tex": "b_cycle",
+      "tris": 1624,
+      "wheel_f": [
+        0.585,
+        0.34,
+        0.04
+      ],
+      "wheel_r": [
+        -0.585,
+        0.34,
+        0.04
+      ],
+      "y0": -0.925,
+      "y1": 0.925
+    },
+    "moto": {
+      "H": 1.226,
+      "L": 2.262,
+      "W": 0.666,
+      "bend": [
+        0.0,
+        -0.016
+      ],
+      "foot": [
+        0.2,
+        0.082,
+        0.282
+      ],
+      "grips": [
+        0.28,
+        0.182,
+        1.122
+      ],
+      "head": [
+        0.0,
+        0.589,
+        0.898
+      ],
+      "pose": "chair",
+      "seat": [
+        -0.358,
+        0.812
+      ],
+      "seat_top": 0.712,
+      "seat_y": [
+        -0.68,
+        -0.32
+      ],
+      "tail": [
+        0.0,
+        -0.919,
+        0.703
+      ],
+      "tex": "b_moto",
+      "tris": 3956,
+      "wheel_f": [
+        0.811,
+        0.32,
+        0.15
+      ],
+      "wheel_r": [
+        -0.811,
+        0.32,
+        0.19
+      ],
+      "y0": -1.131,
+      "y1": 1.131
+    }
+  },
+  "chars": {
+    "army": {
+      "height": 1.872,
+      "model": "army",
+      "source": "psx-28-hm",
+      "tex": "army",
+      "verts": 1002
+    },
+    "cop_f": {
+      "height": 1.785,
+      "model": "cop_f",
+      "source": "psx-17-female-police",
+      "tex": "cop_f",
+      "verts": 970
+    },
+    "cop_m": {
+      "height": 1.802,
+      "model": "cop_m",
+      "source": "psx-18-police",
+      "tex": "cop_m",
+      "verts": 739
+    },
+    "f_black": {
+      "height": 1.775,
+      "model": "f_black",
+      "source": "psx-female-09",
+      "tex": "f_black",
+      "verts": 1155
+    },
+    "f_goth": {
+      "height": 1.759,
+      "model": "f_goth",
+      "source": "psx-female-08",
+      "tex": "f_goth",
+      "verts": 1044
+    },
+    "f_old": {
+      "height": 1.789,
+      "model": "f_old",
+      "source": "psx-31-female",
+      "tex": "f_old",
+      "verts": 994
+    },
+    "f_old_b": {
+      "height": 1.789,
+      "model": "f_old",
+      "source": "psx-31-female",
+      "tex": "f_old_pink",
+      "verts": 994
+    },
+    "f_old_c": {
+      "height": 1.789,
+      "model": "f_old",
+      "source": "psx-31-female",
+      "tex": "f_old_green",
+      "verts": 994
+    },
+    "hero": {
+      "head_gain": [
+        0.908,
+        0.903,
+        0.956
+      ],
+      "head_tex": "m_red",
+      "height": 1.806,
+      "model": "hero",
+      "source": "psx-15 + psx-06",
+      "tex": "m_leather",
+      "verts": 795
+    },
+    "m_grey_h2": {
+      "head_gain": [
+        1.037,
+        1.01,
+        1.019
+      ],
+      "head_tex": "cop_m",
+      "height": 1.826,
+      "model": "m_grey_h2",
+      "source": "psx-10 + psx-18-police",
+      "tex": "m_grey",
+      "verts": 873
+    },
+    "m_grey_h2b": {
+      "head_gain": [
+        1.037,
+        1.01,
+        1.019
+      ],
+      "head_tex": "cop_m",
+      "height": 1.826,
+      "model": "m_grey_h2",
+      "source": "psx-10 + psx-18-police",
+      "tex": "grey_dark",
+      "verts": 873
+    },
+    "m_grey_h3": {
+      "head_gain": [
+        1.059,
+        1.169,
+        1.22
+      ],
+      "head_tex": "m_old",
+      "height": 1.824,
+      "model": "m_grey_h3",
+      "source": "psx-10 + psx-32",
+      "tex": "m_grey",
+      "verts": 866
+    },
+    "m_grey_h4": {
+      "head_gain": [
+        1.07,
+        1.04,
+        1.062
+      ],
+      "head_tex": "m_leather",
+      "height": 1.843,
+      "model": "m_grey_h4",
+      "source": "psx-10 + psx-15",
+      "tex": "m_grey",
+      "verts": 873
+    },
+    "m_grey_h4b": {
+      "head_gain": [
+        1.07,
+        1.04,
+        1.062
+      ],
+      "head_tex": "m_leather",
+      "height": 1.843,
+      "model": "m_grey_h4",
+      "source": "psx-10 + psx-15",
+      "tex": "grey_dark",
+      "verts": 873
+    },
+    "m_leather": {
+      "height": 1.79,
+      "model": "m_leather",
+      "source": "psx-15",
+      "tex": "m_leather",
+      "verts": 751
+    },
+    "m_leather_b": {
+      "head_gain": [
+        0.967,
+        0.969,
+        0.962
+      ],
+      "head_tex": "cop_m",
+      "height": 1.773,
+      "model": "m_leather_b",
+      "source": "psx-15 + psx-18-police",
+      "tex": "m_leather",
+      "verts": 802
+    },
+    "m_leather_c": {
+      "head_gain": [
+        0.987,
+        1.121,
+        1.156
+      ],
+      "head_tex": "m_old",
+      "height": 1.771,
+      "model": "m_leather_c",
+      "source": "psx-15 + psx-32",
+      "tex": "m_leather",
+      "verts": 795
+    },
+    "m_old": {
+      "height": 1.774,
+      "model": "m_old",
+      "source": "psx-32",
+      "tex": "m_old",
+      "verts": 755
+    },
+    "m_old_h3": {
+      "head_gain": [
+        0.918,
+        0.868,
+        0.804
+      ],
+      "head_tex": "medic",
+      "height": 1.8,
+      "model": "m_old_h3",
+      "source": "psx-32 + psx-26-doctor",
+      "tex": "m_old",
+      "verts": 809
+    },
+    "m_red_h2": {
+      "head_gain": [
+        1.065,
+        1.072,
+        1.006
+      ],
+      "head_tex": "cop_m",
+      "height": 1.78,
+      "model": "m_red_h2",
+      "source": "psx-06 + psx-18-police",
+      "tex": "m_red",
+      "verts": 815
+    },
+    "m_red_h2b": {
+      "head_gain": [
+        1.065,
+        1.072,
+        1.006
+      ],
+      "head_tex": "cop_m",
+      "height": 1.78,
+      "model": "m_red_h2",
+      "source": "psx-06 + psx-18-police",
+      "tex": "red_blue",
+      "verts": 815
+    },
+    "m_red_h2c": {
+      "head_gain": [
+        1.065,
+        1.072,
+        1.006
+      ],
+      "head_tex": "cop_m",
+      "height": 1.78,
+      "model": "m_red_h2",
+      "source": "psx-06 + psx-18-police",
+      "tex": "red_green",
+      "verts": 815
+    },
+    "m_red_h2p": {
+      "head_gain": [
+        1.065,
+        1.072,
+        1.006
+      ],
+      "head_tex": "cop_m",
+      "height": 1.78,
+      "model": "m_red_h2",
+      "source": "psx-06 + psx-18-police",
+      "tex": "red_purple",
+      "verts": 815
+    },
+    "m_red_h3": {
+      "head_gain": [
+        0.991,
+        1.067,
+        0.956
+      ],
+      "head_tex": "medic",
+      "height": 1.803,
+      "model": "m_red_h3",
+      "source": "psx-06 + psx-26-doctor",
+      "tex": "m_red",
+      "verts": 808
+    },
+    "m_red_h3b": {
+      "head_gain": [
+        0.991,
+        1.067,
+        0.956
+      ],
+      "head_tex": "medic",
+      "height": 1.803,
+      "model": "m_red_h3",
+      "source": "psx-06 + psx-26-doctor",
+      "tex": "red_orange",
+      "verts": 808
+    },
+    "m_red_h3c": {
+      "head_gain": [
+        0.991,
+        1.067,
+        0.956
+      ],
+      "head_tex": "medic",
+      "height": 1.803,
+      "model": "m_red_h3",
+      "source": "psx-06 + psx-26-doctor",
+      "tex": "red_black",
+      "verts": 808
+    },
+    "m_red_h3g": {
+      "head_gain": [
+        0.991,
+        1.067,
+        0.956
+      ],
+      "head_tex": "medic",
+      "height": 1.803,
+      "model": "m_red_h3",
+      "source": "psx-06 + psx-26-doctor",
+      "tex": "red_green",
+      "verts": 808
+    },
+    "m_red_h3p": {
+      "head_gain": [
+        0.991,
+        1.067,
+        0.956
+      ],
+      "head_tex": "medic",
+      "height": 1.803,
+      "model": "m_red_h3",
+      "source": "psx-06 + psx-26-doctor",
+      "tex": "red_purple",
+      "verts": 808
+    },
+    "m_red_h4": {
+      "head_gain": [
+        0.85,
+        0.89,
+        0.843
+      ],
+      "head_tex": "m_shirt",
+      "height": 1.785,
+      "model": "m_red_h4",
+      "source": "psx-06 + psx-05",
+      "tex": "m_red",
+      "verts": 825
+    },
+    "m_red_h4b": {
+      "head_gain": [
+        0.85,
+        0.89,
+        0.843
+      ],
+      "head_tex": "m_shirt",
+      "height": 1.785,
+      "model": "m_red_h4",
+      "source": "psx-06 + psx-05",
+      "tex": "red_yellow",
+      "verts": 825
+    },
+    "m_red_h4c": {
+      "head_gain": [
+        0.85,
+        0.89,
+        0.843
+      ],
+      "head_tex": "m_shirt",
+      "height": 1.785,
+      "model": "m_red_h4",
+      "source": "psx-06 + psx-05",
+      "tex": "red_white",
+      "verts": 825
+    },
+    "m_shirt": {
+      "height": 1.798,
+      "model": "m_shirt",
+      "source": "psx-05",
+      "tex": "m_shirt",
+      "verts": 744
+    },
+    "m_shirt_b": {
+      "height": 1.798,
+      "model": "m_shirt",
+      "source": "psx-05",
+      "tex": "shirt_pink",
+      "verts": 744
+    },
+    "m_shirt_c": {
+      "height": 1.798,
+      "model": "m_shirt",
+      "source": "psx-05",
+      "tex": "shirt_grey",
+      "verts": 744
+    },
+    "m_shirt_h3": {
+      "head_gain": [
+        1.168,
+        1.196,
+        1.137
+      ],
+      "head_tex": "medic",
+      "height": 1.816,
+      "model": "m_shirt_h3",
+      "source": "psx-05 + psx-26-doctor",
+      "tex": "m_shirt",
+      "verts": 796
+    },
+    "m_shirt_h3b": {
+      "head_gain": [
+        1.168,
+        1.196,
+        1.137
+      ],
+      "head_tex": "medic",
+      "height": 1.816,
+      "model": "m_shirt_h3",
+      "source": "psx-05 + psx-26-doctor",
+      "tex": "shirt_dark",
+      "verts": 796
+    },
+    "m_shirt_h4": {
+      "head_gain": [
+        1.22,
+        1.202,
+        1.197
+      ],
+      "head_tex": "cop_m",
+      "height": 1.793,
+      "model": "m_shirt_h4",
+      "source": "psx-05 + psx-18-police",
+      "tex": "m_shirt",
+      "verts": 803
+    },
+    "m_shirt_h4b": {
+      "head_gain": [
+        1.22,
+        1.202,
+        1.197
+      ],
+      "head_tex": "cop_m",
+      "height": 1.793,
+      "model": "m_shirt_h4",
+      "source": "psx-05 + psx-18-police",
+      "tex": "shirt_green",
+      "verts": 803
+    },
+    "m_shirt_h4c": {
+      "head_gain": [
+        1.22,
+        1.202,
+        1.197
+      ],
+      "head_tex": "cop_m",
+      "height": 1.793,
+      "model": "m_shirt_h4",
+      "source": "psx-05 + psx-18-police",
+      "tex": "shirt_grey",
+      "verts": 803
+    },
+    "medic": {
+      "height": 1.796,
+      "model": "medic",
+      "source": "psx-26-doctor",
+      "tex": "medic",
+      "verts": 779
+    },
+    "swat": {
+      "height": 1.777,
+      "model": "swat",
+      "source": "psx-21-police",
+      "tex": "swat",
+      "verts": 737
+    }
+  },
+  "hand": {
+    "joint": "hand_r",
+    "pistol": {
+      "barrel": [
+        0.0,
+        -0.1435,
+        0.9897
+      ],
+      "origin": [
+        -0.0009,
+        -0.0078,
+        0.0538
+      ],
+      "right": [
+        1.0,
+        0.0013,
+        0.0002
+      ],
+      "up": [
+        0.0013,
+        -0.9897,
+        -0.1435
+      ]
+    },
+    "rifle": {
+      "barrel": [
+        0.0131,
+        -0.0486,
+        0.9987
+      ],
+      "origin": [
+        -0.0009,
+        -0.0078,
+        0.0538
+      ],
+      "right": [
+        0.996,
+        -0.0878,
+        -0.0174
+      ],
+      "up": [
+        -0.0885,
+        -0.9949,
+        -0.0473
+      ]
+    }
+  },
+  "parts": {
+    "bumper": {
+      "depth": 0.346,
+      "height": 0.308,
+      "tris": 232
+    },
+    "spoiler_a": {
+      "depth": 0.216,
+      "height": 0.273,
+      "tris": 96
+    },
+    "spoiler_b": {
+      "depth": 0.337,
+      "height": 0.35,
+      "tris": 176
+    }
+  },
+  "vehicles": {
+    "beater": {
+      "H": 1.396,
+      "L": 4.706,
+      "W": 2.011,
+      "head": [
+        [
+          -0.72396,
+          2.313,
+          0.67
+        ],
+        [
+          0.72396,
+          2.313,
+          0.67
+        ]
+      ],
+      "tail": [
+        [
+          -0.74407,
+          -2.313,
+          0.698
+        ],
+        [
+          0.74407,
+          -2.313,
+          0.698
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.304,
+          "x": -0.759,
+          "y": 1.408
+        },
+        {
+          "r": 0.304,
+          "x": 0.729,
+          "y": 1.408
+        },
+        {
+          "r": 0.304,
+          "x": -0.759,
+          "y": -1.307
+        },
+        {
+          "r": 0.304,
+          "x": 0.729,
+          "y": -1.307
+        }
+      ]
+    },
+    "bus": {
+      "H": 3.0,
+      "L": 10.5,
+      "W": 2.5,
+      "head": [
+        [
+          -0.86,
+          5.25,
+          0.96
+        ],
+        [
+          0.86,
+          5.25,
+          0.96
+        ]
+      ],
+      "tail": [
+        [
+          -1.08,
+          -5.25,
+          1.28
+        ],
+        [
+          1.08,
+          -5.25,
+          1.28
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.5,
+          "x": -1.125491954783353,
+          "y": 3.3
+        },
+        {
+          "r": 0.5,
+          "x": 1.125491954783353,
+          "y": 3.3
+        },
+        {
+          "r": 0.5,
+          "x": -1.125491954783353,
+          "y": -2.9
+        },
+        {
+          "r": 0.5,
+          "x": 1.125491954783353,
+          "y": -2.9
+        }
+      ]
+    },
+    "caprice": {
+      "H": 2.046,
+      "L": 7.366,
+      "W": 2.463,
+      "head": [
+        [
+          -0.86,
+          3.615,
+          1.047
+        ],
+        [
+          0.86,
+          3.615,
+          1.047
+        ]
+      ],
+      "tail": [
+        [
+          -0.8,
+          -3.685,
+          1.027
+        ],
+        [
+          0.8,
+          -3.685,
+          1.027
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.507,
+          "x": -1.038,
+          "y": 2.212
+        },
+        {
+          "r": 0.507,
+          "x": 1.038,
+          "y": 2.212
+        },
+        {
+          "r": 0.507,
+          "x": -1.038,
+          "y": -1.855
+        },
+        {
+          "r": 0.507,
+          "x": 1.038,
+          "y": -1.855
+        }
+      ]
+    },
+    "hatch": {
+      "H": 2.144,
+      "L": 5.611,
+      "W": 2.263,
+      "head": [
+        [
+          -0.78,
+          2.753,
+          1.04
+        ],
+        [
+          0.78,
+          2.753,
+          1.04
+        ]
+      ],
+      "tail": [
+        [
+          -0.72,
+          -2.767,
+          1.02
+        ],
+        [
+          0.72,
+          -2.767,
+          1.02
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.463,
+          "x": -0.977,
+          "y": 1.726
+        },
+        {
+          "r": 0.463,
+          "x": 0.977,
+          "y": 1.726
+        },
+        {
+          "r": 0.463,
+          "x": -0.957,
+          "y": -1.863
+        },
+        {
+          "r": 0.463,
+          "x": 0.957,
+          "y": -1.863
+        }
+      ]
+    },
+    "hiace": {
+      "H": 1.582,
+      "L": 3.907,
+      "W": 1.7,
+      "head": [
+        [
+          -0.612,
+          1.923,
+          0.57
+        ],
+        [
+          0.612,
+          1.923,
+          0.57
+        ]
+      ],
+      "tail": [
+        [
+          -0.68,
+          -1.923,
+          0.664
+        ],
+        [
+          0.68,
+          -1.923,
+          0.664
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.254,
+          "x": -0.74,
+          "y": 1.173
+        },
+        {
+          "r": 0.254,
+          "x": 0.74,
+          "y": 1.173
+        },
+        {
+          "r": 0.254,
+          "x": -0.74,
+          "y": -0.958
+        },
+        {
+          "r": 0.254,
+          "x": 0.74,
+          "y": -0.958
+        }
+      ]
+    },
+    "minivan": {
+      "H": 2.743,
+      "L": 6.298,
+      "W": 2.877,
+      "head": [
+        [
+          -0.92,
+          3.118,
+          1.216
+        ],
+        [
+          0.92,
+          3.118,
+          1.216
+        ]
+      ],
+      "tail": [
+        [
+          -1.3,
+          -2.982,
+          1.376
+        ],
+        [
+          1.3,
+          -2.982,
+          1.376
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.524,
+          "x": -1.213,
+          "y": 2.235
+        },
+        {
+          "r": 0.524,
+          "x": 1.213,
+          "y": 2.235
+        },
+        {
+          "r": 0.524,
+          "x": -1.19,
+          "y": -1.97
+        },
+        {
+          "r": 0.524,
+          "x": 1.19,
+          "y": -1.97
+        }
+      ]
+    },
+    "moidev": {
+      "H": 1.529,
+      "L": 5.14,
+      "W": 1.84,
+      "head": [
+        [
+          -0.6808000000000001,
+          2.54,
+          0.673
+        ],
+        [
+          0.6808000000000001,
+          2.54,
+          0.673
+        ]
+      ],
+      "tail": [
+        [
+          -0.6808000000000001,
+          -2.54,
+          0.764
+        ],
+        [
+          0.6808000000000001,
+          -2.54,
+          0.764
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.329,
+          "x": -0.818,
+          "y": 1.659
+        },
+        {
+          "r": 0.329,
+          "x": 0.818,
+          "y": 1.659
+        },
+        {
+          "r": 0.329,
+          "x": -0.824,
+          "y": -1.24
+        },
+        {
+          "r": 0.329,
+          "x": 0.824,
+          "y": -1.24
+        }
+      ]
+    },
+    "pickup": {
+      "H": 1.643,
+      "L": 5.2,
+      "W": 2.1,
+      "head": [
+        [
+          -0.756,
+          2.56,
+          0.789
+        ],
+        [
+          0.756,
+          2.56,
+          0.789
+        ]
+      ],
+      "tail": [
+        [
+          -0.777,
+          -2.56,
+          0.822
+        ],
+        [
+          0.777,
+          -2.56,
+          0.822
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.351,
+          "x": -0.81,
+          "y": 1.56
+        },
+        {
+          "r": 0.351,
+          "x": 0.77,
+          "y": 1.56
+        },
+        {
+          "r": 0.351,
+          "x": -0.81,
+          "y": -1.49
+        },
+        {
+          "r": 0.351,
+          "x": 0.77,
+          "y": -1.49
+        }
+      ]
+    },
+    "police": {
+      "H": 2.245,
+      "L": 7.366,
+      "W": 2.463,
+      "fixed": true,
+      "head": [
+        [
+          -0.86,
+          3.615,
+          1.047
+        ],
+        [
+          0.86,
+          3.615,
+          1.047
+        ]
+      ],
+      "siren": [
+        [
+          -0.52,
+          -0.325,
+          2.287
+        ],
+        [
+          0.52,
+          -0.325,
+          2.287
+        ]
+      ],
+      "tail": [
+        [
+          -0.8,
+          -3.685,
+          1.027
+        ],
+        [
+          0.8,
+          -3.685,
+          1.027
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.507,
+          "x": -1.038,
+          "y": 2.212
+        },
+        {
+          "r": 0.507,
+          "x": 1.038,
+          "y": 2.212
+        },
+        {
+          "r": 0.507,
+          "x": -1.038,
+          "y": -1.855
+        },
+        {
+          "r": 0.507,
+          "x": 1.038,
+          "y": -1.855
+        }
+      ]
+    },
+    "sleek": {
+      "H": 2.199,
+      "L": 6.533,
+      "W": 2.495,
+      "head": [
+        [
+          -0.86,
+          3.231,
+          0.997
+        ],
+        [
+          0.86,
+          3.231,
+          0.997
+        ]
+      ],
+      "tail": [
+        [
+          -0.9,
+          -3.269,
+          1.167
+        ],
+        [
+          0.9,
+          -3.269,
+          1.167
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.463,
+          "x": -1.047,
+          "y": 1.93
+        },
+        {
+          "r": 0.463,
+          "x": 1.047,
+          "y": 1.93
+        },
+        {
+          "r": 0.463,
+          "x": -1.047,
+          "y": -1.785
+        },
+        {
+          "r": 0.463,
+          "x": 1.047,
+          "y": -1.785
+        }
+      ]
+    },
+    "stepvan": {
+      "H": 3.235,
+      "L": 6.892,
+      "W": 2.62,
+      "head": [
+        [
+          -0.95,
+          3.321,
+          1.099
+        ],
+        [
+          0.95,
+          3.321,
+          1.099
+        ]
+      ],
+      "siren": [
+        [
+          -0.62,
+          2.041,
+          3.399
+        ],
+        [
+          0.62,
+          2.041,
+          3.399
+        ]
+      ],
+      "tail": [
+        [
+          -1.2,
+          -3.459,
+          0.899
+        ],
+        [
+          1.2,
+          -3.459,
+          0.899
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.565,
+          "x": -1.093,
+          "y": 2.286
+        },
+        {
+          "r": 0.565,
+          "x": 1.093,
+          "y": 2.286
+        },
+        {
+          "r": 0.565,
+          "x": -1.093,
+          "y": -1.644
+        },
+        {
+          "r": 0.565,
+          "x": 1.093,
+          "y": -1.644
+        }
+      ]
+    },
+    "taxi": {
+      "H": 1.458,
+      "L": 4.973,
+      "W": 1.8,
+      "fixed": true,
+      "head": [
+        [
+          -0.648,
+          2.457,
+          0.7
+        ],
+        [
+          0.648,
+          2.457,
+          0.7
+        ]
+      ],
+      "tail": [
+        [
+          -0.666,
+          -2.457,
+          0.729
+        ],
+        [
+          0.666,
+          -2.457,
+          0.729
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.332,
+          "x": -0.78,
+          "y": 1.496
+        },
+        {
+          "r": 0.332,
+          "x": 0.78,
+          "y": 1.496
+        },
+        {
+          "r": 0.332,
+          "x": -0.78,
+          "y": -1.228
+        },
+        {
+          "r": 0.332,
+          "x": 0.78,
+          "y": -1.228
+        }
+      ]
+    },
+    "vintage": {
+      "H": 2.863,
+      "L": 5.754,
+      "W": 2.426,
+      "head": [
+        [
+          -0.57,
+          2.454,
+          1.493
+        ],
+        [
+          0.57,
+          2.454,
+          1.493
+        ]
+      ],
+      "tail": [
+        [
+          -0.99,
+          -2.686,
+          1.333
+        ],
+        [
+          0.99,
+          -2.686,
+          1.333
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.632,
+          "x": -1.024,
+          "y": 2.272
+        },
+        {
+          "r": 0.632,
+          "x": 1.024,
+          "y": 2.272
+        },
+        {
+          "r": 0.632,
+          "x": -1.024,
+          "y": -2.124
+        },
+        {
+          "r": 0.632,
+          "x": 1.024,
+          "y": -2.124
+        }
+      ]
+    },
+    "wagon": {
+      "H": 2.174,
+      "L": 6.15,
+      "W": 2.415,
+      "head": [
+        [
+          -0.8,
+          2.967,
+          0.999
+        ],
+        [
+          0.8,
+          2.967,
+          0.999
+        ]
+      ],
+      "tail": [
+        [
+          -0.92,
+          -2.973,
+          1.039
+        ],
+        [
+          0.92,
+          -2.973,
+          1.039
+        ]
+      ],
+      "tex": true,
+      "wheels": [
+        {
+          "r": 0.459,
+          "x": -0.996,
+          "y": 2.163
+        },
+        {
+          "r": 0.459,
+          "x": 0.996,
+          "y": 2.163
+        },
+        {
+          "r": 0.459,
+          "x": -0.996,
+          "y": -1.503
+        },
+        {
+          "r": 0.459,
+          "x": 0.996,
+          "y": -1.503
+        }
+      ]
+    },
+    "wreck": {
+      "H": 1.668,
+      "L": 6.36,
+      "W": 2.48,
+      "fixed": true,
+      "tex": true,
+      "wheels": []
+    }
+  },
+  "weapons": {
+    "ak": {
+      "length": 0.94,
+      "muzzle": [
+        0.0,
+        0.592,
+        0.122
+      ],
+      "tex": true
+    },
+    "bat": {
+      "length": 0.86,
+      "muzzle": [
+        0.0,
+        0.774,
+        0.02
+      ]
+    },
+    "double": {
+      "length": 1.06,
+      "muzzle": [
+        0.0,
+        0.763,
+        0.044
+      ],
+      "tex": true
+    },
+    "grenade": {
+      "length": 0.13,
+      "muzzle": [
+        0.0,
+        0.065,
+        0.018
+      ]
+    },
+    "knife": {
+      "length": 0.3,
+      "muzzle": [
+        0.0,
+        0.228,
+        -0.007
+      ],
+      "tex": true
+    },
+    "m4": {
+      "length": 0.85,
+      "muzzle": [
+        0.0,
+        0.62,
+        0.113
+      ],
+      "tex": true
+    },
+    "molotov": {
+      "length": 0.295,
+      "muzzle": [
+        0.0,
+        0.2,
+        0.0
+      ]
+    },
+    "pistol": {
+      "length": 0.205,
+      "muzzle": [
+        0.0,
+        0.17,
+        0.071
+      ],
+      "tex": true
+    },
+    "rocket": {
+      "length": 1.02,
+      "muzzle": [
+        0.0,
+        0.551,
+        0.068
+      ],
+      "tex": true
+    },
+    "shotgun": {
+      "length": 0.98,
+      "muzzle": [
+        0.0,
+        0.676,
+        0.051
+      ],
+      "tex": true
+    },
+    "silenced": {
+      "length": 0.355,
+      "muzzle": [
+        0.0,
+        0.32,
+        0.071
+      ],
+      "tex": true
+    },
+    "sniper": {
+      "length": 1.22,
+      "muzzle": [
+        0.0,
+        0.769,
+        0.092
+      ],
+      "tex": true
+    },
+    "uzi": {
+      "length": 0.42,
+      "muzzle": [
+        0.0,
+        0.378,
+        0.126
+      ],
+      "tex": true
+    }
   }
- },
- "bikes": {
-  "bmx": {
-   "H": 1.042,
-   "L": 1.596,
-   "W": 0.62,
-   "bend": [
-    -0.03,
-    0.141
-   ],
-   "foot": [
-    0.28,
-    -0.018,
-    0.241
-   ],
-   "grips": [
-    0.26,
-    0.363,
-    0.982
-   ],
-   "pose": "std",
-   "seat": [
-    -0.207,
-    0.867
-   ],
-   "seat_top": 0.767,
-   "tris": 3027,
-   "wheel_f": [
-    0.538,
-    0.26,
-    0.07
-   ],
-   "wheel_r": [
-    -0.538,
-    0.26,
-    0.07
-   ],
-   "y0": -0.798,
-   "y1": 0.798
-  },
-  "cycle": {
-   "H": 1.148,
-   "L": 1.85,
-   "W": 0.498,
-   "bend": [
-    -0.028,
-    -0.086
-   ],
-   "foot": [
-    0.28,
-    -0.014,
-    0.321
-   ],
-   "grips": [
-    0.199,
-    0.373,
-    1.088
-   ],
-   "pose": "std",
-   "seat": [
-    -0.197,
-    0.973
-   ],
-   "seat_top": 0.873,
-   "tex": "b_cycle",
-   "tris": 1624,
-   "wheel_f": [
-    0.585,
-    0.34,
-    0.04
-   ],
-   "wheel_r": [
-    -0.585,
-    0.34,
-    0.04
-   ],
-   "y0": -0.925,
-   "y1": 0.925
-  },
-  "moto": {
-   "H": 1.226,
-   "L": 2.262,
-   "W": 0.666,
-   "bend": [
-    0.0,
-    -0.016
-   ],
-   "foot": [
-    0.2,
-    0.082,
-    0.282
-   ],
-   "grips": [
-    0.28,
-    0.182,
-    1.122
-   ],
-   "head": [
-    0.0,
-    0.589,
-    0.898
-   ],
-   "pose": "chair",
-   "seat": [
-    -0.358,
-    0.812
-   ],
-   "seat_top": 0.712,
-   "seat_y": [
-    -0.68,
-    -0.32
-   ],
-   "tail": [
-    0.0,
-    -0.919,
-    0.703
-   ],
-   "tex": "b_moto",
-   "tris": 3956,
-   "wheel_f": [
-    0.811,
-    0.32,
-    0.15
-   ],
-   "wheel_r": [
-    -0.811,
-    0.32,
-    0.19
-   ],
-   "y0": -1.131,
-   "y1": 1.131
-  }
- },
- "chars": {
-  "army": {
-   "height": 1.872,
-   "model": "army",
-   "source": "psx-28-hm",
-   "tex": "army",
-   "verts": 1002
-  },
-  "cop_f": {
-   "height": 1.785,
-   "model": "cop_f",
-   "source": "psx-17-female-police",
-   "tex": "cop_f",
-   "verts": 970
-  },
-  "cop_m": {
-   "height": 1.802,
-   "model": "cop_m",
-   "source": "psx-18-police",
-   "tex": "cop_m",
-   "verts": 739
-  },
-  "f_black": {
-   "height": 1.775,
-   "model": "f_black",
-   "source": "psx-female-09",
-   "tex": "f_black",
-   "verts": 1155
-  },
-  "f_goth": {
-   "height": 1.759,
-   "model": "f_goth",
-   "source": "psx-female-08",
-   "tex": "f_goth",
-   "verts": 1044
-  },
-  "f_old": {
-   "height": 1.789,
-   "model": "f_old",
-   "source": "psx-31-female",
-   "tex": "f_old",
-   "verts": 994
-  },
-  "f_old_b": {
-   "height": 1.789,
-   "model": "f_old",
-   "source": "psx-31-female",
-   "tex": "f_old_pink",
-   "verts": 994
-  },
-  "f_old_c": {
-   "height": 1.789,
-   "model": "f_old",
-   "source": "psx-31-female",
-   "tex": "f_old_green",
-   "verts": 994
-  },
-  "hero": {
-   "head_gain": [
-    0.908,
-    0.903,
-    0.956
-   ],
-   "head_tex": "m_red",
-   "height": 1.806,
-   "model": "hero",
-   "source": "psx-15 + psx-06",
-   "tex": "m_leather",
-   "verts": 795
-  },
-  "m_grey_h2": {
-   "head_gain": [
-    1.037,
-    1.01,
-    1.019
-   ],
-   "head_tex": "cop_m",
-   "height": 1.826,
-   "model": "m_grey_h2",
-   "source": "psx-10 + psx-18-police",
-   "tex": "m_grey",
-   "verts": 873
-  },
-  "m_grey_h2b": {
-   "head_gain": [
-    1.037,
-    1.01,
-    1.019
-   ],
-   "head_tex": "cop_m",
-   "height": 1.826,
-   "model": "m_grey_h2",
-   "source": "psx-10 + psx-18-police",
-   "tex": "grey_dark",
-   "verts": 873
-  },
-  "m_grey_h3": {
-   "head_gain": [
-    1.059,
-    1.169,
-    1.22
-   ],
-   "head_tex": "m_old",
-   "height": 1.824,
-   "model": "m_grey_h3",
-   "source": "psx-10 + psx-32",
-   "tex": "m_grey",
-   "verts": 866
-  },
-  "m_grey_h4": {
-   "head_gain": [
-    1.07,
-    1.04,
-    1.062
-   ],
-   "head_tex": "m_leather",
-   "height": 1.843,
-   "model": "m_grey_h4",
-   "source": "psx-10 + psx-15",
-   "tex": "m_grey",
-   "verts": 873
-  },
-  "m_grey_h4b": {
-   "head_gain": [
-    1.07,
-    1.04,
-    1.062
-   ],
-   "head_tex": "m_leather",
-   "height": 1.843,
-   "model": "m_grey_h4",
-   "source": "psx-10 + psx-15",
-   "tex": "grey_dark",
-   "verts": 873
-  },
-  "m_leather": {
-   "height": 1.79,
-   "model": "m_leather",
-   "source": "psx-15",
-   "tex": "m_leather",
-   "verts": 751
-  },
-  "m_leather_b": {
-   "head_gain": [
-    0.967,
-    0.969,
-    0.962
-   ],
-   "head_tex": "cop_m",
-   "height": 1.773,
-   "model": "m_leather_b",
-   "source": "psx-15 + psx-18-police",
-   "tex": "m_leather",
-   "verts": 802
-  },
-  "m_leather_c": {
-   "head_gain": [
-    0.987,
-    1.121,
-    1.156
-   ],
-   "head_tex": "m_old",
-   "height": 1.771,
-   "model": "m_leather_c",
-   "source": "psx-15 + psx-32",
-   "tex": "m_leather",
-   "verts": 795
-  },
-  "m_old": {
-   "height": 1.774,
-   "model": "m_old",
-   "source": "psx-32",
-   "tex": "m_old",
-   "verts": 755
-  },
-  "m_old_h3": {
-   "head_gain": [
-    0.918,
-    0.868,
-    0.804
-   ],
-   "head_tex": "medic",
-   "height": 1.8,
-   "model": "m_old_h3",
-   "source": "psx-32 + psx-26-doctor",
-   "tex": "m_old",
-   "verts": 809
-  },
-  "m_red_h2": {
-   "head_gain": [
-    1.065,
-    1.072,
-    1.006
-   ],
-   "head_tex": "cop_m",
-   "height": 1.78,
-   "model": "m_red_h2",
-   "source": "psx-06 + psx-18-police",
-   "tex": "m_red",
-   "verts": 815
-  },
-  "m_red_h2b": {
-   "head_gain": [
-    1.065,
-    1.072,
-    1.006
-   ],
-   "head_tex": "cop_m",
-   "height": 1.78,
-   "model": "m_red_h2",
-   "source": "psx-06 + psx-18-police",
-   "tex": "red_blue",
-   "verts": 815
-  },
-  "m_red_h2c": {
-   "head_gain": [
-    1.065,
-    1.072,
-    1.006
-   ],
-   "head_tex": "cop_m",
-   "height": 1.78,
-   "model": "m_red_h2",
-   "source": "psx-06 + psx-18-police",
-   "tex": "red_green",
-   "verts": 815
-  },
-  "m_red_h2p": {
-   "head_gain": [
-    1.065,
-    1.072,
-    1.006
-   ],
-   "head_tex": "cop_m",
-   "height": 1.78,
-   "model": "m_red_h2",
-   "source": "psx-06 + psx-18-police",
-   "tex": "red_purple",
-   "verts": 815
-  },
-  "m_red_h3": {
-   "head_gain": [
-    0.991,
-    1.067,
-    0.956
-   ],
-   "head_tex": "medic",
-   "height": 1.803,
-   "model": "m_red_h3",
-   "source": "psx-06 + psx-26-doctor",
-   "tex": "m_red",
-   "verts": 808
-  },
-  "m_red_h3b": {
-   "head_gain": [
-    0.991,
-    1.067,
-    0.956
-   ],
-   "head_tex": "medic",
-   "height": 1.803,
-   "model": "m_red_h3",
-   "source": "psx-06 + psx-26-doctor",
-   "tex": "red_orange",
-   "verts": 808
-  },
-  "m_red_h3c": {
-   "head_gain": [
-    0.991,
-    1.067,
-    0.956
-   ],
-   "head_tex": "medic",
-   "height": 1.803,
-   "model": "m_red_h3",
-   "source": "psx-06 + psx-26-doctor",
-   "tex": "red_black",
-   "verts": 808
-  },
-  "m_red_h3g": {
-   "head_gain": [
-    0.991,
-    1.067,
-    0.956
-   ],
-   "head_tex": "medic",
-   "height": 1.803,
-   "model": "m_red_h3",
-   "source": "psx-06 + psx-26-doctor",
-   "tex": "red_green",
-   "verts": 808
-  },
-  "m_red_h3p": {
-   "head_gain": [
-    0.991,
-    1.067,
-    0.956
-   ],
-   "head_tex": "medic",
-   "height": 1.803,
-   "model": "m_red_h3",
-   "source": "psx-06 + psx-26-doctor",
-   "tex": "red_purple",
-   "verts": 808
-  },
-  "m_red_h4": {
-   "head_gain": [
-    0.85,
-    0.89,
-    0.843
-   ],
-   "head_tex": "m_shirt",
-   "height": 1.785,
-   "model": "m_red_h4",
-   "source": "psx-06 + psx-05",
-   "tex": "m_red",
-   "verts": 825
-  },
-  "m_red_h4b": {
-   "head_gain": [
-    0.85,
-    0.89,
-    0.843
-   ],
-   "head_tex": "m_shirt",
-   "height": 1.785,
-   "model": "m_red_h4",
-   "source": "psx-06 + psx-05",
-   "tex": "red_yellow",
-   "verts": 825
-  },
-  "m_red_h4c": {
-   "head_gain": [
-    0.85,
-    0.89,
-    0.843
-   ],
-   "head_tex": "m_shirt",
-   "height": 1.785,
-   "model": "m_red_h4",
-   "source": "psx-06 + psx-05",
-   "tex": "red_white",
-   "verts": 825
-  },
-  "m_shirt": {
-   "height": 1.798,
-   "model": "m_shirt",
-   "source": "psx-05",
-   "tex": "m_shirt",
-   "verts": 744
-  },
-  "m_shirt_b": {
-   "height": 1.798,
-   "model": "m_shirt",
-   "source": "psx-05",
-   "tex": "shirt_pink",
-   "verts": 744
-  },
-  "m_shirt_c": {
-   "height": 1.798,
-   "model": "m_shirt",
-   "source": "psx-05",
-   "tex": "shirt_grey",
-   "verts": 744
-  },
-  "m_shirt_h3": {
-   "head_gain": [
-    1.168,
-    1.196,
-    1.137
-   ],
-   "head_tex": "medic",
-   "height": 1.816,
-   "model": "m_shirt_h3",
-   "source": "psx-05 + psx-26-doctor",
-   "tex": "m_shirt",
-   "verts": 796
-  },
-  "m_shirt_h3b": {
-   "head_gain": [
-    1.168,
-    1.196,
-    1.137
-   ],
-   "head_tex": "medic",
-   "height": 1.816,
-   "model": "m_shirt_h3",
-   "source": "psx-05 + psx-26-doctor",
-   "tex": "shirt_dark",
-   "verts": 796
-  },
-  "m_shirt_h4": {
-   "head_gain": [
-    1.22,
-    1.202,
-    1.197
-   ],
-   "head_tex": "cop_m",
-   "height": 1.793,
-   "model": "m_shirt_h4",
-   "source": "psx-05 + psx-18-police",
-   "tex": "m_shirt",
-   "verts": 803
-  },
-  "m_shirt_h4b": {
-   "head_gain": [
-    1.22,
-    1.202,
-    1.197
-   ],
-   "head_tex": "cop_m",
-   "height": 1.793,
-   "model": "m_shirt_h4",
-   "source": "psx-05 + psx-18-police",
-   "tex": "shirt_green",
-   "verts": 803
-  },
-  "m_shirt_h4c": {
-   "head_gain": [
-    1.22,
-    1.202,
-    1.197
-   ],
-   "head_tex": "cop_m",
-   "height": 1.793,
-   "model": "m_shirt_h4",
-   "source": "psx-05 + psx-18-police",
-   "tex": "shirt_grey",
-   "verts": 803
-  },
-  "medic": {
-   "height": 1.796,
-   "model": "medic",
-   "source": "psx-26-doctor",
-   "tex": "medic",
-   "verts": 779
-  },
-  "swat": {
-   "height": 1.777,
-   "model": "swat",
-   "source": "psx-21-police",
-   "tex": "swat",
-   "verts": 737
-  }
- },
- "hand": {
-  "joint": "hand_r",
-  "pistol": {
-   "barrel": [
-    0.0,
-    -0.1435,
-    0.9897
-   ],
-   "origin": [
-    -0.0009,
-    -0.0078,
-    0.0538
-   ],
-   "right": [
-    1.0,
-    0.0013,
-    0.0002
-   ],
-   "up": [
-    0.0013,
-    -0.9897,
-    -0.1435
-   ]
-  },
-  "rifle": {
-   "barrel": [
-    0.0131,
-    -0.0486,
-    0.9987
-   ],
-   "origin": [
-    -0.0009,
-    -0.0078,
-    0.0538
-   ],
-   "right": [
-    0.996,
-    -0.0878,
-    -0.0174
-   ],
-   "up": [
-    -0.0885,
-    -0.9949,
-    -0.0473
-   ]
-  }
- },
- "parts": {
-  "bumper": {
-   "depth": 0.346,
-   "height": 0.308,
-   "tris": 232
-  },
-  "spoiler_a": {
-   "depth": 0.216,
-   "height": 0.273,
-   "tris": 96
-  },
-  "spoiler_b": {
-   "depth": 0.337,
-   "height": 0.35,
-   "tris": 176
-  }
- },
- "vehicles": {
-  "bus": {
-   "H": 3.0,
-   "L": 10.5,
-   "W": 2.5,
-   "head": [
-    [
-     -0.86,
-     5.25,
-     0.96
-    ],
-    [
-     0.86,
-     5.25,
-     0.96
-    ]
-   ],
-   "tail": [
-    [
-     -1.08,
-     -5.25,
-     1.28
-    ],
-    [
-     1.08,
-     -5.25,
-     1.28
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.5,
-     "x": -1.125491954783353,
-     "y": 3.3
-    },
-    {
-     "r": 0.5,
-     "x": 1.125491954783353,
-     "y": 3.3
-    },
-    {
-     "r": 0.5,
-     "x": -1.125491954783353,
-     "y": -2.9
-    },
-    {
-     "r": 0.5,
-     "x": 1.125491954783353,
-     "y": -2.9
-    }
-   ]
-  },
-  "caprice": {
-   "H": 2.046,
-   "L": 7.366,
-   "W": 2.463,
-   "head": [
-    [
-     -0.86,
-     3.615,
-     1.047
-    ],
-    [
-     0.86,
-     3.615,
-     1.047
-    ]
-   ],
-   "tail": [
-    [
-     -0.8,
-     -3.685,
-     1.027
-    ],
-    [
-     0.8,
-     -3.685,
-     1.027
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.507,
-     "x": -1.038,
-     "y": 2.212
-    },
-    {
-     "r": 0.507,
-     "x": 1.038,
-     "y": 2.212
-    },
-    {
-     "r": 0.507,
-     "x": -1.038,
-     "y": -1.855
-    },
-    {
-     "r": 0.507,
-     "x": 1.038,
-     "y": -1.855
-    }
-   ]
-  },
-  "dacia": {
-   "H": 1.59,
-   "L": 4.447,
-   "W": 1.64,
-   "head": [
-    [
-     -0.574,
-     2.194,
-     0.795
-    ],
-    [
-     0.574,
-     2.194,
-     0.795
-    ]
-   ],
-   "tail": [
-    [
-     -0.5903999999999999,
-     -2.194,
-     0.89
-    ],
-    [
-     0.5903999999999999,
-     -2.194,
-     0.89
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.332,
-     "x": -0.637,
-     "y": 1.497
-    },
-    {
-     "r": 0.332,
-     "x": 0.626,
-     "y": 1.497
-    },
-    {
-     "r": 0.332,
-     "x": -0.637,
-     "y": -1.291
-    },
-    {
-     "r": 0.332,
-     "x": 0.626,
-     "y": -1.291
-    }
-   ]
-  },
-  "hatch": {
-   "H": 2.144,
-   "L": 5.611,
-   "W": 2.263,
-   "head": [
-    [
-     -0.78,
-     2.753,
-     1.04
-    ],
-    [
-     0.78,
-     2.753,
-     1.04
-    ]
-   ],
-   "tail": [
-    [
-     -0.72,
-     -2.767,
-     1.02
-    ],
-    [
-     0.72,
-     -2.767,
-     1.02
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.463,
-     "x": -0.977,
-     "y": 1.726
-    },
-    {
-     "r": 0.463,
-     "x": 0.977,
-     "y": 1.726
-    },
-    {
-     "r": 0.463,
-     "x": -0.957,
-     "y": -1.863
-    },
-    {
-     "r": 0.463,
-     "x": 0.957,
-     "y": -1.863
-    }
-   ]
-  },
-  "hiace": {
-   "H": 1.582,
-   "L": 3.907,
-   "W": 1.7,
-   "head": [
-    [
-     -0.612,
-     1.923,
-     0.57
-    ],
-    [
-     0.612,
-     1.923,
-     0.57
-    ]
-   ],
-   "tail": [
-    [
-     -0.68,
-     -1.923,
-     0.664
-    ],
-    [
-     0.68,
-     -1.923,
-     0.664
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.254,
-     "x": -0.638,
-     "y": 1.173
-    },
-    {
-     "r": 0.254,
-     "x": 0.676,
-     "y": 1.173
-    },
-    {
-     "r": 0.254,
-     "x": -0.638,
-     "y": -0.958
-    },
-    {
-     "r": 0.254,
-     "x": 0.676,
-     "y": -0.958
-    }
-   ]
-  },
-  "minivan": {
-   "H": 2.743,
-   "L": 6.298,
-   "W": 2.877,
-   "head": [
-    [
-     -0.92,
-     3.118,
-     1.216
-    ],
-    [
-     0.92,
-     3.118,
-     1.216
-    ]
-   ],
-   "tail": [
-    [
-     -1.3,
-     -2.982,
-     1.376
-    ],
-    [
-     1.3,
-     -2.982,
-     1.376
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.524,
-     "x": -1.213,
-     "y": 2.235
-    },
-    {
-     "r": 0.524,
-     "x": 1.213,
-     "y": 2.235
-    },
-    {
-     "r": 0.524,
-     "x": -1.19,
-     "y": -1.97
-    },
-    {
-     "r": 0.524,
-     "x": 1.19,
-     "y": -1.97
-    }
-   ]
-  },
-  "police": {
-   "H": 2.245,
-   "L": 7.366,
-   "W": 2.463,
-   "fixed": true,
-   "head": [
-    [
-     -0.86,
-     3.615,
-     1.047
-    ],
-    [
-     0.86,
-     3.615,
-     1.047
-    ]
-   ],
-   "siren": [
-    [
-     -0.52,
-     -0.325,
-     2.287
-    ],
-    [
-     0.52,
-     -0.325,
-     2.287
-    ]
-   ],
-   "tail": [
-    [
-     -0.8,
-     -3.685,
-     1.027
-    ],
-    [
-     0.8,
-     -3.685,
-     1.027
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.507,
-     "x": -1.038,
-     "y": 2.212
-    },
-    {
-     "r": 0.507,
-     "x": 1.038,
-     "y": 2.212
-    },
-    {
-     "r": 0.507,
-     "x": -1.038,
-     "y": -1.855
-    },
-    {
-     "r": 0.507,
-     "x": 1.038,
-     "y": -1.855
-    }
-   ]
-  },
-  "sleek": {
-   "H": 2.199,
-   "L": 6.533,
-   "W": 2.495,
-   "head": [
-    [
-     -0.86,
-     3.231,
-     0.997
-    ],
-    [
-     0.86,
-     3.231,
-     0.997
-    ]
-   ],
-   "tail": [
-    [
-     -0.9,
-     -3.269,
-     1.167
-    ],
-    [
-     0.9,
-     -3.269,
-     1.167
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.463,
-     "x": -1.047,
-     "y": 1.93
-    },
-    {
-     "r": 0.463,
-     "x": 1.047,
-     "y": 1.93
-    },
-    {
-     "r": 0.463,
-     "x": -1.047,
-     "y": -1.785
-    },
-    {
-     "r": 0.463,
-     "x": 1.047,
-     "y": -1.785
-    }
-   ]
-  },
-  "stepvan": {
-   "H": 3.235,
-   "L": 6.892,
-   "W": 2.62,
-   "head": [
-    [
-     -0.95,
-     3.321,
-     1.099
-    ],
-    [
-     0.95,
-     3.321,
-     1.099
-    ]
-   ],
-   "siren": [
-    [
-     -0.62,
-     2.041,
-     3.399
-    ],
-    [
-     0.62,
-     2.041,
-     3.399
-    ]
-   ],
-   "tail": [
-    [
-     -1.2,
-     -3.459,
-     0.899
-    ],
-    [
-     1.2,
-     -3.459,
-     0.899
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.565,
-     "x": -1.093,
-     "y": 2.286
-    },
-    {
-     "r": 0.565,
-     "x": 1.093,
-     "y": 2.286
-    },
-    {
-     "r": 0.565,
-     "x": -1.093,
-     "y": -1.644
-    },
-    {
-     "r": 0.565,
-     "x": 1.093,
-     "y": -1.644
-    }
-   ]
-  },
-  "taxi": {
-   "H": 1.458,
-   "L": 4.973,
-   "W": 1.8,
-   "fixed": true,
-   "head": [
-    [
-     -0.648,
-     2.457,
-     0.7
-    ],
-    [
-     0.648,
-     2.457,
-     0.7
-    ]
-   ],
-   "tail": [
-    [
-     -0.666,
-     -2.457,
-     0.729
-    ],
-    [
-     0.666,
-     -2.457,
-     0.729
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.332,
-     "x": -0.78,
-     "y": 1.496
-    },
-    {
-     "r": 0.332,
-     "x": 0.78,
-     "y": 1.496
-    },
-    {
-     "r": 0.332,
-     "x": -0.78,
-     "y": -1.228
-    },
-    {
-     "r": 0.332,
-     "x": 0.78,
-     "y": -1.228
-    }
-   ]
-  },
-  "vintage": {
-   "H": 2.863,
-   "L": 5.754,
-   "W": 2.426,
-   "head": [
-    [
-     -0.57,
-     2.454,
-     1.493
-    ],
-    [
-     0.57,
-     2.454,
-     1.493
-    ]
-   ],
-   "tail": [
-    [
-     -0.99,
-     -2.686,
-     1.333
-    ],
-    [
-     0.99,
-     -2.686,
-     1.333
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.632,
-     "x": -1.024,
-     "y": 2.272
-    },
-    {
-     "r": 0.632,
-     "x": 1.024,
-     "y": 2.272
-    },
-    {
-     "r": 0.632,
-     "x": -1.024,
-     "y": -2.124
-    },
-    {
-     "r": 0.632,
-     "x": 1.024,
-     "y": -2.124
-    }
-   ]
-  },
-  "volvo": {
-   "H": 1.278,
-   "L": 4.732,
-   "W": 1.71,
-   "head": [
-    [
-     -0.6326999999999999,
-     2.336,
-     0.639
-    ],
-    [
-     0.6326999999999999,
-     2.336,
-     0.639
-    ]
-   ],
-   "tail": [
-    [
-     -0.6326999999999999,
-     -2.336,
-     0.716
-    ],
-    [
-     0.6326999999999999,
-     -2.336,
-     0.716
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.287,
-     "x": -0.708,
-     "y": 1.39
-    },
-    {
-     "r": 0.287,
-     "x": 0.708,
-     "y": 1.39
-    },
-    {
-     "r": 0.287,
-     "x": -0.642,
-     "y": -1.292
-    },
-    {
-     "r": 0.287,
-     "x": 0.642,
-     "y": -1.292
-    }
-   ]
-  },
-  "wagon": {
-   "H": 2.174,
-   "L": 6.15,
-   "W": 2.415,
-   "head": [
-    [
-     -0.8,
-     2.967,
-     0.999
-    ],
-    [
-     0.8,
-     2.967,
-     0.999
-    ]
-   ],
-   "tail": [
-    [
-     -0.92,
-     -2.973,
-     1.039
-    ],
-    [
-     0.92,
-     -2.973,
-     1.039
-    ]
-   ],
-   "tex": true,
-   "wheels": [
-    {
-     "r": 0.459,
-     "x": -0.996,
-     "y": 2.163
-    },
-    {
-     "r": 0.459,
-     "x": 0.996,
-     "y": 2.163
-    },
-    {
-     "r": 0.459,
-     "x": -0.996,
-     "y": -1.503
-    },
-    {
-     "r": 0.459,
-     "x": 0.996,
-     "y": -1.503
-    }
-   ]
-  },
-  "wreck": {
-   "H": 1.668,
-   "L": 6.36,
-   "W": 2.48,
-   "fixed": true,
-   "tex": true,
-   "wheels": []
-  }
- },
- "weapons": {
-  "ak": {
-   "length": 0.94,
-   "muzzle": [
-    0.0,
-    0.592,
-    0.122
-   ],
-   "tex": true
-  },
-  "bat": {
-   "length": 0.86,
-   "muzzle": [
-    0.0,
-    0.774,
-    0.02
-   ]
-  },
-  "double": {
-   "length": 1.06,
-   "muzzle": [
-    0.0,
-    0.763,
-    0.044
-   ],
-   "tex": true
-  },
-  "grenade": {
-   "length": 0.13,
-   "muzzle": [
-    0.0,
-    0.065,
-    0.018
-   ]
-  },
-  "knife": {
-   "length": 0.3,
-   "muzzle": [
-    0.0,
-    0.228,
-    -0.007
-   ],
-   "tex": true
-  },
-  "m4": {
-   "length": 0.85,
-   "muzzle": [
-    0.0,
-    0.62,
-    0.113
-   ],
-   "tex": true
-  },
-  "molotov": {
-   "length": 0.295,
-   "muzzle": [
-    0.0,
-    0.2,
-    0.0
-   ]
-  },
-  "pistol": {
-   "length": 0.205,
-   "muzzle": [
-    0.0,
-    0.17,
-    0.071
-   ],
-   "tex": true
-  },
-  "rocket": {
-   "length": 1.02,
-   "muzzle": [
-    0.0,
-    0.551,
-    0.068
-   ],
-   "tex": true
-  },
-  "shotgun": {
-   "length": 0.98,
-   "muzzle": [
-    0.0,
-    0.676,
-    0.051
-   ],
-   "tex": true
-  },
-  "silenced": {
-   "length": 0.355,
-   "muzzle": [
-    0.0,
-    0.32,
-    0.071
-   ],
-   "tex": true
-  },
-  "sniper": {
-   "length": 1.22,
-   "muzzle": [
-    0.0,
-    0.769,
-    0.092
-   ],
-   "tex": true
-  },
-  "uzi": {
-   "length": 0.42,
-   "muzzle": [
-    0.0,
-    0.378,
-    0.126
-   ],
-   "tex": true
-  }
- }
 }

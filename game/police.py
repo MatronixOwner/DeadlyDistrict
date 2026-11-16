@@ -234,7 +234,7 @@ class Police(object):
         # обычные патрульные машины в трафике тоже включаются в погоню
         if len([u for u in self.units if not u.removed and not u.dead]) < MAX_UNITS[self.level]:
             for v in w.vehicles:
-                if v.kind in ('police', 'copbike') and v.npc and v.traffic and not v.dead and v not in self.units:
+                if v.kind == 'police' and v.npc and v.traffic and not v.dead and v not in self.units:
                     dx, dy = v.x - px, v.y - py
                     if dx * dx + dy * dy < 60.0 * 60.0:
                         self._make_unit(v)
@@ -253,8 +253,7 @@ class Police(object):
             return 'fbi' if r < 0.65 else 'enforcer'
         if lv == 4:
             return 'enforcer' if r < 0.5 else 'police'
-        # на первых звёздах в погоню выезжают и мотоциклисты
-        return 'copbike' if r < 0.22 else 'police'
+        return 'police'
 
     def _make_unit(self, v):
         w = self.w

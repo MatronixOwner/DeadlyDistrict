@@ -115,7 +115,7 @@ def tree(mb, night, p, rnd):
             ca, sa = math.cos(aa) * r, math.sin(aa) * r
             leaf_card(mb, key, (cx - ca, cy - sa, cz - r), (cx + ca, cy + sa, cz - r), (cx + ca, cy + sa, cz + r),
                       (cx - ca, cy - sa, cz + r), cm, ct)
-    return ('c', 0.3 * s, 6.0 * s, F_SOLID | F_CAM)
+    return ('c', 0.3 * s, 6.0 * s, F_SOLID)
 
 
 def palm(mb, night, p, rnd):
@@ -162,7 +162,7 @@ def palm(mb, night, p, rnd):
                 (tip[0] + ox * 0.6, tip[1] + oy * 0.6, tip[2]), (tip[0] - ox * 0.6, tip[1] - oy * 0.6, tip[2]),
                 uvs=((0.5, 0), (0.5, 1), (1, 1), (1, 0)), color=g)
     mb.blob(None, px, py, hgt - 0.1, 0.35, 0.35, 0.3, (0.42, 0.30, 0.16, 1.0), seed=1)
-    return ('c', 0.26, 6.0, F_SOLID | F_CAM)
+    return ('c', 0.26, 6.0, F_SOLID)
 
 
 def bench(mb, night, p, rnd):
@@ -230,7 +230,7 @@ def busstop(mb, night, p, rnd):
     mb.quad2(key, (-0.58, -1.55, 0.35), (-0.58, 1.55, 0.35), (-0.58, 1.55, 2.2), (-0.58, -1.55, 2.2), color=g)
     mb.quad2(key, (-0.58, 1.62, 0.35), (0.5, 1.62, 0.35), (0.5, 1.62, 2.2), (-0.58, 1.62, 2.2), color=g)
     glow(night, 0.0, 0.0, 2.2, 1.6, (0.8, 0.9, 1.0, 0.7))
-    return ('b', 0.7, 1.7, 2.4, F_SOLID | F_CAM)
+    return ('b', 0.7, 1.7, 2.4, F_SOLID)
 
 
 def dumpster(mb, night, p, rnd):
