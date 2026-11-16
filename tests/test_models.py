@@ -1216,3 +1216,35 @@ def test_tuning_parts_are_models(game, world):
             else:
                 assert mx.y < -hl + 0.6 and mn.z > 0.6                                    # спойлер — на крышке багажника
     w.remove_vehicle(v)
+
+
+def test_gun_in_the_hands_points_where_the_ped_looks(game, world):
+    """То же, что test_weapons_point_muzzle_forward, но уже в руках: в стойке, на ходу и на бегу дуло
+    впереди кисти по направлению взгляда, а не позади неё."""
+    from panda3d.core import LPoint3
+    from game.defs import W_SHOTGUN, W_UZI
+    w = world
+    m = w.models
+    px, py = w.player.pos()
+    ped = w.spawn_ped(px + 3.0, py, 0.0, random_look(random.Random(4), 'D'))
+    ped.keep = True
+    ped.set_state('stand')
+    for wid, clip, need in ((W_PISTOL, 'pistol_aim', 0.12), (W_UZI, 'pistol_aim', 0.12), (W_PISTOL, 'pistol_walk', 0.04),
+                            (W_AK, 'rifle_fire', 0.4), (W_SHOTGUN, 'rifle_fire', 0.4),
+                            (W_AK, 'rifle_idle', 0.14), (W_AK, 'rifle_run', 0.14)):
+        ped.set_weapon(wid)
+        vis = ped.vis
+        vis.aim_pitch = 0.0
+        for k in range(4):
+            vis.play(clip, True, 1.0, 0.0, True, k / 4.0)
+            for _ in range(14):                      # угол подводится плавно, кости отстают на кадр
+                vis.update(0.0)
+                vis.actor.update(force=True)
+            gun = vis.gun
+            tip = m.meta['weapons'][m.weapon_name(wid)]['muzzle']
+            hand = ped.node.getRelativePoint(gun, LPoint3(0, 0, 0))
+            muzzle = ped.node.getRelativePoint(gun, LPoint3(*tip))
+            # персонаж смотрит вдоль +Y своего узла; опущенное оружие глядит вперёд-вниз, но не назад
+            assert muzzle.y - hand.y > need, (m.weapon_name(wid), clip, k, round(muzzle.y - hand.y, 3))
+    ped.keep = False
+    w.remove_ped(ped)
