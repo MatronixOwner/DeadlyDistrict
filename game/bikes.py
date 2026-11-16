@@ -1010,8 +1010,12 @@ def build(assets, kind, paint):
     seat2 = info.get('seat2')
     if seat2 is None and kind in ('tourer', 'chopper', 'trike'):
         seat2 = (0.0, g.sy - (0.50 if kind == 'trike' else 0.42), g.pz + (0.12 if kind == 'trike' else 0.08), 'pillion')
+    # grips — середины ручек руля (полуширина, y, z): за них держится ездок; axis — верх вилки: через него и
+    # ось переднего колеса идёт ось, вокруг которой поворачивается руль.  У карта и гольф-кара — баранка
+    bars = kind not in ('kart', 'caddy')
     res = dict(body=k.build('body', assets), fork=f.build('fork', assets), wheels=wheels,
                seat=(g.x, g.sy, g.pz), pose=K['pose'], seat2=seat2, steer=(g.x, g.fy),
-               head=info['head'], tail=info['tail'], siren=info.get('siren'))
+               head=info['head'], tail=info['tail'], siren=info.get('siren'),
+               grips=(g.bar - 0.05, g.gy, g.gz) if bars else None, axis=(g.cy, g.cz) if bars else None)
     _cache[key] = res
     return res

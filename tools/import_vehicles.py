@@ -592,9 +592,25 @@ def _pegs(b, foot, col=DARK, bar=True):
         o.box(sx * fx - 0.055, fy - 0.07, fz - 0.03, sx * fx + 0.055, fy + 0.07, fz, col)
 
 
+def top_z(tris, x, y):
+    """Высота поверхности сетки над точкой (x, y): tris — массив (n, 3, 3).  None, если под точкой пусто."""
+    a, b, c = tris[:, 0], tris[:, 1], tris[:, 2]
+    d = (b[:, 1] - c[:, 1]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 1] - c[:, 1])
+    ok = np.abs(d) > 1e-12
+    d = np.where(ok, d, 1.0)
+    u = ((b[:, 1] - c[:, 1]) * (x - c[:, 0]) + (c[:, 0] - b[:, 0]) * (y - c[:, 1])) / d
+    v = ((c[:, 1] - a[:, 1]) * (x - c[:, 0]) + (a[:, 0] - c[:, 0]) * (y - c[:, 1])) / d
+    w = 1.0 - u - v
+    hit = ok & (u >= 0.0) & (v >= 0.0) & (w >= 0.0)
+    if not hit.any():
+        return None
+    return float((u * a[:, 2] + v * b[:, 2] + w * c[:, 2])[hit].max())
+
+
 def bike_moto():
     """Мотоцикл Kenney (Starter Kit Racing): круизер.  У исходника «игрушечные» пропорции — очень широкие
-    шины и руль; приводим к настоящим: шины 15 и 19 см, руль 66 см."""
+    шины и руль; приводим к настоящим: шины 15 и 19 см, руль 76 см.  Сам руль — рога толщиной 12 см с
+    ручками по 20 см — заменяем трубой с ручками настоящей толщины."""
     from PIL import Image
     parts, _ = ms.read_glb(src('kenney_racing', 'vehicle-motorcycle.glb'))
     pal = np.asarray(Image.open(src('kenney_racing', 'Textures', 'colormap.png')).convert('RGB'))
@@ -671,6 +687,7 @@ def bike_moto():
     FX = 0.73
     fpts = (fork.verts - (0.0, mid, 0.0)) * (k * FX, k, k)
     grip = []
+    gidx = set()
     head = []
     kinds = []
     for i in range(len(fork.tris)):
@@ -679,6 +696,7 @@ def bike_moto():
         kinds.append((what, c))
         if what == 'dark' and fpts[fork.tris[i]][:, 2].min() > 1.0 * k:
             grip.append(fpts[fork.tris[i]])
+            gidx.update(int(j) for j in fork.tris[i])
         if what == 'lamp':
             head.append(fpts[fork.tris[i]].mean(0))
     grip = np.concatenate(grip)
@@ -688,7 +706,51 @@ def bike_moto():
     z1 = float(grip[:, 2].min())
     fpts = bend(fpts, z1 - 0.30, z1, dy, dz)
     axle_f = (fy - mid) * k
+    # --- руль.  У исходника это два висящих над траверсой «рога» с ручками-бочонками: кисти ездока в них тонут.
+    #     Находим ось каждой ручки, выбрасываем всё, что лежит вдоль неё, и ставим трубу со стойками от траверсы
+    gidx = np.array(sorted(gidx))
+    drop = np.zeros(len(fork.tris), bool)
+    bars = []
+    for side in (-1.0, 1.0):
+        q = fpts[gidx[fpts[gidx, 0] * side > 0.0]]
+        q = np.unique(np.round(q, 4), axis=0)
+        q = q[np.argsort(q[:, 0] * side)]
+        cin, cout = q[:len(q) // 2].mean(0), q[len(q) // 2:].mean(0)
+        ax = cout - cin
+        ax /= np.linalg.norm(ax)
+        rel = fpts - cin
+        t = rel @ ax
+        far = np.linalg.norm(rel - np.outer(t, ax), axis=1)
+        rad = float(far[gidx[fpts[gidx, 0] * side > 0.0]].max())
+        along = (far < rad * 1.12) & (t > -0.30) & (fpts[:, 0] * side > 0.0)
+        drop |= along[fork.tris].all(axis=1)
+        bars.append((side, (cin + cout) * 0.5, ax))
+    assert 40 <= int(drop.sum()) <= 120, drop.sum()
+    left = fpts[fork.tris[~drop]]
+    BAR_R, GRIP_R, GRIP_L = 0.019, 0.029, 0.135
+    o = b.out('fork')
+    off = np.array((0.0, axle_f, 0.0))
+    yoke = None
+    for side, palm, ax in bars:
+        g0, g1 = palm - ax * GRIP_L * 0.5, palm + ax * GRIP_L * 0.5
+        elbow = palm - ax * 0.20
+        cy = palm[1] + 0.22                              # стойка — на верхней грани траверсы
+        cz = top_z(left, side * 0.085, cy)
+        assert cz is not None and palm[2] - 0.22 < cz < palm[2] - 0.05, cz
+        clamp = np.array((side * 0.085, cy, cz - 0.012))
+        yoke = (float(cy), float(cz))                    # верх вилки: через него идёт ось поворота руля
+        up = (elbow - clamp) / np.linalg.norm(elbow - clamp)
+        o.tube(clamp - off, elbow + up * BAR_R * 0.6 - off, BAR_R, STEEL, 6)
+        o.tube(elbow - ax * BAR_R * 0.6 - off, g0 - off, BAR_R, STEEL, 6)
+        o.tube(g0 - off, g1 - off, GRIP_R, DARK, 6)
+        o.tube(g1 - off, g1 + ax * 0.012 - off, GRIP_R + 0.004, STEEL, 6)            # заглушка-грузик
+        fwd = np.cross((0.0, 0.0, 1.0), ax) * side       # рычаг тормоза (сцепления) перед ручкой
+        fwd /= np.linalg.norm(fwd)
+        o.tube(g0 - ax * 0.02 + fwd * 0.012 - off, g0 + ax * 0.012 + fwd * 0.05 - off, 0.009, STEEL, 4)
+        o.tube(g0 + ax * 0.012 + fwd * 0.05 - off, g0 + ax * 0.125 + fwd * 0.058 - off, 0.008, STEEL, 4)
     for i in range(len(fork.tris)):
+        if drop[i]:
+            continue
         what, c = kinds[i]
         pts = fpts[fork.tris[i]] - (0.0, axle_f, 0.0)
         b.out('fork_paint' if what == 'paint' else 'fork').tri(pts, color=flat(c, what))
@@ -706,7 +768,8 @@ def bike_moto():
         tail=[0.0, round(float(np.mean([t[1] for t in tail])) - 0.03, 3), round(float(np.mean([t[2] for t in tail])), 3)],
         L=round(float(max(allp[:, 1].max(), fk[:, 1].max() + axle_f) - allp[:, 1].min()), 3),
         y0=round(float(allp[:, 1].min()), 3), y1=round(float(max(allp[:, 1].max(), fk[:, 1].max() + axle_f)), 3),
-        W=round(float(np.abs(fk[:, 0]).max() * 2.0), 3), H=round(float(fk[:, 2].max()), 3), bend=[round(dy, 3), round(dz, 3)])
+        W=round(float(np.abs(fk[:, 0]).max() * 2.0), 3), H=round(float(fk[:, 2].max()), 3), bend=[round(dy, 3), round(dz, 3)],
+        axis=[round(yoke[0], 3), round(yoke[1], 3)])
     return b.write()
 
 

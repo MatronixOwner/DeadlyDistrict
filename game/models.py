@@ -124,6 +124,7 @@ class Models(object):
         self._weapons = {}
         self._hand = {}
         self._arm = None
+        self._ride = {}
         self._ctex = {}
         self._vinfo = {}
         self._vtex = {}
@@ -367,6 +368,52 @@ class Models(object):
             a.cleanup()
             a.removeNode()
         return self._arm
+
+    def rider_ref(self, mix, frame=10):
+        """Руки ездока в позе посадки mix = ((клип, вес), ...) — то, от чего считается хват руля.
+
+        Для каждой руки ('l', 'r'): матрица ключицы в осях модели, матрицы плеча, предплечья и кисти
+        относительно родителей, точка ладони в осях кисти, длины плеча и предплечья; 'spine' — матрица таза
+        в осях модели и матрица поясницы относительно него (корпус ездока поворачивается за рулём).  Поза у
+        ездока застывшая, скелет у всех персонажей общий, поэтому снимается один раз на посадку."""
+        from panda3d.core import PartBundle
+        key = (tuple(mix), frame)
+        res = self._ride.get(key)
+        if res is None:
+            a = self.actor('hero')
+            b = a.getPartBundle('modelRoot')
+            b.setAnimBlendFlag(True)
+            b.setBlendType(PartBundle.BTNormalizedLinear)
+            for name, wgt in mix:
+                c = a.getAnimControl(name)
+                if c is None or wgt <= 0.0:
+                    continue
+                c.pose(min(frame, max(0, c.getNumFrames() - 1)))
+                b.setControlEffect(c, wgt)
+            nodes = {}
+            for s in 'lr':
+                nodes[s] = (a.exposeJoint(None, 'modelRoot', 'clavicle_' + s),
+                            a.exposeJoint(None, 'modelRoot', 'upperarm_' + s, localTransform=True),
+                            a.exposeJoint(None, 'modelRoot', 'lowerarm_' + s, localTransform=True),
+                            a.exposeJoint(None, 'modelRoot', 'hand_' + s, localTransform=True),
+                            a.exposeJoint(None, 'modelRoot', 'hand_' + s),
+                            a.exposeJoint(None, 'modelRoot', 'middle_01_' + s))
+            pel = a.exposeJoint(None, 'modelRoot', 'pelvis')
+            sp = a.exposeJoint(None, 'modelRoot', 'spine_01', localTransform=True)
+            a.update(force=True)
+            res = {'spine': (LMatrix4(pel.getMat()), LMatrix4(sp.getMat()))}
+            for s in 'lr':
+                clav, up, lo, ha, net, mid = nodes[s]
+                m1, m2, mh = LMatrix4(up.getMat()), LMatrix4(lo.getMat()), LMatrix4(ha.getMat())
+                inv = LMatrix4(net.getMat())
+                inv.invertInPlace()
+                wrist = net.getPos()
+                palm = inv.xformPoint(wrist + (mid.getPos() - wrist) * 0.62)      # середина ладони — ближе к костяшкам
+                res[s] = (LMatrix4(clav.getMat()), m1, m2, mh, palm, m2.getRow3(3).length(), mh.getRow3(3).length())
+            a.cleanup()
+            a.removeNode()
+            self._ride[key] = res
+        return res
 
     def hand_matrix(self, kind):
         """(имя кости, матрица «оружие -> кость»): kind — 'pistol' (в одной руке) или 'rifle' (в двух)."""

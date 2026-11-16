@@ -29,6 +29,7 @@ SUPPORT = {'ak': (0.41, 0.115), 'm4': (0.32, 0.082), 'shotgun': (0.36, -0.01), '
 SUPPORT_ANY = (0.34, 0.03)
 AIM_PITCH = 32.0            # дальше этого угла ствол за взглядом не идёт: корпус персонажа не наклоняется
 ELBOW = LVector3(0.55, 0.2, -0.8)       # куда смотрит левый локоть: наружу и вниз (модель глядит в −Y, лево — +X)
+RIDE_ELBOW = {'l': LVector3(0.62, 0.25, -0.74), 'r': LVector3(-0.62, 0.25, -0.74)}     # локти ездока: в стороны и вниз
 
 
 def _arc(v0, v1):
@@ -98,6 +99,7 @@ class PedVisual(object):
         self.aim_pitch = 0.0        # куда целятся: угол над горизонтом, градусы (задаёт ped.py)
         self._pitch = 0.0
         self._ik = None             # узлы, ведущие кости левой руки, пока она на цевье
+        self._bars = None           # узлы, ведущие кости обеих рук ездока, пока он держится за руль
         self.play('idle', True, 1.0, 0.0)
         self.time = random.random() * 2.0           # чтобы толпа не дышала в такт
 
@@ -375,6 +377,96 @@ class PedVisual(object):
         ik[0].setMat(n1 * ci)
         ik[1].setMat(n2 * ni)
 
+    def ride_arms(self, rel, left, right, mix, twist=0.0, lean=0.0, frame=10):
+        """Ездок держится за руль: ладони ложатся на ручки — точки left и right в осях узла rel.
+
+        В клипах посадки кисти стоят в 25 см друг от друга, как на автомобильной баранке, а ручки руля
+        у мотоцикла разнесены на 55–75 см и к тому же ходят вместе с вилкой.  Поэтому руки ведём сами: плечо и
+        предплечье каждой поворачиваются так, чтобы ладонь пришла на ручку (та же задача о двух звеньях, что
+        у левой руки на цевье).  mix — клипы позы посадки: от неё берётся исходное положение рук.
+
+        twist и lean (градусы) — корпус выше поясницы разворачивается вслед за рулём и подаётся вперёд: иначе
+        при вывернутом руле до дальней ручки не дотянуться.  Таз и ноги остаются на месте."""
+        a = self.actor
+        if a is None:
+            return
+        ref = self.models.rider_ref(mix, frame)
+        ik = self._bars
+        if ik is None:
+            ik = self._bars = {}
+            for s in 'lr':
+                n1, n2 = NodePath('upperarm_' + s), NodePath('lowerarm_' + s)
+                a.controlJoint(n1, 'modelRoot', 'upperarm_' + s)
+                a.controlJoint(n2, 'modelRoot', 'lowerarm_' + s)
+                ik[s] = (n1, n2)
+            ik['spine'] = NodePath('spine_01')
+            a.controlJoint(ik['spine'], 'modelRoot', 'spine_01')
+        pel, ms = ref['spine']
+        b0 = ms * pel
+        turn = None
+        if twist or lean:
+            # модель глядит в −Y: наклон вперёд — поворот вокруг +X, разворот плеч — вокруг вертикали
+            sp = LVector3(b0.getRow3(3))
+            turn = (LMatrix4.translateMat(-sp) * LMatrix4.rotateMat(lean, LVector3(1.0, 0.0, 0.0)) *
+                    LMatrix4.rotateMat(twist, LVector3(0.0, 0.0, 1.0)) * LMatrix4.translateMat(sp))
+            b0 = b0 * turn
+        pi = LMatrix4(pel)
+        pi.invertInPlace()
+        ik['spine'].setMat(b0 * pi)
+        for s, pt in (('l', left), ('r', right)):
+            clav, m1, m2, mh, palm, l1, l2 = ref[s]
+            if turn is not None:
+                clav = clav * turn
+            t = a.getRelativePoint(rel, pt)                     # ручка в осях модели
+            b1 = m1 * clav
+            sh = LVector3(b1.getRow3(3))                        # плечевой сустав
+            b2 = m2 * b1
+            off = (mh * b2).xformVec(palm)                      # от запястья до середины ладони
+            n1, n2 = b1, b2
+            for _ in range(2):                                  # кисть поворачивается вместе с предплечьем
+                d = LVector3(t) - off - sh
+                dist = d.length()
+                if dist < 1e-4:
+                    break
+                d /= dist
+                dist = min(dist, (l1 + l2) * 0.995)
+                k = (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * dist)
+                h = math.sqrt(max(0.0, l1 * l1 - k * k))
+                e = RIDE_ELBOW[s]
+                pole = e - d * e.dot(d)
+                pole.normalize()
+                el = sh + d * k + pole * h                      # локоть
+                wr = sh + d * dist                              # запястье
+                v0 = LVector3(b2.getRow3(3)) - sh
+                v0.normalize()
+                v1 = el - sh
+                v1.normalize()
+                n1 = _about(b1, sh, _arc(v0, v1))
+                n2 = m2 * n1
+                w0 = LVector3((mh * n2).getRow3(3)) - el
+                w0.normalize()
+                w1 = wr - el
+                w1.normalize()
+                n2 = _about(n2, el, _arc(w0, w1))
+                off = (mh * n2).xformVec(palm)
+            ci = LMatrix4(clav)
+            ci.invertInPlace()
+            ni = LMatrix4(n1)
+            ni.invertInPlace()
+            ik[s][0].setMat(n1 * ci)
+            ik[s][1].setMat(n2 * ni)
+
+    def ride_arms_off(self):
+        """Вернуть руки клипу анимации (ездок слез)."""
+        if self._bars is not None:
+            self._bars = None
+            a = self.actor
+            if a is not None:
+                for s in 'lr':
+                    a.releaseJoint('modelRoot', 'upperarm_' + s)
+                    a.releaseJoint('modelRoot', 'lowerarm_' + s)
+                a.releaseJoint('modelRoot', 'spine_01')
+
     def _free_arm(self):
         """Вернуть левую руку клипу анимации."""
         if self._ik is not None:
@@ -386,6 +478,7 @@ class PedVisual(object):
 
     def remove(self):
         self._ik = None
+        self._bars = None
         a = self.actor
         if a is not None:
             self.actor = None

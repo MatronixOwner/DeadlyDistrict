@@ -3,7 +3,7 @@
 import math
 import random
 
-from panda3d.core import NodePath
+from panda3d.core import NodePath, LPoint3, LVector3, LQuaternion
 
 from .meshbuilder import MeshBuilder
 from .mathutil import clamp, approach, wrap_angle, angle_diff, yaw_to_h, damp, DEG
@@ -736,6 +736,10 @@ class Vehicle(object):
         self.steer_np = None
         self.steer_wheels = []
         self.rider = None                # (узел, облик) нарисованного ездока у мотоцикла в потоке машин
+        self._arms = None                # фигура, чьи руки лежат на руле (ездок за рулём)
+        self._arms_deg = 0.0
+        self._steer_ax = None            # ось поворота руля (вдоль вилки) и точка на ней; None — вертикальная
+        self._steer_deg = 0.0
         self.body = self._new_body()
         self.wheels = []
         self.wheel_r_vis = spec.wheel_r
@@ -748,6 +752,14 @@ class Vehicle(object):
             self.steer_np.setPos(stx, sty, 0.0)
             self.fork = bp['fork'].copyTo(self.steer_np)
             self.steer_wheels = []
+            top = bp.get('axis')
+            if top is not None:
+                # руль и вилка поворачиваются вокруг оси вилки (она наклонена назад), а не вокруг вертикали
+                # через ось колеса: иначе руль, стоящий далеко позади колеса, ходит из стороны в сторону
+                r0 = bp['wheels'][0][2]
+                ax = LVector3(0.0, top[0] - sty, top[1] - r0)
+                if ax.z > 0.15 and ax.normalize():
+                    self._steer_ax = (ax, LPoint3(stx, sty, r0), LPoint3(stx, sty, 0.0))
             for (wx, wy, r, how, wnode) in bp['wheels']:
                 if how == 'fork':                           # колесо в вилке: поворачивается вместе с ней
                     piv = self.steer_np.attachNewNode('wp')
@@ -813,11 +825,13 @@ class Vehicle(object):
     # ------------------------------------------------------------------
     # ездок верхом (мотоциклы, велосипед, квадроцикл)
     # ------------------------------------------------------------------
-    def _pose_rider(self, vis, node, seat, pose):
-        """Усадить фигуру: поза из смеси клипов, наклон корпуса, таз — точно в точку seat (оси машины)."""
+    def _pose_rider(self, vis, node, seat, pose, bars=False):
+        """Усадить фигуру: поза из смеси клипов, наклон корпуса, таз — точно в точку seat (оси машины).
+        bars — это ездок за рулём: его руки ложатся на ручки."""
         from . import bikes
         P = bikes.POSES[pose]
-        vis.pose_mix(P.get('clips') or (('ride', P['mix']), ('drive', 1.0 - P['mix'])))
+        mix = P.get('clips') or (('ride', P['mix']), ('drive', 1.0 - P['mix']))
+        vis.pose_mix(mix)
         node.reparentTo(self.tilt)
         node.setPosHpr(0.0, 0.0, 0.0, 0.0, -P['lean'], 0.0)
         pv = vis.pelvis_pos(self.tilt)
@@ -825,6 +839,36 @@ class Vehicle(object):
             node.setPos(seat[0], seat[1], seat[2] - 0.92)
         else:
             node.setPos(seat[0] - pv.x, seat[1] - pv.y, seat[2] - pv.z)
+        if bars and pv is not None and self.bparts.get('grips') is not None:
+            self._arms = vis
+            self._arms_mix = mix
+            self._reach()
+
+    def _reach(self):
+        """Подвести руки ездока к ручкам руля там, где они сейчас (руль поворачивается вместе с вилкой).
+        Корпус идёт за рулём: плечи разворачиваются в сторону поворота, ездок подаётся вперёд."""
+        gx, gy, gz = self.bparts['grips']
+        sty = self.bparts['steer'][1]
+        deg = self._steer_deg
+        self._arms_deg = deg
+        self._arms.ride_arms(self.steer_np, LPoint3(-gx, gy - sty, gz), LPoint3(gx, gy - sty, gz), self._arms_mix,
+                             deg * 0.3, min(8.0, abs(deg) * 0.33))
+
+    def _let_go(self, vis):
+        if vis is not None and self._arms is vis:
+            self._arms = None
+            vis.ride_arms_off()
+
+    def _turn_fork(self, deg):
+        self._steer_deg = deg
+        ax = self._steer_ax
+        if ax is None:
+            self.steer_np.setH(deg)
+            return
+        q = LQuaternion()
+        q.setFromAxisAngle(deg, ax[0])
+        self.steer_np.setQuat(q)
+        self.steer_np.setPos(ax[1] + q.xform(ax[2] - ax[1]))
 
     def seat_ped(self, ped, passenger=False):
         """Посадить персонажа в седло (или на место пассажира): он виден и едет вместе с машиной."""
@@ -843,13 +887,14 @@ class Vehicle(object):
             ped.node.reparentTo(self.tilt)
             ped.node.setPosHpr(seat[0], seat[1], seat[2] - 0.92, 0.0, 0.0, 0.0)
         else:
-            self._pose_rider(vis, ped.node, seat, pose)
+            self._pose_rider(vis, ped.node, seat, pose, bars=not passenger)
         ped.node.show()
         return True
 
     def unseat_ped(self, ped):
         par = getattr(ped, '_ride_parent', None)
         ped._ride_parent = None
+        self._let_go(ped.vis)
         if ped.removed or ped.node.isEmpty():
             return                                  # фигуру уже убрали: возвращать некого
         if par is not None and not par.isEmpty():
@@ -889,7 +934,7 @@ class Vehicle(object):
             return
         bp = self.bparts
         vis = PedVisual(mdl, self.tilt, look, 'cop' if self.kind == 'copbike' else 'civ')
-        self._pose_rider(vis, vis.root, bp['seat'], bp['pose'])
+        self._pose_rider(vis, vis.root, bp['seat'], bp['pose'], bars=True)
         self.rider = vis
         self.driver_look = look
 
@@ -897,6 +942,8 @@ class Vehicle(object):
         vis = self.rider
         if vis is not None:
             self.rider = None
+            if self._arms is vis:
+                self._arms = None
             vis.remove()
             vis.root.removeNode()
 
@@ -1331,11 +1378,16 @@ class Vehicle(object):
         rot = self.wheel_rot
         if spec.bike:
             if self.steer_wheels:
-                self.steer_np.setH(st * 0.6)
+                deg = st * 0.6
                 for piv in self.steer_wheels:
                     piv.setH(st)
             else:
-                self.steer_np.setH(st)
+                deg = st
+            if deg != self._steer_deg:
+                self._turn_fork(deg)
+                if self._arms is not None and abs(deg - self._arms_deg) > 0.7 and (
+                        self.is_player or (abs(self.x - cam.x) < 70.0 and abs(self.y - cam.y) < 70.0)):
+                    self._reach()                           # руки идут за рулём
             for piv, wn in ws:
                 wn.setP(rot)
             if self.fallen:

@@ -185,7 +185,7 @@ def build(assets, models, kind, paint):
     body.flattenStrong()                                # краска и сдвиг — прямо в вершины; узлов остаётся два-три
     fork.flattenStrong()
     res = dict(body=body, fork=fork, wheels=wheels, seat=(x, py, pz), pose=m['pose'], seat2=seat2, steer=(x, fy),
-               head=head, tail=tail, siren=siren)
+               head=head, tail=tail, siren=siren, grips=(gx, gy, gz), axis=tuple(m['axis']) if 'axis' in m else (gy, gz))
     _cache[key] = res
     return res
 

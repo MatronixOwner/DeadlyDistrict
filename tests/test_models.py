@@ -1197,6 +1197,136 @@ def test_cruiser_and_bicycles_are_models(game, world):
         bikes.use_models(keep)
 
 
+def test_cruiser_handlebar_is_a_real_bar(world):
+    """У мотоцикла-модели руль настоящей толщины.  У исходника это были «рога» толщиной 12 см с ручками-бочонками
+    по 20 см, висевшие над траверсой: кисти ездока в них тонули."""
+    import numpy as np
+    from panda3d.core import GeomVertexReader
+    m = world.models
+    info = m.meta['bikes']['moto']
+    fork = m._load('veh', 'b_moto.bam').find('**/fork')
+    pts, cols = [], []
+    for gp in fork.findAllMatches('**/+GeomNode'):
+        for i in range(gp.node().getNumGeoms()):
+            vd = gp.node().getGeom(i).getVertexData()
+            r, c = GeomVertexReader(vd, 'vertex'), GeomVertexReader(vd, 'color')
+            while not r.isAtEnd():
+                v, q = r.getData3(), c.getData4()
+                pts.append((v.x, v.y, v.z))
+                cols.append(max(q.x, q.y, q.z))
+    pts, cols = np.array(pts), np.array(cols)
+    gx, gy, gz = info['grips']
+    gy -= info['wheel_f'][0]                                     # вилка хранится от оси переднего колеса
+    for side in (-1.0, 1.0):
+        near = np.linalg.norm(pts - (side * gx, gy, gz), axis=1) < 0.12
+        grip = pts[near & (cols < 0.2)]                          # чёрная ручка — под ладонью
+        assert len(grip) >= 12, side
+        assert np.ptp(grip[:, 2]) < 0.075, np.ptp(grip[:, 2])    # толщиной 6 см, а не 20
+        assert np.linalg.norm(grip.mean(0) - (side * gx, gy, gz)) < 0.02
+        # всё, что есть у руля выше траверсы, — тонкая труба: ничего толще 8 см по вертикали рядом с ручкой
+        assert np.ptp(pts[near][:, 2]) < 0.09
+    assert 0.70 < info['W'] < 0.86 and info['H'] < 1.36
+    # руль поворачивается вокруг оси вилки: её верх записан в описании модели и лежит между колесом и ручками
+    ay, az = info['axis']
+    assert info['grips'][1] < ay < info['wheel_f'][0] - 0.15 and 0.9 < az < info['grips'][2]
+
+
+def _palm(vis, side, rel):
+    """Середина ладони ездока (в осях узла rel): от запястья к костяшке среднего пальца."""
+    a = vis.actor
+    key = '_t_' + side
+    if key not in vis.grips:
+        vis.grips[key] = (a.exposeJoint(None, 'modelRoot', 'hand_' + side), a.exposeJoint(None, 'modelRoot', 'middle_01_' + side))
+    a.update(force=True)
+    hand, mid = vis.grips[key]
+    p0, p1 = hand.getPos(rel), mid.getPos(rel)
+    return p0 + (p1 - p0) * 0.62
+
+
+def test_rider_hands_hold_the_grips(game, world):
+    """Ездок держит руль за ручки — и когда руль повёрнут тоже.
+
+    В клипах посадки кисти стоят в 25 см друг от друга (как на автомобильной баранке), а ручки руля разнесены
+    на 45–75 см: руки висели в воздухе рядом с рулём.  Теперь их ведёт к ручкам расчёт, и они идут за рулём."""
+    from panda3d.core import LPoint3
+    from game import bikes
+    from game.vehicle import BIKES
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    x, y = w.city.landmarks['airfield']['apron']
+    wheel = ('kart', 'caddy')                                   # у этих баранка: руки остаются как в клипе
+    for kind in sorted(BIKES):
+        v = w.spawn_vehicle(kind, x - 40.0, y - 6.0, 0.0, paint=1)
+        v.keep = True
+        pl.teleport(v.x, v.y - 1.6)
+        harness.run(game, 0.1)
+        pl.enter_vehicle(v, silent=True)
+        harness.run(game, 0.2)
+        vis = pl.ped.vis
+        bp = v.bparts
+        if kind in wheel:
+            assert bp.get('grips') is None and vis._bars is None and v._arms is None, kind
+        else:
+            gx, gy, gz = bp['grips']
+            assert gx > 0.17, (kind, gx)                        # ручки заметно шире, чем кисти в клипе (±0,12)
+            sty = bp['steer'][1]
+            assert v._arms is vis and vis._bars is not None, kind
+            feet = None
+            for st in (0.0, 0.42, -0.42):
+                v.steer = st
+                v._update_visual(1.0 / 60.0)
+                assert abs(v._arms_deg - v._steer_deg) < 0.71, kind
+                # за рулём идёт только корпус: таз остаётся на седле, стопы — на подножках
+                pv = vis.pelvis_pos(v.tilt)
+                assert (pv - LPoint3(*bp['seat'])).length() < 0.002, (kind, st, pv)
+                if '_t_foot' not in vis.grips:
+                    vis.grips['_t_foot'] = vis.actor.exposeJoint(None, 'modelRoot', 'foot_l')
+                vis.actor.update(force=True)
+                f = vis.grips['_t_foot'].getPos(v.tilt)
+                feet = feet or f
+                assert (f - feet).length() < 0.002, (kind, st)
+                for side, sx in (('l', -1.0), ('r', 1.0)):
+                    grip = v.tilt.getRelativePoint(v.steer_np, LPoint3(sx * gx, gy - sty, gz))
+                    d = (_palm(vis, side, v.tilt) - grip).length()
+                    assert d < 0.035, (kind, st, side, round(d, 3))
+                if st:
+                    # руль повернулся вокруг оси вилки: переднее колесо осталось на месте, а середина руля
+                    # не уехала вбок дальше, чем на её вынос от оси
+                    mid = v.tilt.getRelativePoint(v.steer_np, LPoint3(0.0, gy - sty, gz))
+                    assert abs(mid.x - bp['steer'][0]) < 0.125, (kind, st, mid)
+                    hub = [piv for piv, wn in v.wheels if piv.getParent() == v.steer_np]
+                    for piv in hub:
+                        p = piv.getPos(v.tilt)
+                        assert abs(p.x - bp['steer'][0]) < 0.01 and abs(p.y - sty) < 0.01, (kind, st, p)
+            v.steer = 0.0
+            v._update_visual(1.0 / 60.0)
+        pl.leave_vehicle(force=True)
+        harness.run(game, 0.3)
+        assert vis._bars is None and v._arms is None, kind      # слез — руки снова ведёт анимация
+        v.keep = False
+        w.remove_vehicle(v)
+        harness.run(game, 0.1)
+    # ездок из потока машин держится так же; пассажир руль не трогает
+    v = w.spawn_vehicle('chopper', x - 40.0, y - 6.0, 0.0, paint=1)
+    v.keep = True
+    v.add_rider(random_look(random.Random(3), 'G'))
+    assert v._arms is v.rider and v.rider._bars is not None
+    gx, gy, gz = v.bparts['grips']
+    for side, sx in (('l', -1.0), ('r', 1.0)):
+        grip = v.tilt.getRelativePoint(v.steer_np, LPoint3(sx * gx, gy - v.bparts['steer'][1], gz))
+        assert (_palm(v.rider, side, v.tilt) - grip).length() < 0.035
+    q = w.spawn_ped(v.x + 2.0, v.y, 0.0, random_look(random.Random(5), 'O'))
+    w.put_in_vehicle(q, v)
+    assert q.vis._bars is None and v._arms is v.rider
+    w.take_out(q, 1)
+    w.remove_ped(q)
+    v.remove_rider()
+    assert v._arms is None
+    v.keep = False
+    w.remove_vehicle(v)
+
+
 def test_tuning_parts_are_models(game, world):
     """Спойлеры на стойках и силовой бампер — готовые детали, растянутые под машину и покрашенные в её цвет."""
     w = world
