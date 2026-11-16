@@ -111,7 +111,7 @@ def selftest():
             tex = mdl.char_texture(name)
             _need(tex is not None and tex.getXSize() > 8, 'character texture is missing: %s (%s)' % (name, key))
     for kind in sorted(SPECS):
-        if SPECS[kind].bike:                        # мотоциклы и их родню собирает код
+        if SPECS[kind].bike:                        # мотоциклы и их родня: готовые модели или сборка кодом
             bp = bikes.build(game.assets, kind, PAINTS[0])
             _need(bp is not None and not bp['body'].isEmpty() and len(bp['wheels']) >= 2, 'bike failed: %s' % kind)
             continue
@@ -134,6 +134,9 @@ def selftest():
     for _ in range(10):
         game.step(dt)
     _need(pl.vehicle is bike and pl.ped.vis.cur == 'mix' and not pl.ped.node.isHidden(), 'the rider is not on the bike')
+    for kind in ('chopper', 'bicycle', 'bmx'):
+        _need(bikes.modelled(kind), 'bike model is missing: %s' % kind)
+    _need(bike._arms is pl.ped.vis and pl.ped.vis._bars is not None, 'the rider does not hold the handlebar')
     pl.leave_vehicle(force=True)
     car = w.spawn_vehicle('sedan', px - 4.0, py, yaw)
     full = dict((k, len(opts)) for k, title, opts in tuning.parts_for(car))

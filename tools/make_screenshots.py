@@ -29,12 +29,17 @@ TMP = tempfile.mkdtemp(prefix='dd_png_')
 
 
 def main():
-    random.seed(7)
+    random.seed(int(os.environ.get('DD_SHOT_SEED', '1')))
     g = harness.make_game(1280, 720)
     w = g.world
     done = []
 
-    def snap(name):
+    def snap(name, keys=()):
+        # кости персонажей пересчитываются при отрисовке, а руки на оружии и на руле ведёт игра по этим костям:
+        # за несколько кадров «шаг — отрисовка» поза доходит до той, что видит игрок
+        for _ in range(3):
+            g.base.graphicsEngine.renderFrame()
+            harness.run(g, 1.0 / 30.0, keys=keys)
         png = os.path.join(TMP, name + '.png')
         harness.shot(g, png)
         Image.open(png).convert('RGB').save(os.path.join(DOCS, name + '.jpg'), quality=88)
@@ -230,7 +235,7 @@ def main():
     w.cam.yaw = yaw
     harness.run(g, 4.5, keys=('w',))
     nohelp()
-    snap('drive')
+    snap('drive', ('w',))
 
     # Большой мост: с материка в город
     seg = next(sg for sg in w.city.bridges if sg['bridge']['name'] == 'north')
@@ -248,7 +253,7 @@ def main():
     w.sky.set_time(16.5)
     harness.run(g, 3.2, keys=('w',))
     nohelp()
-    snap('bridge')
+    snap('bridge', ('w',))
     car.x, car.y, car.yaw = x, y, yaw
     car.vx = car.vy = car.speed = 0.0
     car.sync()
@@ -267,7 +272,7 @@ def main():
     w.cam.pitch = -0.12
     harness.run(g, 0.2, keys=('w',))
     nohelp()
-    snap('chase')
+    snap('chase', ('w',))
     w.police.clear()
     pl.invincible = False
 
@@ -303,7 +308,7 @@ def main():
                       side.y - fy * 0.2 - fx * 0.4, 0.9)
     nohelp(('space',))
     harness.run(g, 0.1, keys=('space',))
-    snap('sidecar')
+    snap('sidecar', ('space',))
     w.cam.override = None
     pl.leave_vehicle(force=True)
     harness.run(g, 1.0)
@@ -325,6 +330,52 @@ def main():
     w.sky.set_time(13.0)
     view(bx + 6.9, by - 10.6, 4.9, bx + 6.9, by + 2.4, 0.5)
     snap('bikes')
+    for v in row:
+        w.remove_vehicle(v)
+
+    # готовые модели крупно: круизер с ездоком и пассажиром, рядом оба велосипеда.  Камера — спереди сбоку
+    from game.defs import random_look
+    cx, cy = bx + 4.0, by
+    yaw = -0.33
+    fx, fy = math.cos(yaw), math.sin(yaw)
+    moto = w.spawn_vehicle('chopper', cx, cy, yaw, paint=1)
+    cyc = w.spawn_vehicle('bicycle', cx - fx * 0.6 - fy * 2.3, cy - fy * 0.6 + fx * 2.3, yaw + 0.12, paint=1)
+    bmx = w.spawn_vehicle('bmx', cx + fx * 0.9 + fy * 2.1, cy + fy * 0.9 - fx * 2.1, yaw - 0.15, paint=6)
+    for v, seed in ((cyc, 3), (bmx, 8)):
+        v.keep = True
+        v.add_rider(random_look(random.Random(seed), 'R'))
+    moto.keep = True
+    pl.teleport(moto.x, moto.y - 3.0)
+    pl.enter_vehicle(moto, silent=True)
+    q = w.spawn_ped(moto.x, moto.y - 4.0, 0.0, random_look(random.Random(21), 'G'))
+    q.keep = True
+    w.put_in_vehicle(q, moto)
+    harness.run(g, 0.5, keys=('space',))
+    w.cam.override = (cx + math.cos(yaw + 0.7) * 5.3, cy + math.sin(yaw + 0.7) * 5.3, 1.75, cx + fx * 0.1, cy + fy * 0.1, 0.8)
+    nohelp(('space',))
+    w.hud.show(False)
+    harness.run(g, 0.2, keys=('space',))
+    snap('cruiser', ('space',))
+    w.cam.override = None
+    pl.leave_vehicle(force=True)
+    harness.run(g, 0.6)
+    w.take_out(q, 1)
+    w.remove_ped(q)
+    for v in (moto, cyc, bmx):
+        w.remove_vehicle(v)
+
+    # три машины с фототекстурами: «Кирпич», маршрутка, старый седан — в двух окрасках, носом к камере
+    row = []
+    yaw = -0.25
+    fx, fy = math.cos(yaw), math.sin(yaw)
+    cx, cy = bx + 6.0, by
+    for kind, paint, f, l in (('brick', 1, 0.0, 0.0), ('minibus', 0, 0.3, 3.6), ('beater', 1, -0.2, -3.5),
+                              ('brick', 5, -5.6, 2.0), ('minibus', 2, -6.0, -2.2)):
+        v = w.spawn_vehicle(kind, cx + fx * f - fy * l, cy + fy * f + fx * l, yaw, paint=paint)
+        v.keep = True
+        row.append(v)
+    view(cx + math.cos(yaw - 0.5) * 11.0, cy + math.sin(yaw - 0.5) * 11.0, 2.6, cx - fx * 2.0, cy - fy * 2.0, 0.7)
+    snap('cars')
     for v in row:
         w.remove_vehicle(v)
     w.cam.override = None
