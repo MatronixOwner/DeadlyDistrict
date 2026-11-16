@@ -366,9 +366,10 @@ class City(object):
                 lm['door'] = (x, lm['door'][1])
                 lm['road'] = (x, lm['road'][1])
             dx, wy = lm['door'][0], lm['rect'][1]
+            # до самого бордюра: у отодвинутых от дороги домов деревья стоят в четырёх метрах от стены
             self.props = [p for p in self.props
                           if not (abs(p["x"] - dx) < (2.6 if p["kind"] == "tree" else 1.5) and
-                                  wy - SIDEWALK - 0.3 < p["y"] < wy + 0.2)]
+                                  wy - SIDEWALK - 2.5 < p["y"] < wy + 0.2)]
 
     def _clear_driveways(self):
         """Перед воротами гаража на тротуаре ничего не стоит: ни дерева, ни урны, ни фонаря."""

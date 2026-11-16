@@ -324,8 +324,12 @@ def test_red_shirt_guy_wears_trousers(world):
 
 def test_long_gun_lies_in_both_hands(game, world):
     """Автомат привязан к правой кисти, но ствол должен проходить через левую ладонь — и в стойке, и на бегу.
-    Раньше он был закреплён жёстко и в половине клипов торчал мимо левой руки."""
-    from panda3d.core import LPoint3
+    Раньше он был закреплён жёстко и в половине клипов торчал мимо левой руки.
+
+    В стойке прицеливания наоборот: ствол смотрит туда, куда целятся, а левая рука приходит под цевьё
+    (раньше ствол в этой позе глядел в землю, а рука была вытянута под ним)."""
+    from panda3d.core import LPoint3, LVector3
+    from game.defs import W_SHOTGUN, W_M4, W_DOUBLE, W_ROCKET
     w = world
     harness.quiet(w, peds=True)
     px, py = w.player.pos()
@@ -334,7 +338,7 @@ def test_long_gun_lies_in_both_hands(game, world):
     p.set_state('stand')
     p.set_weapon(W_AK)
     vis = p.vis
-    for clip in ('rifle_idle', 'rifle_walk', 'rifle_run', 'rifle_fire'):
+    for clip in ('rifle_idle', 'rifle_walk', 'rifle_run'):
         worst = 0.0
         for k in range(6):
             vis.play(clip, True, 1.0, 0.0, True, k / 6.0)
@@ -347,6 +351,31 @@ def test_long_gun_lies_in_both_hands(game, world):
             assert lp.y > 0.05, (clip, k, lp)        # ладонь впереди рукояти
             worst = max(worst, math.hypot(lp.x, lp.z))
         assert worst < 0.03, (clip, worst)
+        assert vis._ik is None, clip                 # левую руку ведёт клип
+    for wid in (W_AK, W_M4, W_SHOTGUN, W_DOUBLE, W_ROCKET):
+        p.set_weapon(wid)
+        vis = p.vis
+        sy, sz = vis.support
+        for pitch in (0.0, 25.0, -25.0):
+            vis.aim_pitch = pitch
+            for k in range(4):
+                vis.play('rifle_fire', True, 1.0, 0.0, True, k / 6.0)
+                for _ in range(14):                  # угол подводится плавно, кости отстают на кадр
+                    vis.update(0.0)
+                    vis.actor.update(force=True)
+                gun = vis.gun
+                fwd = p.node.getRelativeVector(gun, LVector3(0, 1, 0))
+                fwd.normalize()
+                assert abs(fwd.x) < 0.02 and fwd.y > 0.85, (wid, pitch, fwd)
+                assert abs(math.degrees(math.asin(fwd.z)) - pitch) < 1.0, (wid, pitch, fwd)
+                lp = vis.grips['_left'].getPos(gun)  # костяшки левой кисти — у точки хвата под цевьём
+                assert abs(lp.x) < 0.06, (wid, pitch, k, lp)
+                assert -0.03 < lp.y - sy < 0.06, (wid, pitch, k, lp)
+                assert -0.03 < lp.z - sz < 0.06, (wid, pitch, k, lp)
+        assert vis._ik is not None
+    # оружие убрали или сменили на пистолет — рука снова слушается клипа
+    p.set_weapon(W_PISTOL)
+    assert p.vis._ik is None
     w.remove_ped(p)
 
 

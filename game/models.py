@@ -120,6 +120,7 @@ class Models(object):
         self._actors = {}
         self._weapons = {}
         self._hand = {}
+        self._arm = None
         self._ctex = {}
         self._vinfo = {}
         self._vtex = {}
@@ -337,6 +338,32 @@ class Models(object):
             np_.setColorScaleOff(3)
             self._weapons[wid] = np_
         return np_
+
+    def weapon_name(self, wid):
+        """Имя модели оружия («ak», «shotgun»…) или None."""
+        m = WEAPON_MODELS.get(wid)
+        return m[0] if m else None
+
+    def arm_ref(self):
+        """Левая рука в стойке прицеливания с длинным стволом: (плечо, предплечье, длина плеча, длина
+        предплечья).  Первые два — матрицы костей upperarm_l и lowerarm_l относительно своих родителей в
+        первом кадре клипа rifle_fire.  Скелет у всех персонажей общий, поэтому снимается один раз."""
+        if self._arm is None:
+            a = self.actor('hero')
+            b = a.getPartBundle('modelRoot')
+            c = a.getAnimControl('rifle_fire')
+            b.setAnimBlendFlag(True)
+            b.setControlEffect(c, 1.0)
+            c.pose(0)
+            up = a.exposeJoint(None, 'modelRoot', 'upperarm_l', localTransform=True)
+            lo = a.exposeJoint(None, 'modelRoot', 'lowerarm_l', localTransform=True)
+            ha = a.exposeJoint(None, 'modelRoot', 'hand_l', localTransform=True)
+            a.update(force=True)
+            m1, m2 = LMatrix4(up.getMat()), LMatrix4(lo.getMat())
+            self._arm = (m1, m2, m2.getRow3(3).length(), ha.getMat().getRow3(3).length())
+            a.cleanup()
+            a.removeNode()
+        return self._arm
 
     def hand_matrix(self, kind):
         """(имя кости, матрица «оружие -> кость»): kind — 'pistol' (в одной руке) или 'rifle' (в двух)."""

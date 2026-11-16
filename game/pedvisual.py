@@ -4,9 +4,10 @@
 Логика персонажа (ped.py) сообщает только состояние: стоит, идёт, бежит, бьёт, целится, лежит.
 Здесь оно превращается в клипы анимации.  Все модели сидят на одном скелете, клипы у них общие.
 """
+import math
 import random
 
-from panda3d.core import PartBundle, LMatrix4, LVector3
+from panda3d.core import PartBundle, LMatrix4, LVector3, NodePath
 
 from .models import CHAR_HEIGHT, PED_HEIGHT
 
@@ -20,6 +21,29 @@ FADE = 0.18                 # время плавного перехода ме�
 DEATHS = ('death_a', 'death_b', 'death_c')
 # клипы, в которых длинный ствол держат двумя руками: оружие в них направляется от правой ладони к левой
 TWO_HANDS = ('rifle_idle', 'rifle_walk', 'rifle_run', 'rifle_fire')
+SHOULDERED = 'rifle_fire'   # стойка прицеливания и стрельбы: ствол смотрит туда, куда целятся
+# Где левая ладонь поддерживает оружие в стойке: (вперёд от рукояти, вверх от неё), м — низ цевья.
+# У автомата и карабина перед рукоятью висит магазин, цевьё начинается за ним.
+SUPPORT = {'ak': (0.41, 0.115), 'm4': (0.37, 0.085), 'shotgun': (0.36, -0.01), 'double': (0.34, 0.03),
+           'sniper': (0.34, 0.05), 'rocket': (0.30, 0.04)}
+SUPPORT_ANY = (0.34, 0.03)
+AIM_PITCH = 32.0            # дальше этого угла ствол за взглядом не идёт: корпус персонажа не наклоняется
+ELBOW = LVector3(0.55, 0.2, -0.8)       # куда смотрит левый локоть: наружу и вниз (модель глядит в −Y, лево — +X)
+
+
+def _arc(v0, v1):
+    """Матрица кратчайшего поворота от направления v0 к v1 (оба единичные)."""
+    ax = v0.cross(v1)
+    s = ax.length()
+    if s < 1e-6:
+        return LMatrix4.identMat()
+    ax /= s
+    return LMatrix4.rotateMat(math.degrees(math.atan2(s, v0.dot(v1))), ax)
+
+
+def _about(m, p, rot):
+    """Матрица кости m, повёрнутая матрицей rot вокруг точки p."""
+    return m * LMatrix4.translateMat(-p) * rot * LMatrix4.translateMat(p)
 
 
 class PedVisual(object):
@@ -70,6 +94,10 @@ class PedVisual(object):
         self.gun = None
         self.gun_kind = None
         self._rifle = None          # (точка хвата, «верх») в системе кости правой кисти
+        self.support = SUPPORT_ANY  # где левая ладонь держит оружие в стойке
+        self.aim_pitch = 0.0        # куда целятся: угол над горизонтом, градусы (задаёт ped.py)
+        self._pitch = 0.0
+        self._ik = None             # узлы, ведущие кости левой руки, пока она на цевье
         self.play('idle', True, 1.0, 0.0)
         self.time = random.random() * 2.0           # чтобы толпа не дышала в такт
 
@@ -242,9 +270,11 @@ class PedVisual(object):
             self.gun.removeNode()
             self.gun = None
         self.gun_kind = None
+        self._free_arm()
         t = self.models.weapon(wid)
         if t is None:
             return
+        self.support = SUPPORT.get(self.models.weapon_name(wid), SUPPORT_ANY)
         grip = self.grips.get(kind)
         if grip is None:
             joint, mat = self.models.hand_matrix(kind)
@@ -258,6 +288,7 @@ class PedVisual(object):
         if kind == 'rifle' and self._rifle is None:
             if '_left' not in self.grips:
                 self.grips['_left'] = self.actor.exposeJoint(None, 'modelRoot', 'middle_01_l')
+                self.grips['_clav'] = self.actor.exposeJoint(None, 'modelRoot', 'clavicle_l')
             m = grip.getMat()
             self._rifle = (m.getRow3(3), LVector3(m.getRow3(2)), LMatrix4(m))
 
@@ -268,6 +299,10 @@ class PedVisual(object):
         по-своему; без этой поправки автомат на бегу и в стойке торчит мимо левой руки."""
         grip = self.grips['rifle']
         o, up0, rest = self._rifle
+        if self.cur == SHOULDERED:
+            self._shoulder(grip, o)
+            return
+        self._free_arm()
         if self.cur not in TWO_HANDS:
             grip.setMat(rest)
             return
@@ -282,7 +317,75 @@ class PedVisual(object):
         up = r.cross(d)
         grip.setMat(LMatrix4(r.x, r.y, r.z, 0.0, d.x, d.y, d.z, 0.0, up.x, up.y, up.z, 0.0, o.x, o.y, o.z, 1.0))
 
+    def _shoulder(self, grip, o):
+        """Стойка прицеливания с длинным стволом.
+
+        В клипе левая рука вытянута вперёд ниже оружия: если вести ствол к ней, он смотрит в землю, если
+        держать его ровно — рука висит в воздухе под цевьём.  Поэтому наоборот: ствол ставим по линии
+        прицела, а левую руку ведём к цевью — плечо и предплечье поворачиваются так, чтобы запястье
+        пришло под точку хвата (обычная задача о двух звеньях).  Всё считается в осях модели."""
+        k = self.aim_pitch
+        k = AIM_PITCH if k > AIM_PITCH else (-AIM_PITCH if k < -AIM_PITCH else k)
+        self._pitch += (k - self._pitch) * 0.35
+        p = math.radians(self._pitch)
+        f = LVector3(0.0, -math.cos(p), math.sin(p))            # модель смотрит в −Y
+        up = LVector3(0.0, math.sin(p), math.cos(p))
+        hand = self.grips['_hand'].getMat()                     # правая кисть в осях модели
+        g = hand.xformPoint(o)
+        inv = LMatrix4(hand)
+        inv.invertInPlace()
+        grip.setMat(LMatrix4(-1.0, 0.0, 0.0, 0.0, f.x, f.y, f.z, 0.0, up.x, up.y, up.z, 0.0, g.x, g.y, g.z, 1.0) * inv)
+        # --- левая рука: запястье чуть позади и ниже точки хвата, ладонь ложится под цевьё
+        ik = self._ik
+        if ik is None:
+            ik = self._ik = (NodePath('upperarm_l'), NodePath('lowerarm_l'))
+            self.actor.controlJoint(ik[0], 'modelRoot', 'upperarm_l')
+            self.actor.controlJoint(ik[1], 'modelRoot', 'lowerarm_l')
+        m1, m2, l1, l2 = self.models.arm_ref()
+        sy, sz = self.support
+        t = g + f * (sy - 0.05) + up * (sz - 0.025) + LVector3(0.02, 0.0, 0.0)
+        clav = self.grips['_clav'].getMat()
+        n1 = m1 * clav
+        sh = LVector3(n1.getRow3(3))                             # плечевой сустав
+        d = t - sh
+        dist = d.length()
+        if dist < 1e-4:
+            return
+        d /= dist
+        dist = min(dist, (l1 + l2) * 0.998)
+        a = (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * dist)
+        h = math.sqrt(max(0.0, l1 * l1 - a * a))
+        pole = ELBOW - d * ELBOW.dot(d)
+        pole.normalize()
+        el = sh + d * a + pole * h                              # локоть
+        wr = sh + d * dist                                      # запястье
+        v0 = n1.xformVec(LVector3(0.0, 0.0, 1.0))               # кости руки идут вдоль своей оси Z
+        v1 = el - sh
+        v1.normalize()
+        n1 = _about(n1, sh, _arc(v0, v1))
+        n2 = m2 * n1
+        w0 = n2.xformVec(LVector3(0.0, 0.0, 1.0))
+        w1 = wr - el
+        w1.normalize()
+        n2 = _about(n2, el, _arc(w0, w1))
+        ci = LMatrix4(clav)
+        ci.invertInPlace()
+        ni = LMatrix4(n1)
+        ni.invertInPlace()
+        ik[0].setMat(n1 * ci)
+        ik[1].setMat(n2 * ni)
+
+    def _free_arm(self):
+        """Вернуть левую руку клипу анимации."""
+        if self._ik is not None:
+            self._ik = None
+            a = self.actor
+            if a is not None:
+                a.releaseJoint('modelRoot', 'upperarm_l')
+                a.releaseJoint('modelRoot', 'lowerarm_l')
+
     def remove(self):
+        self._ik = None
         a = self.actor
         if a is not None:
             self.actor = None

@@ -985,6 +985,7 @@ class Ped(object):
         elif sp > 0.12:
             vis.move_anim(sp, armed, self.aiming, self.walk_clip)
         elif armed == 'rifle':
+            vis.aim_pitch = self.aim_pitch
             if self.shot_t > 0.0:
                 vis.play('rifle_fire', False, 2.2 if w.auto else 1.5, 0.05, self.shot_t > self._shot_prev)
             elif self.aiming:
