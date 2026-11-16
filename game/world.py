@@ -447,6 +447,44 @@ class World(object):
         v.npc = False
         return p
 
+    def unseat_rider(self, v, dmg=0.0, attacker=None, cause='vehicle'):
+        """Ездок мотоцикла (из потока машин или полицейский) слетает с седла: его сбили, в него попали.
+
+        Нарисованная фигура в седле становится настоящим персонажем — раненым, на асфальте."""
+        if v.rider is None or not v.npc or v.removed:
+            return None
+        vx, vy = v.vx, v.vy
+        police = v.owner == 'police'
+        v.remove_rider()
+        drv = self.make_driver(v)
+        self.traffic.take_over(v)
+        v.in_brake = 0.4
+        x, y = v.door_pos(-1)                       # падает рядом с мотоциклом, а не внутрь него
+        if self.static.overlap_circle(x, y, drv.radius, F_PED):
+            x, y = v.door_pos(1)
+        if not self.static.overlap_circle(x, y, drv.radius, F_PED):
+            drv.x, drv.y = x, y
+            drv.z = self.city.ground_z(x, y)
+        cop = drv.kind in ('cop', 'swat', 'fbi', 'army')
+        if police:                                  # наряд остался без мотоцикла: дальше — пешком
+            v.crew = 0
+            v.keep = False
+            v.siren = False
+        if cop:
+            self.police.cops.append(drv)
+            drv.keep = True
+        if attacker is not None:
+            drv.last_attacker = attacker
+            drv.threat = (attacker.x, attacker.y)
+        if dmg > 0.0:
+            drv.hurt(dmg, attacker, cause)
+        if not drv.dead:
+            drv.knock_down(1.4 + random.random(), vx * 0.5, vy * 0.5, 1.6)
+            if cop and attacker is not None and attacker.is_player:
+                drv.target = attacker
+                self.police.crime('assault_cop', v.x, v.y)
+        return drv
+
     def carjack(self, v, side=-1):
         drv = v.driver
         if drv is not None and drv.is_player:
@@ -574,6 +612,12 @@ class World(object):
                 self.player.thrown_off(v, imp)          # мотоциклиста выбивает из седла
             elif imp > 13.0:
                 self.player.ped.hurt((imp - 13.0) * 1.3, None, 'crash')
+        elif v.rider is not None and v.npc and imp > 6.5:
+            # чужого мотоциклиста удар тоже сбрасывает; если ударил игрок — это на его совести
+            hit_by = self.player.ped if by_player else None
+            self.unseat_rider(v, min(70.0, 6.0 + (imp - 6.5) * 6.0), hit_by, 'vehicle')
+            if by_player:
+                self.police.crime('hit_ped', x, y)
         if other is not None and other.is_player and v.owner == 'police' and imp > 4.0:
             self.police.crime('ram_cop', x, y)
         if self.missions is not None and by_player:
@@ -628,8 +672,12 @@ class World(object):
 
     def on_vehicle_shot(self, v, shooter, hx, hy, hz, dx, dy, dz, melee=False):
         by_player = shooter is not None and shooter.is_player
-        if v.npc and v.owner is None and not v.dead:
-            if not melee and hz > v.z + v.spec.belt and random.random() < 0.1:
+        if melee and v.rider is not None and v.npc and not v.dead:
+            # ездока мотоцикла удар битой сбивает с седла (пули разбирает weapons: там известна высота попадания)
+            wp = getattr(shooter, 'weapon', None)
+            self.unseat_rider(v, float(getattr(wp, 'damage', 30.0)), shooter, 'melee')
+        elif v.npc and v.owner is None and not v.dead:
+            if v.rider is None and not melee and hz > v.z + v.spec.belt and random.random() < 0.1:
                 # пуля досталась водителю
                 v.npc = False
                 if v.mode == Vehicle.RAIL:

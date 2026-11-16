@@ -356,9 +356,7 @@ def main():
     pl.enter_vehicle(cars[0], silent=True)
     harness.run(g, 1.0)
     g.open_tuning(cars[0], 'spray')
-    harness.run(g, 0.4)
-    harness.press(g, 'down')
-    harness.run(g, 0.3)
+    harness.run(g, 0.7)
     snap('tuning')
     for _ in range(4):                              # выходим из ателье так же, как игрок: клавишей Esc
         if g.state == 'play':

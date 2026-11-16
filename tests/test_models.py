@@ -747,3 +747,79 @@ def test_every_vehicle_takes_full_tuning_and_paint(game, world):
         harness.run(game, 0.1)
         pl.teleport(x, y - 4.0)
     w.sky.set_time(12.0)
+
+
+def test_rider_is_exposed_to_bullets_and_crashes(game, world):
+    """Ездок сидит на виду. Пуля выше мотоцикла попадает в него, а не пролетает сквозь нарисованную фигуру;
+    чужого мотоциклиста выстрел и сильный удар сбрасывают с седла; игрок на мотоцикле ранен пулей сам."""
+    from game.defs import WEAPONS, W_PISTOL, W_AK
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    w.police.clear()
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(12.0)
+    wpn = w.weapons
+    pistol = WEAPONS[W_PISTOL]
+
+    def traffic_bike(kind='chopper'):
+        b = w.spawn_vehicle(kind, x, y, yaw)
+        b.npc = True
+        b.traffic = True
+        b.mode = Vehicle.RAIL
+        b.link, b.s = lane, 12.0
+        b.speed = 0.0
+        b.add_rider(random_look(random.Random(4), 'R'))
+        return b
+
+    # 1. без ездока верх мишени — сам мотоцикл; с ездоком — его голова
+    b = traffic_bike()
+    top_rider = b.hit_top()
+    assert top_rider > b.spec.H + 0.3
+    head_z = b.z + b.spec.H + 0.25                       # выше руля: тут только человек
+    pl.teleport(x, y - 8.0)
+    before = set(w.peds)
+    t, kind, obj, nx, ny, nz = wpn.trace(x, y - 8.0, head_z, 0.0, 1.0, 0.0, 60.0, pl.ped, None)
+    assert kind == 'veh' and obj is b                   # луч на высоте груди упирается в мотоцикл с ездоком
+    assert b.rider_hit(head_z) == 'npc'
+    wpn._apply_bullet(pistol, t, kind, obj, nx, ny, nz, x, y - 8.0, head_z, 0.0, 1.0, 0.0, pl.ped)
+    fell = [q for q in w.peds if q not in before]
+    assert b.rider is None and not b.npc and len(fell) == 1
+    assert fell[0].last_attacker is pl.ped and (fell[0].dead or fell[0].health < fell[0].max_health)
+    assert b.hit_top() == b.spec.H                      # седло опустело
+    t2, kind2, obj2 = wpn.trace(x, y - 8.0, head_z, 0.0, 1.0, 0.0, 60.0, pl.ped, None)[:3]
+    assert obj2 is not b                                # теперь на этой высоте пусто
+    for q in fell:
+        w.remove_ped(q)
+    w.remove_vehicle(b)
+    w.police.clear()
+    # 2. сильный удар сбрасывает чужого мотоциклиста, слабый — нет
+    b = traffic_bike('scooter')
+    before = set(w.peds)
+    w.on_vehicle_impact(b, 4.0, b.x, b.y, None, sound=False)
+    assert b.rider is not None
+    w.on_vehicle_impact(b, 11.0, b.x, b.y, None, sound=False)
+    fell = [q for q in w.peds if q not in before]
+    assert b.rider is None and len(fell) == 1 and fell[0].state in ('down', 'dead')
+    for q in fell:
+        w.remove_ped(q)
+    w.remove_vehicle(b)
+    # 3. игрок в седле: пуля выше мотоцикла ранит его самого, мотоцикл цел
+    mine = w.spawn_vehicle('bike', x, y, yaw)
+    pl.teleport(x, y - 2.0)
+    pl.enter_vehicle(mine, silent=True)
+    harness.run(game, 0.2)
+    hp, vhp = pl.ped.health, mine.health
+    assert mine.rider_hit(mine.z + mine.spec.H + 0.3) is pl.ped
+    assert mine.rider_hit(mine.z + 0.3) is None           # по колёсам — в мотоцикл
+    shooter = w.spawn_ped(x, y - 9.0, math.pi / 2, random_look(random.Random(5), 'R'), 'civ')
+    hz = mine.z + mine.spec.H + 0.3
+    t, kind, obj, nx, ny, nz = wpn.trace(x, y - 8.5, hz, 0.0, 1.0, 0.0, 60.0, shooter, None)
+    assert kind == 'veh' and obj is mine
+    wpn._apply_bullet(WEAPONS[W_AK], t, kind, obj, nx, ny, nz, x, y - 8.5, hz, 0.0, 1.0, 0.0, shooter)
+    assert pl.ped.health < hp and mine.health == vhp and pl.vehicle is mine
+    pl.ped.health = 100.0
+    pl.leave_vehicle(force=True)
+    w.remove_ped(shooter)
+    w.remove_vehicle(mine)
+    w.police.clear()

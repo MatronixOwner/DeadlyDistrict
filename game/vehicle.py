@@ -856,6 +856,29 @@ class Vehicle(object):
         if ped.vis is not None:
             ped.vis.play('idle', True, 1.0, 0.0, True)
 
+    def hit_top(self):
+        """Верх того, во что может попасть пуля: у мотоцикла с ездоком это голова ездока, а не руль."""
+        spec = self.spec
+        top = max(spec.H, spec.box[1]) if spec.box else spec.H
+        if spec.bike and not self.dead and (self.rider is not None or self.driver is not None):
+            top = max(top, self.bparts['seat'][2] + 0.82)
+        return top
+
+    def rider_hit(self, hz):
+        """В кого попала пуля на высоте hz: None — в сам мотоцикл, 'npc' — в ездока из потока машин,
+        иначе — персонаж за рулём (игрок или участник задания).  Ездок сидит на виду и ничем не прикрыт."""
+        if not self.spec.bike or self.dead:
+            return None
+        who = 'npc' if (self.rider is not None and self.npc) else self.driver
+        if who is None:
+            return None
+        rel = hz - self.z
+        if rel > self.spec.H:
+            return who                              # выше мотоцикла — только человек
+        if rel > self.bparts['seat'][2] - 0.15 and random.random() < 0.5:
+            return who
+        return None
+
     def add_rider(self, look):
         """Нарисовать ездока на мотоцикле из потока машин (настоящим персонажем он станет, если его сбросят)."""
         from .pedvisual import PedVisual
@@ -1244,9 +1267,7 @@ class Vehicle(object):
         if self.is_player:
             w.player.thrown_off(self, 10.0)
         elif self.npc and self.rider is not None:
-            self.remove_rider()
-            drv = w.make_driver(self)
-            drv.knock_down(1.6 + random.random(), vx * 0.5, vy * 0.5, 1.5)
+            w.unseat_rider(self)
         self.dead = True
         self.health = 0.0
         self.burning = 0.0

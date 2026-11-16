@@ -114,9 +114,7 @@ class Weapons(object):
             ldx = dx * c + dy * s
             ldy = -dx * s + dy * c
             hl2, hw2 = v.spec.L * 0.5, v.spec.W * 0.5
-            z0, z1 = v.z + v.spec.clear * 0.5, v.z + v.spec.H
-            if v.spec.box:
-                z1 = v.z + max(v.spec.H, v.spec.box[1])
+            z0, z1 = v.z + v.spec.clear * 0.5, v.z + v.hit_top()
             tmin, tmax = 0.0, best
             ok = True
             face = 0
@@ -171,9 +169,23 @@ class Weapons(object):
             if not obj.dead:
                 obj.hurt(dmg, shooter, 'bullet', (dx * 1.2, dy * 1.2))
         elif kind == 'veh':
-            fx.sparks(hx, hy, hz, 3, nx, ny, nz)
-            obj.damage(wp.damage * wp.car_k * dmg_k, by_player, 'bullet')
-            w.on_vehicle_shot(obj, shooter, hx, hy, hz, dx, dy, dz)
+            who = obj.rider_hit(hz)
+            if who is None:
+                fx.sparks(hx, hy, hz, 3, nx, ny, nz)
+                obj.damage(wp.damage * wp.car_k * dmg_k, by_player, 'bullet')
+                w.on_vehicle_shot(obj, shooter, hx, hy, hz, dx, dy, dz)
+            else:
+                # пуля досталась тому, кто сидит верхом
+                if w.settings.get('blood'):
+                    fx.blood(hx, hy, hz, 4, dx, dy)
+                else:
+                    fx.dust(hx, hy, hz, 2)
+                if who == 'npc':
+                    w.unseat_rider(obj, wp.damage * dmg_k, shooter, 'bullet')
+                elif not who.dead:
+                    who.hurt(wp.damage * dmg_k, shooter, 'bullet')
+                if by_player and w.missions is not None:
+                    w.missions.notify('vehicle_shot', obj)
         elif kind == 'world':
             if hz < WATER_Z + 0.2 and w.city.in_water(hx, hy):
                 fx.splash(hx, hy, WATER_Z, 0.3)

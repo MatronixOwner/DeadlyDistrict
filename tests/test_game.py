@@ -1373,3 +1373,38 @@ def test_chase_car_frees_itself_when_wedged(game, world):
     w.police.clear()
     w.remove_vehicle(v)
     assert far > 9.0, 'машина погони так и осталась у дерева: (%.1f, %.1f)' % (v.x, v.y)
+
+
+def test_garage_keeps_a_motorcycle(game, world):
+    """В гараж можно поставить и мотоцикл: он попадает в сохранение с цветом и тюнингом, а после загрузки на нём
+    можно уехать — ездок снова сидит в седле."""
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    gar = w.garage
+    gar.reset()
+    sx, sy = gar.slots[0]
+    bike = w.spawn_vehicle('sidecar', sx, sy, math.pi / 2, paint=2)
+    bike.apply_tune({'engine': 1, 'neon': 2, 'rims': 3})
+    pl.teleport(sx, sy - 9.0)
+    harness.run(game, 1.0)
+    assert bike in gar.cars
+    saved = settings_mod.load_save()['garage'][0]
+    assert saved['kind'] == 'sidecar' and saved['paint'] == 2 and saved['tune'] == {'engine': 1, 'neon': 2, 'rims': 3}
+    game.to_main_menu()
+    game.continue_game()
+    w = game.world
+    pl = w.player
+    assert len(w.garage.cars) == 1
+    bike = w.garage.cars[0]
+    assert bike.kind == 'sidecar' and bike.bparts is not None and bike.paint == 2
+    assert bike.tune == {'engine': 1, 'neon': 2, 'rims': 3}
+    if w.interiors.current is not None:
+        w.interiors.leave(instant=True)
+    pl.teleport(bike.x, bike.y - 3.0)
+    pl.enter_vehicle(bike, silent=True)
+    harness.run(game, 0.3)
+    assert pl.vehicle is bike and pl.ped.vis.cur == 'mix' and pl.ped.node.getParent() == bike.tilt
+    pl.leave_vehicle(force=True)
+    w.garage.reset()
+    w = harness.start_game(game)
