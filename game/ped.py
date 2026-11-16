@@ -738,7 +738,7 @@ class Ped(object):
             return False
         w = self.world
         if self.is_player:
-            if w.player.invincible or w.player.state == 'busted':
+            if w.player.invincible or w.player.god or w.player.state == 'busted':
                 return False
             amount *= w.player.damage_taken_k
         if self.armor > 0.0 and cause in ('bullet', 'melee', 'explosion'):
@@ -813,6 +813,12 @@ class Ped(object):
             return
         if self.is_player and self.world.player.state == 'busted':
             return                          # арестованного уже не убить
+        if self.is_player and self.world.player.god:
+            # меню тестера, бессмертие: герой не гибнет, а из воды его возвращают на берег
+            self.health = self.max_health
+            if cause == 'drown':
+                self.world.game.tester.rescue()
+            return
         self.dead = True
         self.health = 0.0
         self.aiming = False

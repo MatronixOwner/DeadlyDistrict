@@ -1249,6 +1249,9 @@ class Vehicle(object):
     def _sink(self):
         if self.sunk:
             return
+        if self.is_player and self.world.player.god:
+            self.world.game.tester.rescue()     # меню тестера, бессмертие: машину возвращают на дорогу
+            return
         self.sunk = True
         self.dead = True
         self.world.on_vehicle_sunk(self)

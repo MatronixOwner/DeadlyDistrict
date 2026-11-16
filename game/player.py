@@ -212,6 +212,7 @@ class Player(object):
         self.no_enter_t = 0.0          # после сценки Enter ещё мгновение не сажает в машину
         self.aim_yaw = syaw
         self.invincible = False
+        self.god = False               # бессмертие из меню тестера (в обычной игре не включается)
         self.damage_taken_k = 1.0
         self.state = 'foot'            # foot | entering | car | dead | busted
         self.enter_v = None
@@ -660,7 +661,7 @@ class Player(object):
 
     def thrown_off(self, v, imp):
         """Сильный удар на мотоцикле: ездок вылетает из седла."""
-        if self.vehicle is not v or self.invincible:
+        if self.vehicle is not v or self.invincible or self.god:
             return
         vx, vy = v.vx, v.vy
         if not self.leave_vehicle(force=True):

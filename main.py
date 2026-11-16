@@ -2,6 +2,7 @@
 """Deadly District — точка входа.
 
     python main.py              обычный запуск
+    python main.py --tester     запуск с меню тестера (F9); настройки и сохранения — в отдельной папке
     python main.py --selftest   быстрая самопроверка без окна (для сборочного конвейера)
 """
 import os
@@ -29,6 +30,23 @@ def _message_box(text):
         ctypes.windll.user32.MessageBoxW(None, text, 'Deadly District', 0x10)
     except Exception:
         pass
+
+
+def enable_tester():
+    """Включить меню тестера (F9).  Вызывается до создания игры.
+
+    У сборки для тестера своя папка настроек и сохранений: читы и пропуск заданий не должны
+    попадать в сохранение обычной игры."""
+    import importlib
+    import game
+    from game import settings
+    try:
+        importlib.import_module('game.tester')
+    except ImportError:
+        return False                    # обычная сборка: меню тестера в ней нет, ключ ничего не меняет
+    game.TESTER = True
+    settings.APP_NAME = 'DeadlyDistrict-tester'
+    return True
 
 
 class SelfTestError(Exception):
@@ -162,6 +180,8 @@ def selftest():
 
 
 def main():
+    if '--tester' in sys.argv:
+        enable_tester()
     if '--selftest' in sys.argv:
         try:
             code = selftest()

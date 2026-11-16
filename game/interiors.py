@@ -1158,23 +1158,10 @@ class Interiors(object):
                 w.remove_vehicle(v)
         self.people = []
         self.cars = []
-        from .missions import contact_look
         from .vehicle import Vehicle
         for room in self.order:
             for info in room.people:
-                look = info['look'] or contact_look(info['key'])
-                p = w.spawn_ped(info['x'], info['y'], info['yaw'], look, 'civ')
-                p.keep = True
-                p.fixed = True
-                p.room = room.name
-                p.resident = info
-                p.money = 0
-                p.set_state('stand')
-                p.seat_dz = info.get('dz', 0.0)
-                p.idle_clip = info['clips'][0]
-                p.home = (info['x'], info['y'], info['yaw'])
-                p._act_t = random.uniform(3.0, 9.0)
-                self.people.append(p)
+                self._settle(room, info)
             for (kind, x, y, yaw, paint) in room.cars:
                 v = w.spawn_vehicle(kind, x, y, yaw, paint)
                 v.keep = True
@@ -1191,10 +1178,42 @@ class Interiors(object):
             room.arrow_in.np.setScale(0.55)
             room.arrow_in.np.hide()
 
+    def _settle(self, room, info):
+        """Поставить жильца комнаты на его место."""
+        from .missions import contact_look
+        look = info['look'] or contact_look(info['key'])
+        p = self.w.spawn_ped(info['x'], info['y'], info['yaw'], look, 'civ')
+        p.keep = True
+        p.fixed = True
+        p.room = room.name
+        p.resident = info
+        p.money = 0
+        p.set_state('stand')
+        p.seat_dz = info.get('dz', 0.0)
+        p.idle_clip = info['clips'][0]
+        p.home = (info['x'], info['y'], info['yaw'])
+        p._act_t = random.uniform(3.0, 9.0)
+        self.people.append(p)
+        return p
+
     def resident(self, key):
         for p in self.people:
             if p.resident['key'] == key and not p.removed:
                 return p
+        return None
+
+    def ensure_resident(self, key):
+        """Вернуть жильца на место, если его убрали (меню тестера переигрывает задания, где он ещё нужен)."""
+        p = self.resident(key)
+        if p is not None and not p.dead:
+            return p
+        if p is not None:
+            p.keep = False
+            self.w.remove_ped(p)
+        for room in self.order:
+            for info in room.people:
+                if info['key'] == key:
+                    return self._settle(room, info)
         return None
 
     # ------------------------------------------------------------------

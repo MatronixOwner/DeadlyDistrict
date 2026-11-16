@@ -408,7 +408,7 @@ class Police(object):
         """Арест: полицейский вплотную к игроку, который стоит или лежит."""
         w = self.w
         pl = w.player
-        if self.level > 3 and pl.ped.state != 'down':
+        if pl.god or (self.level > 3 and pl.ped.state != 'down'):     # god — бессмертие из меню тестера
             self.bust_t = 0.0
             return
         v = pl.vehicle

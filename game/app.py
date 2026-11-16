@@ -150,6 +150,14 @@ class Game(object):
         w.hud = Hud(w)
         w.missions = Missions(w)
         self.ui = MenuUI(self)
+        self.tester = None                 # меню тестера на F9: только в сборке для тестера
+        from . import TESTER
+        if TESTER:
+            try:
+                from .tester import Tester
+                self.tester = Tester(self)
+            except ImportError:
+                pass                       # обычная сборка: модуля тестера в ней нет
         self._loading_progress(1.0, 'Готово')
         self._loading_end()
         base.accept('f12', self.screenshot)
@@ -248,6 +256,8 @@ class Game(object):
         w.respawn_kind = None
         w.respawn_t = 0.0
         w.cam.override = None
+        if self.tester is not None:
+            self.tester.world_reset()
         for k in list(w.stats.keys()):
             w.stats[k] = 0.0 if isinstance(w.stats[k], float) else 0
         pl.reset()
@@ -368,8 +378,10 @@ class Game(object):
             Item('Управление', lambda: self.ui.open(self.text_menu('Управление', CONTROLS_TEXT, 0.052))),
             Item('Выход', self.quit),
         ]
-        m = Menu(self.ui, '', items, x=-0.45, top=0.22, spacing=0.14, scale=0.1,
-                 subtitle='Версия %s — стрелки или мышь, Enter — выбрать' % __version__)
+        sub = 'Версия %s — стрелки или мышь, Enter — выбрать' % __version__
+        if self.tester is not None:
+            sub = 'Версия %s, сборка для тестера — в игре F9 открывает меню тестера' % __version__
+        m = Menu(self.ui, '', items, x=-0.45, top=0.22, spacing=0.14, scale=0.1, subtitle=sub)
         if has_save:
             m.sel = 1
         return m
@@ -1031,6 +1043,8 @@ class Game(object):
         inp = self.inp
         w = self.world
         inp.poll_mouse()
+        if self.tester is not None:
+            self.tester.frame(dt)          # F9 открывает меню; включённые бессмертие и розыск держатся
         st = self.state
         if st == 'play':
             # потеря фокуса окна — автоматическая пауза

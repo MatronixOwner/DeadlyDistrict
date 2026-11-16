@@ -1176,6 +1176,8 @@ def m_taxi(m):
     pl = w.player
     rn = w.roadnet
     cab = pl.vehicle
+    if cab is None:
+        raise MissionFailed('Смена не началась: ты вышел из такси.', True)
     fares = 0
     earned = 0
     out_t = [0.0]
