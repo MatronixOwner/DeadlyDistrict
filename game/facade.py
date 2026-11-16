@@ -171,6 +171,7 @@ class Facades(object):
     def __init__(self, cm):
         self.cm = cm
         self.city = cm.city
+        self.canopy = {}             # id(здания) -> стороны с плоским козырьком над витринами
 
     # ------------------------------------------------------------------
     # стены
@@ -247,13 +248,25 @@ class Facades(object):
         mb.tri(key, bb, c, p(u1, 0.03, zo), (0, 1), (0.12, 0), (0, 0), side)
         mb.tri(key, bb, p(u1, 0.03, zo), c, (0, 1), (0, 0), (0.12, 0), dark)
 
-    def balcony(self, mb, F, u0, u1, z, col, depth=0.95, glazed=False):
+    def balcony(self, mb, F, u0, u1, z, col, depth=0.95, glazed=False, bars=False):
+        """Балкон во всю ширину двери и окна.  bars — решётка вместо глухого ограждения: дверь видна с улицы."""
         p = F.p
         fbox(mb, 'concrete', F, u0, u1, 0.0, depth, z - 0.13, z, (0.72, 0.72, 0.70, 1.0), 'ftblr', 3.0)
         h = 1.02
         c = _c4(col)
         dk = _c4(col, 0.6)
         w = u1 - u0
+        if bars and not glazed:
+            rail = ('rail', 'a')
+            mb.quad2(rail, p(u0, depth, z), p(u1, depth, z), p(u1, depth, z + h), p(u0, depth, z + h), (0, 0, w, 1), W4)
+            mb.quad2(rail, p(u0, 0, z), p(u0, depth, z), p(u0, depth, z + h), p(u0, 0, z + h), (0, 0, depth, 1), W4)
+            mb.quad2(rail, p(u1, depth, z), p(u1, 0, z), p(u1, 0, z + h), p(u1, depth, z + h), (0, 0, depth, 1), W4)
+            # перила и угловые стойки
+            fbox(mb, None, F, u0 - 0.02, u1 + 0.02, depth - 0.03, depth + 0.03, z + h - 0.03, z + h + 0.03, DARK_METAL,
+                 'ftblr')
+            for (ua, ub) in ((u0 - 0.02, u0 + 0.03), (u1 - 0.03, u1 + 0.02)):
+                fbox(mb, None, F, ua, ub, 0.0, depth, z + h - 0.03, z + h + 0.03, DARK_METAL, 'tblr')
+            return
         key = 'corrugated'
         mb.quad(key, p(u0, depth, z), p(u1, depth, z), p(u1, depth, z + h), p(u0, depth, z + h), (0, 0, w / 1.6, 0.5), c)
         mb.quad(key, p(u1, depth, z), p(u0, depth, z), p(u0, depth, z + h), p(u1, depth, z + h), (0, 0, w / 1.6, 0.5), dk)
@@ -262,6 +275,9 @@ class Facades(object):
         mb.quad(key, p(u0, depth, z), p(u0, 0, z), p(u0, 0, z + h), p(u0, depth, z + h), (0, 0, 0.6, 0.5), dk)
         mb.quad(key, p(u1, depth, z), p(u1, 0, z), p(u1, 0, z + h), p(u1, depth, z + h), (0, 0, 0.6, 0.5), cs)
         mb.quad(key, p(u1, 0, z), p(u1, depth, z), p(u1, depth, z + h), p(u1, 0, z + h), (0, 0, 0.6, 0.5), dk)
+        # перила поверх ограждения: без них короб выглядит обрезанным
+        fbox(mb, None, F, u0 - 0.03, u1 + 0.03, depth - 0.04, depth + 0.04, z + h, z + h + 0.05, (0.2, 0.2, 0.22, 1.0),
+             'ftblr')
         if glazed:
             # застеклённый балкон: рама и стёкла до потолка
             zt = z + 2.5
@@ -271,7 +287,9 @@ class Facades(object):
             mb.quad(gk, p(u0, 0, z + h), p(u0, depth, z + h), p(u0, depth, zt), p(u0, 0, zt), color=g)
             mb.quad(gk, p(u1, depth, z + h), p(u1, 0, z + h), p(u1, 0, zt), p(u1, depth, zt), color=g)
             fbox(mb, None, F, u0 - 0.04, u1 + 0.04, 0.0, depth + 0.04, zt, zt + 0.1, (0.86, 0.86, 0.84, 1.0), 'ftblr')
-            for uu in (u0, u1 - 0.06):
+            nm = max(2, int(round(w / 1.1)))
+            for k in range(nm + 1):                  # стойки рамы
+                uu = u0 + (w - 0.06) * k / nm
                 fbox(mb, None, F, uu, uu + 0.06, depth - 0.06, depth, z + h, zt, (0.9, 0.9, 0.88, 1.0), 'flr')
 
     def ac_unit(self, mb, F, uc, z):
@@ -584,6 +602,7 @@ class Facades(object):
                     ng = max(1, int(round(L / b.gf_bay)))
                     gb = L / ng
                     if b.gf_tex == 'gf_shop_c':
+                        self.canopy.setdefault(id(b), set()).add(s)
                         fbox(mb, None, F, 0.15, L - 0.15, 0.0, 1.25, z0 + 3.02, z0 + 3.16, (0.16, 0.24, 0.46, 1.0),
                              'ftblr')
                         fbox(mb, None, F, 0.15, L - 0.15, 1.25, 1.3, z0 + 2.9, z0 + 3.2, (0.80, 0.82, 0.86, 1.0),
@@ -595,11 +614,14 @@ class Facades(object):
                             self.awning(mb, F, gb * k + 0.06, gb * k + gb * 0.69, z0 + 3.2, key)
                 # балконы
                 if kind == 'balcony':
+                    # На плитке фасада слева балконная дверь, справа окно: балкон идёт под обоими, как в жизни.
+                    # У половины домов ограждение решётчатое — тогда дверь видно с улицы.
                     pc = rnd.choice(PANELS)
+                    bars = (int(b.x0 * 3 + b.y0 * 5) & 1) == 0
                     for f in range(fl):
                         for k in range(n):
-                            self.balcony(mb, F, bay * k + bay * 0.05, bay * k + bay * 0.56, zb + f * b.floor_h + 0.05,
-                                         pc, glazed=(rnd.random() < 0.16))
+                            self.balcony(mb, F, bay * k + bay * 0.10, bay * k + bay * 0.92, zb + f * b.floor_h + 0.05,
+                                         pc, glazed=(rnd.random() < 0.16), bars=bars)
                 # «брови» и рёбра ар-деко
                 elif kind == 'deco':
                     for f in range(fl):

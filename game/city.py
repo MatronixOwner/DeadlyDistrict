@@ -801,7 +801,7 @@ class City(object):
             if r.chance(0.28):
                 continue
             b.signs.append(dict(side=side, off=step * (k + 0.5), z=b.z0 + b.gf_h - 0.15, w=min(5.6, step - 0.6),
-                                h=1.35, tex=r.pick(pool)))
+                                h=1.35, tex=r.pick(pool), shop=True))
 
     def _register_landmark(self, name, bld, facing, block):
         """Запомнить особое место: точку у двери и точку на дороге перед зданием."""

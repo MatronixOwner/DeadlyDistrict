@@ -415,10 +415,31 @@ class CityMesh(object):
     # ------------------------------------------------------------------
     # здания
     # ------------------------------------------------------------------
-    def _sign(self, mb, night, x0, y0, x1, y1, side, off, z, w, h, tex, lit=True, back=False, depth=0.26):
-        """Вывеска-короб на стене."""
+    def _sign(self, mb, night, x0, y0, x1, y1, side, off, z, w, h, tex, lit=True, back=False, depth=0.26, stand=False):
+        """Вывеска-короб на стене.  stand — короб стоит отдельно (на краю козырька): у него своя толщина и задник."""
         ax, ay, dx, dy, nx, ny, L = side_frame(x0, y0, x1, y1, side)
         o = depth
+        if stand:
+            # тонкий короб на краю козырька: лицо, задняя стенка и торцы
+            th = 0.2
+            cx, cy = ax + dx * off + nx * o, ay + dy * off + ny * o
+            a = (cx - dx * w * 0.5, cy - dy * w * 0.5, z - h * 0.5)
+            b = (cx + dx * w * 0.5, cy + dy * w * 0.5, z - h * 0.5)
+            c = (b[0], b[1], z + h * 0.5)
+            d = (a[0], a[1], z + h * 0.5)
+            mb.quad((tex, 'unlit') if lit else tex, a, b, c, d, (0, 0, 1, 1), (0.92, 0.92, 0.92, 1.0))
+            a0, b0 = (a[0] - nx * th, a[1] - ny * th, a[2]), (b[0] - nx * th, b[1] - ny * th, b[2])
+            c0, d0 = (b0[0], b0[1], c[2]), (a0[0], a0[1], d[2])
+            edge = (0.16, 0.16, 0.18, 1.0)
+            mb.quad(None, a0, a, d, d0, color=edge)
+            mb.quad(None, b, b0, c0, c, color=edge)
+            mb.quad(None, d, c, c0, d0, color=(0.24, 0.24, 0.26, 1.0))
+            mb.quad(None, b0, a0, d0, c0, color=(0.12, 0.12, 0.14, 1.0))
+            if lit and night is not None and tex.startswith('sign_'):
+                P.pool(night, min(a[0], b[0]) - 2 + nx * 2.5, min(a[1], b[1]) - 2 + ny * 2.5,
+                       max(a[0], b[0]) + 2 + nx * 2.5, max(a[1], b[1]) + 2 + ny * 2.5,
+                       CURB + 0.06, color=(0.9, 0.85, 1.0, 1.0), k=0.16)
+            return
         cx, cy = ax + dx * off + nx * o, ay + dy * off + ny * o
         a = (cx - dx * w * 0.5, cy - dy * w * 0.5, z - h * 0.5)
         b = (cx + dx * w * 0.5, cy + dy * w * 0.5, z - h * 0.5)
@@ -451,9 +472,22 @@ class CityMesh(object):
             night = self._night(b.block)
             rnd = random.Random(int(b.x0 * 7 + b.y0 * 13) & 0xffff)
             top = fac.build(b, mb, night, rnd)
+            canopy = fac.canopy.get(id(b), ())
             # вывески
             for s in b.signs:
-                self._sign(mb, night, b.x0, b.y0, b.x1, b.y1, s['side'], s['off'], s['z'], s['w'], s['h'], s['tex'])
+                z, w, h, dep = s['z'], s['w'], s['h'], 0.26
+                if s.get('shop'):
+                    # Вывеска магазина помещается между витриной и вторым этажом: выше начинаются балконы и окна.
+                    # Над плоским козырьком её ставят на его край — иначе снизу, с тротуара, козырёк её закрывает.
+                    if s['side'] in canopy:
+                        dep = 1.34
+                        z = b.z0 + 3.2 + h * 0.5
+                    elif b.fac in ('fac_balcony_a', 'fac_balcony_b'):
+                        h = 0.84
+                        w = min(w, h * 4.15)
+                        z = b.z0 + b.gf_h - 0.05 - h * 0.5
+                self._sign(mb, night, b.x0, b.y0, b.x1, b.y1, s['side'], s['off'], z, w, h, s['tex'], depth=dep,
+                           stand=dep > 1.0)
             # столкновения: прямоугольник участка, как и раньше
             self.static.add_box(b.x0, b.y0, b.x1, b.y1, 0.0, top + 0.1, F_WALL, ('bld', b))
 
