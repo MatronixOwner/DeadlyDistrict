@@ -56,15 +56,16 @@ def test_vehicle_model_fits_its_spec(world, kind):
     x, y = w.city.landmarks['terminal']['road']
     v = w.spawn_vehicle(kind, x, y - 1.5, 0.0)
     if spec.bike:
-        # мотоциклы, велосипед и квадроцикл собраны кодом: два колеса по оси (у квадроцикла четыре)
+        # мотоциклы и их родня собраны кодом: два колеса по оси, у трайка и мотоцикла с коляской три, у квадроцикла четыре
         assert kind not in VEHICLE_MODELS and v.bparts is not None and v.steer_np is not None
         mn, mx = v.tilt.getTightBounds(v.tilt)
         assert abs((mx.y - mn.y) - spec.L) < 0.22 * spec.L
         assert (mx.x - mn.x) <= spec.W * 1.3 and mx.z <= spec.H * 1.15
-        assert len(v.wheels) == (4 if kind == 'quad' else 2)
+        assert abs((mx.x + mn.x) * 0.5) < 0.12                         # модель стоит по середине своего габарита
+        assert len(v.wheels) == {'quad': 4, 'trike': 3, 'sidecar': 3}.get(kind, 2)
         front = v.wheels[0][0].getPos(v.tilt)
-        rear = v.wheels[-1][0].getPos(v.tilt)
-        assert front.y > 0 > rear.y and abs(front.z - spec.wheel_r) < 0.03
+        rear = v.wheels[1 if kind != 'quad' else -1][0].getPos(v.tilt)
+        assert front.y > 0 > rear.y and abs(front.z - spec.wheel_r) < 0.04
     else:
         assert kind in VEHICLE_MODELS
         assert v.minfo is not None, 'нет модели для %s' % kind
@@ -350,10 +351,11 @@ def test_long_gun_lies_in_both_hands(game, world):
 
 
 def test_fleet_has_bikes_and_new_cars(world):
-    """Транспорта стало вдвое больше: мотоциклы, скутер, велосипед, квадроцикл и десять новых машин."""
+    """Транспорта стало больше чем вдвое: двенадцать видов мотоциклов и их родни и десять новых машин."""
     from game.vehicle import BIKES, ZONE_CARS
-    assert len(SPECS) >= 33
-    assert set(BIKES) == {'bike', 'chopper', 'scooter', 'dirt', 'bicycle', 'quad'}
+    assert len(SPECS) >= 39
+    assert set(BIKES) == {'bike', 'chopper', 'scooter', 'dirt', 'bicycle', 'quad',
+                          'moped', 'copbike', 'sidecar', 'trike', 'bmx', 'tourer'}
     new_cars = {'limo', 'racer', 'minibus', 'firetruck', 'cashvan', 'icecream', 'hotrod', 'jeep', 'pizza', 'tuner'}
     assert new_cars <= set(SPECS) and new_cars <= set(VEHICLE_MODELS)
     titles = [s.title for s in SPECS.values()]
@@ -363,6 +365,69 @@ def test_fleet_has_bikes_and_new_cars(world):
     assert (new_cars | set(BIKES)) <= seen
     for cars in ZONE_CARS.values():
         assert all(k in SPECS for k, _ in cars)
+
+
+def _check_rider(v, vis, seat=None, tol=0.05):
+    """Ездок сидит в седле, а не рядом с ним: таз — в точке посадки, кисти — у ручек руля."""
+    from game import bikes
+    g = bikes.geo(v.kind)
+    sx, sy, sz = seat or v.bparts['seat']
+    pv = vis.pelvis_pos(v.tilt)
+    assert abs(pv.x - sx) < tol and abs(pv.y - sy) < tol and abs(pv.z - sz) < tol, (v.kind, tuple(pv), (sx, sy, sz))
+    if seat is None:
+        a = vis.actor
+        for name, side in (('hand_l', -1), ('hand_r', 1)):
+            j = vis.grips.get('_' + name)
+            if j is None:
+                j = vis.grips['_' + name] = a.exposeJoint(None, 'modelRoot', name)
+        a.update(force=True)
+        for name in ('hand_l', 'hand_r'):
+            h = vis.grips['_' + name].getPos(v.tilt)
+            # кисть — на руле: по длине и высоте в пределах ладони, по ширине — в пределах руля
+            assert abs(h.y - g.gy) < 0.16 and abs(h.z - g.gz) < 0.14, (v.kind, name, tuple(h), (g.gy, g.gz))
+            assert abs(h.x - g.x) < g.bar + 0.05, (v.kind, name, tuple(h))
+
+
+@pytest.mark.parametrize('kind', ['bike', 'chopper', 'scooter', 'dirt', 'bicycle', 'quad', 'moped', 'copbike',
+                                  'sidecar', 'trike', 'bmx', 'tourer'])
+def test_every_bike_seats_its_rider(game, world, kind):
+    """У каждой модели ездок сидит в седле и держится за руль; где есть второе место — пассажир на нём."""
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(6.0)
+    v = w.spawn_vehicle(kind, x, y, yaw, paint=0)
+    spec = v.spec
+    # колёса стоят на земле и не выходят за габарит, по которому считаются столкновения
+    assert len(v.wheels) == len(v.bparts['wheels']) >= 2
+    for (wx, wy, r, how, node) in v.bparts['wheels']:
+        assert abs(wx) <= spec.W * 0.5 + 0.02 and abs(wy) + r <= spec.L * 0.5 + 0.08, (kind, wx, wy, r)
+    pl.teleport(x, y - 2.0)
+    pl.enter_vehicle(v, silent=True)
+    harness.run(game, 0.2)
+    p = pl.ped
+    assert pl.vehicle is v and p.node.getParent() == v.tilt and not p.node.isHidden()
+    _check_rider(v, p.vis)
+    harness.run(game, 2.0, keys=('w',))
+    assert v.speed > 2.0
+    if spec.seats > 1:
+        q = w.spawn_ped(x + 2.0, y - 2.5, 0.0, random_look(random.Random(5), 'O'))
+        w.put_in_vehicle(q, v)
+        harness.run(game, 0.1)
+        assert not q.node.isHidden() and q.node.getParent() == v.tilt        # пассажира видно: он сидит на своём месте
+        _check_rider(v, q.vis, seat=v.bparts['seat2'][:3])
+        w.take_out(q, 1)
+        harness.run(game, 0.1)
+        assert q.node.getParent() != v.tilt and abs(q.z - w.city.ground_z(q.x, q.y)) < 0.05
+        w.remove_ped(q)
+    else:
+        assert v.bparts['seat2'] is None
+    harness.run(game, 1.5, keys=('s',))
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.3)
+    assert pl.state == 'foot' and p.node.getParent() != v.tilt and p.vis.cur != 'mix'
+    w.remove_vehicle(v)
 
 
 def test_riding_a_motorcycle(game, world):
@@ -380,9 +445,8 @@ def test_riding_a_motorcycle(game, world):
     p = pl.ped
     assert pl.state == 'car' and pl.vehicle is bike
     assert not p.node.isHidden() and p.node.getParent() == bike.tilt        # сидит верхом и едет вместе с ним
-    assert p.vis.cur == 'drive'
-    head = p.node.getPos(bike.node)
-    assert abs(head.x) < 0.05 and -0.6 < head.y < 0.2
+    assert p.vis.cur == 'mix'                                               # поза ездока — смесь «верхом» и «за рулём»
+    _check_rider(bike, p.vis)
     harness.run(game, 3.0, keys=('w',))
     assert bike.speed > 14.0
     harness.run(game, 0.5, keys=('w', 'a'))
@@ -422,7 +486,8 @@ def test_traffic_bikers_and_jacking(game, world):
     v = w.spawn_vehicle('chopper', x, y, yaw)
     v.npc = True
     v.add_rider(random_look(random.Random(2), 'G'))
-    assert v.rider is not None and not v.rider.root.isEmpty() and v.rider.cur == 'drive'
+    assert v.rider is not None and not v.rider.root.isEmpty() and v.rider.cur == 'mix'
+    _check_rider(v, v.rider)
     pl.teleport(x, y - 1.6)
     harness.run(game, 0.2)
     before = set(w.peds)

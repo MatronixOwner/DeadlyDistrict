@@ -66,6 +66,7 @@ class PedVisual(object):
         self.death = random.choice(DEATHS)
         self.punch_n = random.randrange(2)
         self.grips = {}
+        self.mix_ctrls = []         # клипы застывшей смешанной позы (ездок)
         self.gun = None
         self.gun_kind = None
         self._rifle = None          # (точка хвата, «верх») в системе кости правой кисти
@@ -92,6 +93,12 @@ class PedVisual(object):
         n = self._ctrl(name)
         if n is None:
             return
+        if self.mix_ctrls:                          # была застывшая поза из смеси клипов — снимаем её
+            for m in self.mix_ctrls:
+                if m is not n:
+                    self.bundle.setControlEffect(m, 0.0)
+            self.mix_ctrls = []
+            self.cur_ctrl = self.prev_ctrl = None
         c = self.cur_ctrl
         b = self.bundle
         p = self.prev_ctrl
@@ -126,6 +133,43 @@ class PedVisual(object):
             self.time = 0.0
             self.frame = 0
         n.pose(self.frame)
+
+    def pose_mix(self, mix, frame=10):
+        """Застывшая поза — смесь клипов: mix = ((имя, вес), ...).  Так сидит ездок на мотоцикле:
+        между «верхом» и «за рулём», в зависимости от того, как устроено седло и где руль."""
+        b = self.bundle
+        for c in (self.cur_ctrl, self.prev_ctrl):
+            if c is not None:
+                b.setControlEffect(c, 0.0)
+        for c in self.mix_ctrls:
+            b.setControlEffect(c, 0.0)
+        self.mix_ctrls = []
+        for name, wgt in mix:
+            c = self._ctrl(name)
+            if c is None or wgt <= 0.0:
+                continue
+            c.pose(min(frame, max(0, c.getNumFrames() - 1)))
+            b.setControlEffect(c, wgt)
+            self.mix_ctrls.append(c)
+        self.cur = 'mix'
+        self.cur_ctrl = self.prev_ctrl = None
+        self.fade = 0.0
+        self.hold = 0.0
+        self.loop = True
+        self.done = True
+
+    def pelvis_pos(self, rel):
+        """Где сейчас таз фигуры в осях узла rel (None, если модель без костей)."""
+        a = self.actor
+        if a is None:
+            return None
+        pj = self.grips.get('_pelvis')
+        if pj is None:
+            pj = self.grips['_pelvis'] = a.exposeJoint(None, 'modelRoot', 'pelvis')
+        if pj is None:
+            return None
+        a.update(force=True)
+        return pj.getPos(rel)
 
     def update(self, dt):
         """Продвинуть клип на dt секунд игрового времени и довести плавный переход.

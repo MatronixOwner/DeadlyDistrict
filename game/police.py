@@ -234,7 +234,7 @@ class Police(object):
         # обычные патрульные машины в трафике тоже включаются в погоню
         if len([u for u in self.units if not u.removed and not u.dead]) < MAX_UNITS[self.level]:
             for v in w.vehicles:
-                if v.kind == 'police' and v.npc and v.traffic and not v.dead and v not in self.units:
+                if v.kind in ('police', 'copbike') and v.npc and v.traffic and not v.dead and v not in self.units:
                     dx, dy = v.x - px, v.y - py
                     if dx * dx + dy * dy < 60.0 * 60.0:
                         self._make_unit(v)
@@ -265,7 +265,7 @@ class Police(object):
         v.keep = True
         v.owner = 'police'
         v.siren = True
-        v.crew = 4 if v.kind in ('enforcer', 'army') else 2
+        v.crew = 4 if v.kind in ('enforcer', 'army') else (1 if v.spec.bike else 2)
         v.stuck_t = 0.0
         v.reverse_t = 0.0
         v.route_t = 0.0
@@ -353,6 +353,8 @@ class Police(object):
         v.in_brake = 1.0
         v.keep = False
         kind = v.kind
+        if v.rider is not None:                     # с мотоцикла слезает тот, кто на нём сидел
+            v.remove_rider()
         for i in range(n):
             side = -1 if i % 2 == 0 else 1
             x, y = v.door_pos(side)

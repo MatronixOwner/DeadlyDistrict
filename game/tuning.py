@@ -36,7 +36,7 @@ TOTAL = sum(len(opts) for _, _, opts in PARTS)
 
 # что годится не всякой машине: ключ -> для каких не годится
 BIKE_SKIP = ('spoiler', 'roof', 'bumper', 'armor', 'susp')
-NO_TUNE = ('police', 'enforcer', 'fbi', 'army', 'ambulance', 'bus')        # служебные и автобус
+NO_TUNE = ('police', 'enforcer', 'fbi', 'army', 'ambulance', 'bus', 'copbike', 'firetruck')   # служебные и автобус
 
 RIMS = [(1.0, 1.0, 1.0), (1.22, 1.22, 1.28), (0.34, 0.34, 0.36), (1.25, 0.98, 0.36), (1.5, 1.5, 1.5)]
 NEON = [None, (0.2, 0.45, 1.0), (0.2, 1.0, 0.35), (1.0, 0.15, 0.12), (0.75, 0.2, 1.0), (1.0, 1.0, 1.0)]

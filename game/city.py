@@ -314,7 +314,18 @@ class City(object):
         self._gen_coast()
         self._gen_country()
         self._gen_extras()
+        self._clear_driveways()
         self.n_chunks = self._outer_chunk_base + len(self._chunk_ids)
+
+    def _clear_driveways(self):
+        """Перед воротами гаража на тротуаре ничего не стоит: ни дерева, ни урны, ни фонаря."""
+        g = self.special.get('garage')
+        if g is None:
+            return
+        x0, y0, x1, y1 = g['rect']
+        fy = g['front'][1]
+        self.props = [p for p in self.props
+                      if not (x0 - 0.8 < p['x'] < x1 + 0.8 and fy - 1.5 < p['y'] < y0 and p['kind'] != 'mailbox')]
 
     def signature(self):
         """Подпись раскладки: рельеф построен под конкретные дороги и кварталы."""
@@ -1957,6 +1968,14 @@ class City(object):
         # перила трапа со стороны пирса и торец площадки: с пирса на трап можно зайти только снизу
         fence(gx0 + 1.3, gy0 - 0.07, gx1 + 2.2, gy0 + 0.07)
         fence(gx1 + 2.13, gy0, gx1 + 2.27, gy1)
+        # между пирсом и бортом — полоса воды, а герой не плавает: по краю пирса идёт поручень с разрывом
+        # у нижней ступени трапа, а сама ступень с торца закрыта
+        rail_c = (0.80, 0.66, 0.14)
+        edge = py + 9.0 - 0.12
+        self._wall(dx1 + 0.4, edge, gx0 - 0.05, edge, 1.0, 'metal_paint', chunk, color=rail_c, thick=0.12, kind='rail')
+        self._wall(gx1 + 2.3, edge, dx1 + 46.0 - 0.4, edge, 1.0, 'metal_paint', chunk, color=rail_c, thick=0.12,
+                   kind='rail')
+        self._wall(gx0 - 0.05, edge, gx0 - 0.05, gy1, 1.0, 'metal_paint', chunk, color=rail_c, thick=0.12, kind='rail')
         # борта аппарели
         for yy in (ramp[1], ramp[3]):
             fence(rx0 + 2.5, yy - 0.08, sx0, yy + 0.08)

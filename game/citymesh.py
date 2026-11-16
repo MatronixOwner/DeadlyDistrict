@@ -572,6 +572,20 @@ class CityMesh(object):
                     mb.box(None, px - 0.05, py - 0.05, z0, px + 0.05, py + 0.05, z0 + h + 0.1, (0.4, 0.42, 0.44, 1))
                 flags = F_CAR | F_PED | F_CAM
                 bx0, by0, bx1, by1 = (x0, y0 - 0.12, x1, y0 + 0.12) if horiz else (x0 - 0.12, y0, x0 + 0.12, y1)
+            elif kind == 'rail':
+                # поручень: стойки и две перекладины — сквозь него видно, но не пройти и не проехать
+                np_ = max(1, int(L // 2.0))
+                for k in range(np_ + 1):
+                    px = x0 + (x1 - x0) * k / np_
+                    py = y0 + (y1 - y0) * k / np_
+                    mb.box(None, px - 0.04, py - 0.04, z0, px + 0.04, py + 0.04, z0 + h, col)
+                for zz in (z0 + h, z0 + h * 0.5):
+                    if horiz:
+                        mb.box(None, x0, y0 - 0.03, zz - 0.035, x1, y0 + 0.03, zz + 0.035, col)
+                    else:
+                        mb.box(None, x0 - 0.03, y0, zz - 0.035, x0 + 0.03, y1, zz + 0.035, col)
+                flags = F_CAR | F_PED
+                bx0, by0, bx1, by1 = (x0, y0 - 0.10, x1, y0 + 0.10) if horiz else (x0 - 0.10, y0, x0 + 0.10, y1)
             else:
                 if horiz:
                     bx0, by0, bx1, by1 = x0, y0 - t, x1, y0 + t

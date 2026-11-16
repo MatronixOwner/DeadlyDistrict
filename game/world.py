@@ -427,7 +427,7 @@ class World(object):
         zone = self.city.zone_style(self.city.zone_at(v.x, v.y))
         if zone not in 'DOGRIB' or len(zone) != 1:
             zone = 'D'
-        if v.kind in ('police', 'enforcer', 'fbi', 'army') or v.owner == 'police':
+        if v.kind in ('police', 'enforcer', 'fbi', 'army', 'copbike') or v.owner == 'police':
             p = self.police.make_cop(v.x, v.y, v.yaw, v.kind)
         elif v.kind == 'ambulance':
             p = self.spawn_ped(v.x, v.y, v.yaw, medic_look(), 'civ')
@@ -475,7 +475,9 @@ class World(object):
         ped.set_state('in_car')
         ped.aiming = False
         ped.speed = 0.0
-        ped.node.hide()
+        # в машине седока не видно; на мотоцикле он сидит верхом, а пассажир — сзади или в коляске
+        if not (v.spec.bike and v.seat_ped(ped, passenger=not driver)):
+            ped.node.hide()
         if driver:
             v.driver = ped
         elif ped not in v.passengers:
@@ -490,6 +492,8 @@ class World(object):
         if ped in v.passengers:
             v.passengers.remove(ped)
         ped.vehicle = None
+        if getattr(ped, '_ride_parent', None) is not None:
+            v.unseat_ped(ped)
         x, y = v.door_pos(side)
         if self.static.overlap_circle(x, y, ped.radius, F_PED):
             x, y = v.door_pos(-side)

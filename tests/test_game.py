@@ -92,10 +92,13 @@ def test_carjack_traffic(game, world):
     x, y = v.door_pos(-1)
     pl.teleport(x - 0.5, y)
     harness.press(game, 'f')
-    harness.run(game, 2.5)
+    thrown = False
+    for _ in range(150):
+        game.step(DT)
+        # водителя выбросили на дорогу (смотрим всё время: потом его может сбить поток, и обидчик сменится)
+        thrown = thrown or any(p.last_attacker is pl.ped for p in w.peds if not p.is_player)
     assert pl.vehicle is v and not v.npc
-    # водителя выбросили на дорогу
-    assert any(p.last_attacker is pl.ped for p in w.peds if not p.is_player)
+    assert thrown
     assert w.stats['stolen'] == 1
 
 

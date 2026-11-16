@@ -174,7 +174,8 @@ ANIMS = {
     'texting': 'texting-walk', 'greet': 'greeting', 'nod': 'head-nod', 'no': 'reject', 'angry': 'angry',
     'confused': 'confused', 'victory': 'victory', 'clap': 'clapping',
     # сидя и лёжа
-    'drive': 'driving', 'sit': 'sitting-idle', 'sit_talk': 'sitting-talking', 'sit_down': 'sitting-enter',
+    'drive': 'driving', 'ride': 'mount-idle', 'sit': 'sitting-idle',
+    'sit_talk': 'sitting-talking', 'sit_down': 'sitting-enter',
     'sit_up': 'sitting-exit', 'write': 'sitting-writing', 'sit_ground': 'sit-ground-idle', 'sleep': 'sleeping',
     # действия
     'door': 'open-door', 'interact': 'interact', 'pickup': 'pick-up', 'push': 'push', 'knock': 'knock',

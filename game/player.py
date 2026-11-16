@@ -739,7 +739,7 @@ class Player(object):
         w.cam.look_back = inp.held('b')
         # сигнал / сирена
         if inp.hit('h'):
-            if v.kind in ('police', 'ambulance', 'enforcer', 'fbi'):
+            if v.kind in ('police', 'ambulance', 'enforcer', 'fbi', 'firetruck', 'copbike'):
                 v.siren = not v.siren
             else:
                 w.audio.play(v.horn or ('horn_truck' if v.spec.engine == 'truck' else 'horn'), 0.9)

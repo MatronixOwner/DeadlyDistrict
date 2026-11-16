@@ -168,6 +168,10 @@
    "fps": 30.0,
    "frames": 99
   },
+  "ride": {
+   "fps": 30.0,
+   "frames": 112
+  },
   "rifle_fire": {
    "fps": 30.0,
    "frames": 37
