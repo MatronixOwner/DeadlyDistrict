@@ -22,6 +22,8 @@ DEATHS = ('death_a', 'death_b', 'death_c')
 # клипы, в которых длинный ствол держат двумя руками: оружие в них направляется от правой ладони к левой
 TWO_HANDS = ('rifle_idle', 'rifle_walk', 'rifle_run', 'rifle_fire')
 SHOULDERED = 'rifle_fire'   # стойка прицеливания и стрельбы: ствол смотрит туда, куда целятся
+PISTOL_AIM = ('pistol_aim', 'pistol_shoot', 'pistol_walk', 'pistol_idle')
+PISTOL_CARRY = ('pistol', 'silenced', 'uzi')
 # Где левая ладонь поддерживает оружие в стойке: (вперёд от рукояти, вверх от неё), м — низ цевья.
 # У автомата и карабина перед рукоятью висит магазин, цевьё начинается за ним.
 SUPPORT = {'ak': (0.41, 0.115), 'm4': (0.37, 0.085), 'shotgun': (0.36, -0.01), 'double': (0.34, 0.03),
@@ -94,6 +96,8 @@ class PedVisual(object):
         self.gun = None
         self.gun_kind = None
         self._rifle = None          # (точка хвата, «верх») в системе кости правой кисти
+        self._pistol = None         # (обычный хват для прицеливания, расслабленный хват у бедра)
+        self._pistol_carry = False
         self.support = SUPPORT_ANY  # где левая ладонь держит оружие в стойке
         self.aim_pitch = 0.0        # куда целятся: угол над горизонтом, градусы (задаёт ped.py)
         self._pitch = 0.0
@@ -216,8 +220,6 @@ class PedVisual(object):
             if fi != self.frame:
                 self.frame = fi
                 self.cur_ctrl.pose(fi)
-        if self._rifle is not None and self.gun_kind == 'rifle':
-            self._aim_long()
         if self.fade > 0.0:
             self.fade -= dt
             k = self.fade / self.fade_len
@@ -233,6 +235,11 @@ class PedVisual(object):
                 b.setControlEffect(self.cur_ctrl, 1.0 - k)
                 if p is not None:
                     b.setControlEffect(p, k)
+        if self._rifle is not None and self.gun_kind == 'rifle':
+            self.actor.update(force=True)
+            self._aim_long()
+        elif self.gun_kind == 'pistol':
+            self._pose_pistol()
 
     def busy(self):
         """Идёт ли ещё одноразовый клип (удар, подъём с земли)."""
@@ -270,11 +277,13 @@ class PedVisual(object):
             self.gun.removeNode()
             self.gun = None
         self.gun_kind = None
+        self._pistol_carry = False
         self._free_arm()
         t = self.models.weapon(wid)
         if t is None:
             return
-        self.support = SUPPORT.get(self.models.weapon_name(wid), SUPPORT_ANY)
+        wname = self.models.weapon_name(wid)
+        self.support = SUPPORT.get(wname, SUPPORT_ANY)
         grip = self.grips.get(kind)
         if grip is None:
             joint, mat = self.models.hand_matrix(kind)
@@ -285,12 +294,39 @@ class PedVisual(object):
             grip.setMat(mat)
         self.gun = t.copyTo(grip)                   # у шаблона своя текстура, чужая на него не ложится
         self.gun_kind = kind
-        if kind == 'rifle' and self._rifle is None:
-            if '_left' not in self.grips:
-                self.grips['_left'] = self.actor.exposeJoint(None, 'modelRoot', 'middle_01_l')
-                self.grips['_clav'] = self.actor.exposeJoint(None, 'modelRoot', 'clavicle_l')
-            m = grip.getMat()
-            self._rifle = (m.getRow3(3), LVector3(m.getRow3(2)), LMatrix4(m))
+        if kind == 'pistol':
+            if self._pistol is None:
+                _, mat = self.models.hand_matrix('pistol')
+                aim_m = LMatrix4(mat)
+                carry_m = (LMatrix4.rotateMat(62.0, (1.0, 0.0, 0.0))
+                           * LMatrix4.rotateMat(-18.0, (0.0, 0.0, 1.0))
+                           * aim_m
+                           * LMatrix4.translateMat(-0.022, -0.024, 0.032))
+                self._pistol = (aim_m, carry_m)
+            self._pistol_carry = wname in PISTOL_CARRY
+            self._pose_pistol()
+        elif kind == 'rifle':
+            if self._rifle is None:
+                if '_left' not in self.grips:
+                    self.grips['_left'] = self.actor.exposeJoint(None, 'modelRoot', 'middle_01_l')
+                    self.grips['_clav'] = self.actor.exposeJoint(None, 'modelRoot', 'clavicle_l')
+                m = grip.getMat()
+                self._rifle = (m.getRow3(3), LVector3(m.getRow3(2)), LMatrix4(m))
+            self.actor.update(force=True)
+            self._aim_long()
+
+    def _pose_pistol(self):
+        """В стойке прицеливания пистолет выведен вперёд, в опущенной руке — лежит в ладони стволом вперёд-вниз."""
+        if self._pistol is None:
+            return
+        grip = self.grips.get('pistol')
+        if grip is None:
+            return
+        aim_m, carry_m = self._pistol
+        if self._pistol_carry and self.cur not in PISTOL_AIM:
+            grip.setMat(carry_m)
+        else:
+            grip.setMat(aim_m)
 
     def _aim_long(self):
         """Длинный ствол лежит в двух руках: правая держит рукоять, ствол смотрит на левую ладонь.
@@ -302,7 +338,9 @@ class PedVisual(object):
         if self.cur == SHOULDERED:
             self._shoulder(grip, o)
             return
-        self._free_arm()
+        if self._ik is not None:
+            self._free_arm()
+            self.actor.update(force=True)
         if self.cur not in TWO_HANDS:
             grip.setMat(rest)
             return

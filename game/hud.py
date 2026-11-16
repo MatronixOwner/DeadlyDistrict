@@ -71,7 +71,8 @@ class Hud(object):
         # --- мини-карта и полоски под ней
         self.radar = self.bl.attachNewNode('radar')
         self.radar.setPos(M, 0, M + BAR_H + 0.012)
-        kit.card(self.radar, -0.008, MAP_W + 0.008, -BAR_H - 0.020, MAP_H + 0.008, INK, 0.78)
+        kit.card(self.radar, -0.008, MAP_W + 0.008, -BAR_H - 0.020, MAP_H + 0.008, (0.65, 0.70, 0.78), 0.90,
+                 tex='ui_panel')
         cm = CardMaker('map')
         cm.setFrame(0.0, MAP_W, 0.0, MAP_H)
         k = MAP_H / MAP_W * 2.0
@@ -125,7 +126,7 @@ class Hud(object):
         tn.setCardDecal(True)
         self.help_text.hide()
         # большое сообщение: полоса через экран, заголовок и строка под ним
-        self.band = kit.card(self.msg, -5, 5, -0.02, 0.36, INK, 0.62)
+        self.band = kit.card(self.msg, -5, 5, -0.02, 0.36, (0.65, 0.70, 0.78), 0.86, tex='ui_panel')
         self.band.hide()
         self.big_text = kit.label(self.msg, '', 0, 0.165, 0.15, ACCENT, kit.title, 'c', shadow=False)
         self.big_sub = kit.label(self.msg, '', 0, 0.045, 0.056, PAPER, kit.bold, 'c', shadow=False)

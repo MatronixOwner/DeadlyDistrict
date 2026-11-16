@@ -46,11 +46,13 @@ class Kit(object):
         self.script = f('Caveat-Bold.ttf', 110)
 
     # ------------------------------------------------------------------
-    def card(self, parent, x0, x1, z0, z1, color=INK, alpha=None, name='card'):
-        """Одноцветный прямоугольник."""
+    def card(self, parent, x0, x1, z0, z1, color=INK, alpha=None, name='card', tex=None):
+        """Одноцветный (или текстурированный PSX-панелью) прямоугольник."""
         cm = CardMaker(name)
         cm.setFrame(x0, x1, z0, z1)
         np_ = parent.attachNewNode(cm.generate())
+        if tex is not None:
+            np_.setTexture(self.assets.tex(tex, clamp=True, smooth=True), 1)
         np_.setColor(*rgba(color, alpha))
         np_.setTransparency(TransparencyAttrib.MAlpha)
         return np_

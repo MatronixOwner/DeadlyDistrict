@@ -9,8 +9,12 @@
 | Люди: модели и текстуры (`chars/`) | **Elbolilloduro** — «Characters PSX» | см. примечание | репозиторий `Mesh2Motion/mesh2motion-app` (`static/assets/human/variations`) |
 | Скелет и клипы анимации (`anims/`) | проект **Mesh2Motion** | CC0 | там же (`static/assets/human/animations`) |
 | Машины: 10 моделей (`veh/`) | **GGBot** — «PSX Style Cars» | CC0 | копия набора в репозитории `Raccoon-Formality/Parking_Ticket_Mayhem` |
+| Такси (`veh/taxi`) | **MoiDev** — «Yellow Taxi/Cab - PS1 Car» | CC-BY-SA-4.0 | копия набора в репозитории `Langorithm/3d-models` (`yellow_taxicab_-_ps1_car`) |
 | Автобус (`veh/bus`) | код проекта, `tools/gen_bus.py` | — | — |
-| Мотоциклы, скутеры, мопед, велосипеды, квадроцикл, трайк, карт, гольф-кар: 16 видов | код проекта, `game/bikes.py` (файлов моделей нет: они собираются при запуске) | — | — |
+| Мотоцикл-круизер (`veh/b_moto`) | **Duhgless** — «Another PSX Style Low-poly Bike» | CC0 | копия в репозитории `webbertakken/citymap` (`motorbike.glb`) |
+| Велосипеды (`veh/b_cycle`, `veh/b_bmx`) | **Kenney** — «Starter Kit: Racing» / «Car Kit» | CC0 | `KenneyNL/Starter-Kit-Racing` |
+| Скутеры, мопед, спортбайк, кросс, квадроцикл, карт, гольф-кар и детали коляски/трайка | код проекта, `game/bikes.py` | — | — |
+| Панели интерфейса (`assets/tex/ui_panel.png`, `ui_row.png`) | **rohhsa** — «FREEPSXUI» | CC0 | копия в репозитории `Balwanek-ola/haven-2026` (`FREEPSXUI`) |
 | Мебель и техника в комнатах: 74 предмета (`furn/`) | **Elbolilloduro** — «Pack of low poly psx style models» | см. примечание | сборник `M3-org/retro3d-assets` (папка `Furniture`) |
 | Пистолет и пистолет с глушителем (`weapons/pistol`, `silenced`) | **Mextie** — «Low-Poly Glock Model»; глушитель добавлен кодом | см. примечание | сборник `M3-org/retro3d-assets` (`Weapons/low-poly-glock`) |
 | Пистолет-пулемёт, гранатомёт, нож (`uzi`, `rocket`, `knife`) | **Ace Spectre** — «PS1 Heavy and Light Weapons Pack» | см. примечание | там же (`Weapons/Heavy Weapons Pack`) |
@@ -28,6 +32,10 @@
   <https://elbolilloduro.itch.io/paquete-de-modelos-low-poly-estilo-psx-2> (мебель)
 - Mesh2Motion — <https://github.com/Mesh2Motion/mesh2motion-app>
 - GGBot (GGBotNet) — <https://ggbot.itch.io/psx-style-cars>
+- MoiDev — <https://sketchfab.com/3d-models/yellow-taxicab-ps1-car-c07a0f442a6b482797c523c91a453395> (CC-BY-SA-4.0: <https://creativecommons.org/licenses/by-sa/4.0/>)
+- Duhgless — <https://duhgless.itch.io/another-psx-style-low-poly-bike>
+- rohhsa — <https://rohhsa.itch.io/free-psx-ui>
+- Kenney — <https://kenney.nl>
 - Craig Snedeker — <https://craigsnedeker.itch.io/classic64-asset-library>
 - Quaternius — <https://quaternius.com>
 - Mextie — <https://mextie.itch.io/low-poly-glock>
@@ -78,12 +86,13 @@ Elbolilloduro (`src/lib/RigConfig.ts`).
 `tools/import_weapons.py`, соответствие оружию игры — в `game/models.py`. Бита, граната и бутылка остались
 от Quaternius; их импорт — `tools/import_models.py weapons`.
 
-## Примечание о мотоциклах
+## Примечание о мотоциклах и велосипедах
 
-Готового набора мотоциклов в стиле первой PlayStation с понятной лицензией мы не нашли, поэтому мотоциклы,
-скутеры, велосипеды, квадроцикл, карт и гольф-кар собирает код (`game/bikes.py`) — из колёс, труб и обтекаемых
-деталей. Они проще машин, зато подогнаны под посадку ездока: руль, седло и подножки стоят там, где у сидящей
-фигуры кисти, таз и стопы. Чужих материалов в них нет.
+Круизер `b_moto` (используется для «Ворона», «Странника», патрульного мотоцикла, трайка и «Тайги» с коляской)
+импортирован из CC0-набора **Duhgless** «Another PSX Style Low-poly Bike» с отделением поворотной вилки и
+колёс в `tools/import_vehicles.py`, а велосипеды `b_cycle` и `b_bmx` — из CC0-набора Kenney. Остальные виды
+(спортивный и кроссовый мотоциклы, скутеры, мопед, квадроцикл, грузовой мотороллер, карт и гольф-кар)
+собирает код (`game/bikes.py`) — из колёс, труб и обтекаемых деталей, подогнанных под посадку ездока.
 
 ## Шрифты
 

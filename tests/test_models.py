@@ -380,6 +380,63 @@ def test_long_gun_lies_in_both_hands(game, world):
     w.remove_ped(p)
 
 
+def test_rifle_aim_updates_without_one_frame_lag(game, world):
+    """Переход из стойки покоя в прицеливание сразу ставит ствол и левую руку по текущему кадру скелета."""
+    from panda3d.core import LVector3
+    w = world
+    harness.quiet(w, peds=True)
+    px, py = w.player.pos()
+    p = w.spawn_ped(px + 3.0, py, 0.0, random_look(random.Random(9), 'D'))
+    p.keep = True
+    p.set_state('stand')
+    p.set_weapon(W_AK)
+    vis = p.vis
+    vis.play('idle', True, 1.0, 0.0)
+    vis.update(0.0)
+    vis.aim_pitch = 0.0
+    vis._pitch = 0.0
+    vis.play('rifle_fire', False, 1.0, 0.0, True, 0.0)
+    vis.update(0.0)                                 # один шаг, без ручного actor.update()
+    fwd = p.node.getRelativeVector(vis.gun, LVector3(0, 1, 0))
+    fwd.normalize()
+    assert abs(fwd.x) < 0.03 and fwd.y > 0.95 and abs(fwd.z) < 0.03, fwd
+    w.remove_ped(p)
+
+
+def test_pistol_carry_points_forward_not_straight_down(game, world):
+    """В опущенной руке (idle/walk/jog) пистолет лежит стволом вперёд-вниз, а рукоять не торчит назад за кисть."""
+    from panda3d.core import LVector3
+    from game.defs import W_SILENCED, W_UZI
+    w = world
+    harness.quiet(w, peds=True)
+    px, py = w.player.pos()
+    p = w.spawn_ped(px + 3.0, py, 0.0, random_look(random.Random(11), 'D'))
+    p.keep = True
+    p.set_state('stand')
+    vis = p.vis
+    for wid in (W_PISTOL, W_SILENCED, W_UZI):
+        p.set_weapon(wid)
+        vis.play('idle', True, 1.0, 0.0)
+        vis.update(0.0)
+        vis.actor.update(force=True)
+        fwd = p.node.getRelativeVector(vis.gun, LVector3(0, 1, 0))
+        fwd.normalize()
+        # ствол направлен вперёд (+Y) и вниз (-Z), а не строго вертикально в землю
+        assert fwd.y > 0.6 and -0.7 < fwd.z < -0.1, (wid, fwd)
+        # рукоять уходит вниз (-Z модели) в пальцы, а не назад (-Y модели) за запястье
+        grip_down = p.node.getRelativeVector(vis.gun, LVector3(0, 0, -1))
+        grip_down.normalize()
+        assert grip_down.z < -0.5, (wid, grip_down)
+        # при прицеливании возвращается обычный прямой хват
+        vis.play('pistol_aim', True, 1.0, 0.0)
+        vis.update(0.0)
+        vis.actor.update(force=True)
+        aim_fwd = p.node.getRelativeVector(vis.gun, LVector3(0, 1, 0))
+        aim_fwd.normalize()
+        assert aim_fwd.y > 0.95 and abs(aim_fwd.z) < 0.15, (wid, aim_fwd)
+    w.remove_ped(p)
+
+
 def test_fleet_has_bikes_and_new_cars(world):
     """Транспорта стало больше чем вдвое: шестнадцать видов мотоциклов и их родни и десять новых машин."""
     from game.vehicle import BIKES, ZONE_CARS

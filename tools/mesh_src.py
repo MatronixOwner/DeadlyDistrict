@@ -253,22 +253,27 @@ def obj_colors(path):
 
 
 def read_glb(path):
-    """Детали из .glb: по одной на узел с сеткой, матрицы узлов применены.  Возвращает (детали, картинки):
+    """Детали из .glb/.gltf: по одной на узел с сеткой, матрицы узлов применены.  Возвращает (детали, картинки):
     картинки — {номер материала: байты PNG/JPEG или путь к внешнему файлу}."""
     with open(path, 'rb') as f:
         data = f.read()
-    magic, ver, total = struct.unpack('<4sII', data[:12])
-    assert magic == b'glTF', path
-    pos = 12
-    js = blob = None
-    while pos < total:
-        n, kind = struct.unpack('<I4s', data[pos:pos + 8])
-        chunk = data[pos + 8:pos + 8 + n]
-        if kind == b'JSON':
-            js = json.loads(chunk.decode('utf-8'))
-        elif kind == b'BIN\x00':
-            blob = chunk
-        pos += 8 + n
+    if data[:4] == b'glTF':
+        _, _, total = struct.unpack('<4sII', data[:12])
+        pos = 12
+        js = blob = None
+        while pos < total:
+            n, kind = struct.unpack('<I4s', data[pos:pos + 8])
+            chunk = data[pos + 8:pos + 8 + n]
+            if kind == b'JSON':
+                js = json.loads(chunk.decode('utf-8'))
+            elif kind == b'BIN\x00':
+                blob = chunk
+            pos += 8 + n
+    else:
+        js = json.loads(data.decode('utf-8'))
+        buf = js['buffers'][0]['uri']
+        with open(os.path.join(os.path.dirname(path), buf), 'rb') as bf:
+            blob = bf.read()
     CT = {5120: 'b', 5121: 'B', 5122: 'h', 5123: 'H', 5125: 'I', 5126: 'f'}
     NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}
 
@@ -293,12 +298,20 @@ def read_glb(path):
         mats.append(m.get('name') or 'mat%d' % mi)
         tex = m.get('pbrMetallicRoughness', {}).get('baseColorTexture')
         if tex is not None:
-            img = js['images'][js['textures'][tex['index']]['source']]
-            if 'bufferView' in img:
-                bv = js['bufferViews'][img['bufferView']]
-                images[mi] = blob[bv.get('byteOffset', 0):bv.get('byteOffset', 0) + bv['byteLength']]
-            elif 'uri' in img:
-                images[mi] = os.path.join(os.path.dirname(path), img['uri'].replace('%20', ' '))
+            tx = js['textures'][tex['index']]
+            src_id = tx.get('source')
+            if src_id is None:
+                for ext in tx.get('extensions', {}).values():
+                    if isinstance(ext, dict) and 'source' in ext:
+                        src_id = ext['source']
+                        break
+            if src_id is not None:
+                img = js['images'][src_id]
+                if 'bufferView' in img:
+                    bv = js['bufferViews'][img['bufferView']]
+                    images[mi] = blob[bv.get('byteOffset', 0):bv.get('byteOffset', 0) + bv['byteLength']]
+                elif 'uri' in img:
+                    images[mi] = os.path.join(os.path.dirname(path), img['uri'].replace('%20', ' '))
     out = []
 
     def local(n):

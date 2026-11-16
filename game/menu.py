@@ -72,8 +72,10 @@ class MenuUI(object):
         self.dim.setTransparency(TransparencyAttrib.MAlpha)
         self.dim.hide()
         self.left = self.root.attachNewNode('left')              # всё меню привязано к левому краю экрана
-        self.panel = kit.card(self.left, 0.0, LEFT + ROW_WIDE + 0.10, -1.5, 1.5, INK, 0.78, 'panel')
+        self.panel = kit.card(self.left, 0.0, LEFT + ROW_WIDE + 0.10, -1.5, 1.5, (0.65, 0.70, 0.78), 0.90, 'panel',
+                              tex='ui_panel')
         self.panel.hide()
+        self._row_tex = game.assets.tex('ui_row', clamp=True, smooth=True)
         # название игры в главном меню: две строки и подпись
         self.logo = kit.label(self.left, '', LEFT, 0.60, 0.21, PAPER, kit.title, 'l', shadow=False)
         self.logo2 = kit.label(self.left, '', LEFT, 0.415, 0.21, ACCENT, kit.title, 'l', shadow=False)
@@ -210,10 +212,12 @@ class MenuUI(object):
             row.setPos(LEFT, 0, z0)
             row.setScale(width, 1, z1 - z0)
             if sel and it.enabled:
+                row.clearTexture()
                 row.setColor(PAPER[0], PAPER[1], PAPER[2], 0.96)
                 col = INK
             else:
-                row.setColor(INK[0], INK[1], INK[2], 0.58)
+                row.setTexture(self._row_tex, 1)
+                row.setColor(0.75, 0.78, 0.85, 0.88)
                 col = PAPER if it.enabled else DIM
             base_z = z0 + (z1 - z0) * 0.5 - size * 0.30
             lab.setPos(LEFT + 0.04, base_z)
