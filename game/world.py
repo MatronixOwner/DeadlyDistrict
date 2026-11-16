@@ -119,6 +119,16 @@ class World(object):
     def remove_ped(self, p):
         if p.removed or p.is_player:
             return
+        v = p.vehicle
+        if v is not None:
+            # убирают того, кто ещё едет (задание кончилось, а брат сидит в коляске): машина не должна
+            # помнить о нём — иначе позже она попробует «высадить» уже несуществующую фигуру
+            if v.driver is p:
+                v.driver = None
+            if p in v.passengers:
+                v.passengers.remove(p)
+            p.vehicle = None
+        p._ride_parent = None
         p.remove()
 
     def _sweep(self):

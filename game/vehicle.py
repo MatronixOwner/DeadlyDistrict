@@ -847,10 +847,12 @@ class Vehicle(object):
 
     def unseat_ped(self, ped):
         par = getattr(ped, '_ride_parent', None)
+        ped._ride_parent = None
+        if ped.removed or ped.node.isEmpty():
+            return                                  # фигуру уже убрали: возвращать некого
         if par is not None and not par.isEmpty():
             ped.node.reparentTo(par)
             ped.node.setHpr(0, 0, 0)
-        ped._ride_parent = None
         if ped.vis is not None:
             ped.vis.play('idle', True, 1.0, 0.0, True)
 

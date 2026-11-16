@@ -675,3 +675,37 @@ def test_police_motorcycle_serves(game, world):
     finally:
         w.police.clear()
         _r.setstate(state)
+
+
+def test_removing_a_seated_passenger_is_safe(game, world):
+    """Задание кончилось, а брат ещё сидит в коляске: его убирают прямо с мотоцикла. Игра не должна упасть
+    ни сразу, ни позже — когда мотоцикл взорвут, уберут или герой с него слезет."""
+    from game import story
+    w = world
+    pl = w.player
+    harness.quiet(w, peds=True)
+    lane = w.roadnet.lane_index[('h', 2, 2, 'e', 0)]
+    x, y, yaw = lane.pos(10.0)
+    for kind, how in (('sidecar', 'remove'), ('tourer', 'explode'), ('caddy', 'leave')):
+        v = w.spawn_vehicle(kind, x, y, yaw, paint=0)
+        pl.teleport(x, y - 2.0)
+        pl.enter_vehicle(v, silent=True)
+        npc = w.spawn_ped(x + 1.0, y - 3.0, 0.0, story.person_look('bruce'))
+        w.put_in_vehicle(npc, v)
+        harness.run(game, 0.3)
+        assert npc in v.passengers and npc.node.getParent() == v.tilt
+        w.remove_ped(npc)
+        assert npc not in v.passengers and npc.vehicle is None
+        harness.run(game, 0.3)
+        if how == 'explode':
+            pl.leave_vehicle(force=True)
+            pl.teleport(x, y - 30.0)
+            v.explode(False)
+            harness.run(game, 0.5)
+        else:
+            pl.leave_vehicle(force=True)
+            harness.run(game, 0.3)
+        w.remove_vehicle(v)
+        harness.run(game, 0.3)
+        assert not pl.ped.dead and pl.vehicle is None and not pl.ped.node.isHidden()
+        pl.ped.health = 100.0
