@@ -165,6 +165,14 @@ def poly_cap(mb, key, pts, z, color, tile=4.0):
                (a[0] / tile, a[1] / tile), (b[0] / tile, b[1] / tile), color)
 
 
+# Плитка фасада с балконами: слева балконная дверь, справа окно (доли ширины пролёта).  Балкон идёт под обоими.
+BALCONY_DOOR_U = (0.17, 0.43)
+BALCONY_WINDOW_U = (0.56, 0.85)
+BALCONY_U = (0.10, 0.92)        # от и до какой доли пролёта тянется балкон
+BALCONY_DZ = 0.05               # пол балкона — на столько выше перекрытия этажа
+BALCONY_SLAB = 0.13             # толщина плиты балкона
+
+
 class Facades(object):
     """Строит здания города.  cm — CityMesh (нужен доступ к городу)."""
 
@@ -251,7 +259,7 @@ class Facades(object):
     def balcony(self, mb, F, u0, u1, z, col, depth=0.95, glazed=False, bars=False):
         """Балкон во всю ширину двери и окна.  bars — решётка вместо глухого ограждения: дверь видна с улицы."""
         p = F.p
-        fbox(mb, 'concrete', F, u0, u1, 0.0, depth, z - 0.13, z, (0.72, 0.72, 0.70, 1.0), 'ftblr', 3.0)
+        fbox(mb, 'concrete', F, u0, u1, 0.0, depth, z - BALCONY_SLAB, z, (0.72, 0.72, 0.70, 1.0), 'ftblr', 3.0)
         h = 1.02
         c = _c4(col)
         dk = _c4(col, 0.6)
@@ -620,7 +628,8 @@ class Facades(object):
                     bars = (int(b.x0 * 3 + b.y0 * 5) & 1) == 0
                     for f in range(fl):
                         for k in range(n):
-                            self.balcony(mb, F, bay * k + bay * 0.10, bay * k + bay * 0.92, zb + f * b.floor_h + 0.05,
+                            self.balcony(mb, F, bay * k + bay * BALCONY_U[0], bay * k + bay * BALCONY_U[1],
+                                         zb + f * b.floor_h + BALCONY_DZ,
                                          pc, glazed=(rnd.random() < 0.16), bars=bars)
                 # «брови» и рёбра ар-деко
                 elif kind == 'deco':

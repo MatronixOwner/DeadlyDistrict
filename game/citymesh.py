@@ -38,6 +38,23 @@ class Breakable(object):
     __slots__ = ('kind', 'x', 'y', 'yaw', 'ranges', 'col', 'alive', 'chunk')
 
 
+def sign_place(b, s, canopy=()):
+    """Где висит вывеска s дома b: (высота середины, ширина, высота, вынос от стены).
+
+    Вывеска магазина помещается между витриной и вторым этажом: выше начинаются балконы и окна.
+    Над плоским козырьком её ставят на его край — иначе снизу, с тротуара, козырёк её закрывает."""
+    z, w, h, dep = s['z'], s['w'], s['h'], 0.26
+    if s.get('shop'):
+        if s['side'] in canopy:
+            dep = 1.34
+            z = b.z0 + 3.2 + h * 0.5
+        elif b.fac in ('fac_balcony_a', 'fac_balcony_b'):
+            h = 0.84
+            w = min(w, h * 4.15)
+            z = b.z0 + b.gf_h - 0.10 - h * 0.5      # верх — под плитой первого балкона (она на 8 см ниже перекрытия)
+    return z, w, h, dep
+
+
 class CityMesh(object):
 
     def __init__(self, city, assets, static, parent, night_parent=None, progress=None):
@@ -475,17 +492,7 @@ class CityMesh(object):
             canopy = fac.canopy.get(id(b), ())
             # вывески
             for s in b.signs:
-                z, w, h, dep = s['z'], s['w'], s['h'], 0.26
-                if s.get('shop'):
-                    # Вывеска магазина помещается между витриной и вторым этажом: выше начинаются балконы и окна.
-                    # Над плоским козырьком её ставят на его край — иначе снизу, с тротуара, козырёк её закрывает.
-                    if s['side'] in canopy:
-                        dep = 1.34
-                        z = b.z0 + 3.2 + h * 0.5
-                    elif b.fac in ('fac_balcony_a', 'fac_balcony_b'):
-                        h = 0.84
-                        w = min(w, h * 4.15)
-                        z = b.z0 + b.gf_h - 0.05 - h * 0.5
+                z, w, h, dep = sign_place(b, s, canopy)
                 self._sign(mb, night, b.x0, b.y0, b.x1, b.y1, s['side'], s['off'], z, w, h, s['tex'], depth=dep,
                            stand=dep > 1.0)
             # столкновения: прямоугольник участка, как и раньше

@@ -11,7 +11,7 @@ import pytest
 
 import harness
 from game import missions as M
-from game.defs import (W_PISTOL, W_BAT, W_AK, W_FIST, WEAPONS, random_look, cop_look, swat_look, army_look,
+from game.defs import (W_PISTOL, W_BAT, W_AK, W_FIST, W_MOLOTOV, WEAPONS, random_look, cop_look, swat_look, army_look,
                        fbi_look, gang_look, medic_look, player_look, make_look)
 from game.models import VEHICLE_MODELS, WEAPON_MODELS
 from game.vehicle import SPECS, Vehicle
@@ -56,7 +56,8 @@ def test_vehicle_model_fits_its_spec(world, kind):
     x, y = w.city.landmarks['terminal']['road']
     v = w.spawn_vehicle(kind, x, y - 1.5, 0.0)
     if spec.bike:
-        # мотоциклы и их родня собраны кодом: два колеса по оси, у трайка и мотоцикла с коляской три, у квадроцикла четыре
+        # мотоциклы и их родня (готовые модели или собранные кодом): два колеса по оси, у трайка и мотоцикла
+        # с коляской три, у квадроцикла четыре
         assert kind not in VEHICLE_MODELS and v.bparts is not None and v.steer_np is not None
         mn, mx = v.tilt.getTightBounds(v.tilt)
         assert abs((mx.y - mn.y) - spec.L) < 0.22 * spec.L
@@ -942,3 +943,276 @@ def test_head_skin_is_toned_to_the_body(world):
     assert toned is not plain and toned.getXSize() == plain.getXSize()
     assert m.char_texture(info['head_tex'], gain) is toned              # вторая такая же — из кэша
     assert m.char_texture(info['head_tex'], [1.0, 1.01, 0.99]) is plain   # поправка меньше 2 % не нужна
+
+
+# ---------------------------------------------------------------------------
+# то, что было видно на снимках: оружие, сидящие, входы, балконы, плита
+# ---------------------------------------------------------------------------
+def _weapon_points(m, wid):
+    """Вершины модели оружия в её осях: ствол — вдоль +Y, верх — +Z, начало координат — в точке хвата."""
+    return _node_mesh(m.weapon(wid))[0]
+
+
+def test_weapons_point_muzzle_forward(world):
+    """Оружие лежит в руке стволом вперёд.  Раньше все модели были развёрнуты (лист импорта рисовался
+    зеркально): герой держал пистолет и автомат за ствол, рукоять с магазином торчали вперёд.
+
+    Рукоять и магазин висят под стволом у заднего конца, а не у дульного; у ружей сзади приклад."""
+    import numpy as np
+    from game.defs import W_UZI, W_SHOTGUN, W_SILENCED, W_M4, W_DOUBLE, W_SNIPER, W_KNIFE
+    m = world.models
+    for wid in (W_PISTOL, W_SILENCED, W_UZI, W_AK, W_M4, W_SHOTGUN, W_DOUBLE, W_SNIPER):
+        p = np.array(_weapon_points(m, wid))
+        name = WEAPONS[wid].icon
+        y0, y1 = p[:, 1].min(), p[:, 1].max()
+        assert abs(m.meta['weapons'][m.weapon_name(wid)]['muzzle'][1] - y1) < 0.03, name     # дуло — передний конец
+        # от точки хвата до дула дальше, чем до затыльника: рука держит рукоять, а не ствол
+        assert y1 > 0.15 and y1 > 1.5 * -y0, (name, y0, y1)
+        # рукоять, магазин и приклад висят сзади: передняя четверть (ствол) нигде не опускается так низко
+        front = p[p[:, 1] > y1 - 0.25 * (y1 - y0)]
+        rear = p[p[:, 1] < y0 + 0.25 * (y1 - y0)]
+        assert front[:, 2].min() > rear[:, 2].min() + 0.04, (name, front[:, 2].min(), rear[:, 2].min())
+    # нож и бита стоят в кулаке остриём (толстым концом) вверх: над хватом модель длиннее, чем под ним
+    for wid in (W_KNIFE, W_BAT):
+        p = np.array(_weapon_points(m, wid))
+        assert p[:, 2].max() > 1.3 * -p[:, 2].min(), WEAPONS[wid].icon
+
+
+def test_molotov_is_a_bottle(world):
+    """«Коктейль Молотова» — бутылка: вытянутая, круглая в сечении, с тряпкой у горлышка.  Раньше это была
+    модель зажигательной гранаты с чекой."""
+    import numpy as np
+    p = np.array(_weapon_points(world.models, W_MOLOTOV))
+    size = p.max(0) - p.min(0)
+    assert 0.24 < size[1] < 0.36 and size[0] < 0.10 and size[2] < 0.12, size
+    assert size[1] > 2.5 * max(size[0], size[2])
+    assert p[:, 1].max() > 0.15 and p[:, 1].min() > -0.12          # держат за горлышко: бутылка висит донышком вниз
+
+
+def test_sitters_sit_on_their_seats(game, world):
+    """Сидящие сидят на сиденьях: таз — над подушкой, спина — у спинки, а не сквозь неё.
+
+    Раньше человека ставили в точку, заданную на глаз: в больнице спинки стульев проходили сквозь пациентов,
+    босс утопал в диване."""
+    from game.interiors import SIT_PELVIS, SIT_BACK, SIT_H
+    w = world
+    seen = 0
+    for room in w.interiors.order:
+        assert all(len(s) == 5 for s in room.seats)
+        for info in room.people:
+            if not info['sit']:
+                continue
+            x, y = info['x'] - room.ox, info['y'] - room.oy
+            yaw = info['yaw']
+            # где таз сидящего: позади точки персонажа на SIT_PELVIS
+            px, py = x - math.cos(yaw) * SIT_PELVIS, y - math.sin(yaw) * SIT_PELVIS
+            best = None
+            for (sx, sy, syaw, sc, seat) in room.seats:
+                d = math.hypot(sx - px, sy - py)
+                if best is None or d < best[0]:
+                    best = (d, sx, sy, syaw, sc, seat)
+            assert best is not None, (room.name, info['key'])
+            d, sx, sy, syaw, sc, seat = best
+            if syaw is None:
+                assert d < 0.03, (room.name, info['key'], d)               # табурет: таз над серединой
+            else:
+                a = math.radians(syaw)
+                u = (px - sx) * math.cos(a) + (py - sy) * math.sin(a)
+                v = -(px - sx) * math.sin(a) + (py - sy) * math.cos(a)
+                assert seat['u0'] * sc - 0.02 <= u <= seat['u1'] * sc + 0.02, (room.name, info['key'], u)
+                back = seat.get('yb', seat.get('ye')) * sc
+                assert seat['yf'] * sc - 0.02 < v < back + 0.02, (room.name, info['key'], v, seat)
+                if 'yb' in seat:
+                    # спина (SIT_BACK позади точки персонажа) не заходит за переднюю сторону спинки
+                    vb = -(x - math.cos(yaw) * SIT_BACK - sx) * math.sin(a) + (y - math.sin(yaw) * SIT_BACK - sy) * math.cos(a)
+                    assert vb <= back + 0.015, (room.name, info['key'], vb, back)
+                # смотрит туда же, куда сиденье
+                assert abs(((math.degrees(yaw) - (syaw - 90.0) + 180.0) % 360.0) - 180.0) < 1.0
+            assert abs(info['dz'] - max(-0.02, seat['h'] * sc - SIT_H)) < 1e-6
+            seen += 1
+    assert seen >= 10
+    # и у самих персонажей: подъём над полом передан, а поза — сидячая
+    for p in w.interiors.people:
+        if p.resident['sit']:
+            assert abs(p.seat_dz - p.resident['dz']) < 1e-6 and p.idle_clip in ('sit', 'sit_talk', 'write'), p.resident['key']
+    # мебель, на которой сидят, знает своё сиденье
+    for name in ('chair_metal', 'chair_office', 'sofa_black', 'armchair_dark', 'stool'):
+        seat = w.models.furn_seat(name)
+        assert seat is not None and 0.3 < seat['h'] < 0.6 and seat['u0'] <= seat['u1'], (name, seat)
+    assert sum(1 for it in w.models._furn_meta()['items'].values() if it.get('seat')) >= 18
+
+
+def test_stove_has_no_floating_hob(world):
+    """У плиты в доме героя сбоку висела вторая варочная панель: в исходном наборе она стоит вплотную к плите,
+    и импорт склеивал их в один предмет."""
+    w, d, h = world.models.furn_size('stove_old')
+    assert 0.45 < w < 0.60 and h < 1.2, (w, d, h)
+
+
+def test_landmark_doors_stand_in_drawn_openings(world):
+    """Вход под стрелкой — там, где на первом этаже нарисован проём: в двери витрины, в стекле офиса, на месте
+    ворот гаража; раньше дверь лепилась посреди здания, хоть на рольставню.  Перед дверью — ни дерева, ни урны."""
+    from game.city import ENTRY_TILES, SIDEWALK
+    c = world.city
+    checked = 0
+    for room in world.interiors.order:
+        lm = c.landmarks[room.landmark]
+        if lm.get('facing') != 's':
+            continue
+        bay = c.entry_bay(room.landmark)
+        if bay is None:
+            continue
+        x0, bw, (kind, uc, hw, hh) = bay
+        b = c.landmark_building(room.landmark)
+        assert b.gf_tex in ENTRY_TILES and kind in ('shop', 'office', 'garage')
+        # дверь — в середине нарисованного проёма своей секции, и секция — та, где середина здания
+        assert abs(lm['door'][0] - (x0 + uc * bw)) < 1e-6 and abs(room.out[0] - lm['door'][0]) < 0.05
+        assert x0 - 1e-6 <= (b.x0 + b.x1) * 0.5 <= x0 + bw + 1e-6
+        assert 0.4 < hw * bw < 0.5 * bw and 1.9 < hh * b.gf_h <= b.gf_h
+        # тротуар перед дверью свободен до самого бордюра
+        wy = lm['rect'][1]
+        for p in c.props:
+            if wy - SIDEWALK - 2.5 < p['y'] < wy + 0.2:
+                assert abs(p['x'] - lm['door'][0]) >= (2.6 if p['kind'] == 'tree' else 1.5), (room.name, p['kind'])
+        checked += 1
+    assert checked >= 6
+
+
+def test_balconies_span_door_and_window_and_signs_stay_below(world):
+    """Балкон идёт под балконной дверью и окном (раньше закрывал одну дверь), а вывеска магазина помещается
+    под первым рядом балконов (раньше перекрывала его)."""
+    from game import facade as F
+    from game.citymesh import sign_place
+    assert F.BALCONY_U[0] < F.BALCONY_DOOR_U[0] and F.BALCONY_U[1] > F.BALCONY_WINDOW_U[1]
+    assert F.BALCONY_U[1] - F.BALCONY_U[0] > 0.75
+    n = 0
+    for b in world.city.buildings:
+        if b.fac not in ('fac_balcony_a', 'fac_balcony_b'):
+            continue
+        slab = b.z0 + b.gf_h + F.BALCONY_DZ - F.BALCONY_SLAB            # низ плиты первого балкона
+        for s in b.signs:
+            if not s.get('shop'):
+                continue
+            z, w, h, dep = sign_place(b, s)
+            assert z + h * 0.5 <= slab + 1e-6, (b.x0, b.y0, z, h, slab)
+            assert z - h * 0.5 > b.z0 + 2.6                              # и не сползает на витрину
+            assert w <= s['w'] + 1e-6 and w / h < 4.2                    # надпись не сплющена
+            n += 1
+    assert n >= 5
+
+
+def test_new_cars_are_real_models_and_take_paint(game, world):
+    """Три машины с фототекстурой: модель, колёса, краска.  Перекраска меняет кузов и не трогает стёкла."""
+    from panda3d.core import PNMImage
+    w = world
+    m = w.models
+    for kind, model in (('brick', 'volvo'), ('minibus', 'hiace'), ('beater', 'dacia'), ('fbi', 'volvo')):
+        assert VEHICLE_MODELS[kind][0] == model
+        info = m.meta['vehicles'][model]
+        assert len(info['wheels']) == 4 and not info.get('fixed') and 500 < info['L'] * 100 / 1 < 520 or info['L'] > 3.5
+        for f in (model + '.bam', model + '.png', model + '_shade.png'):
+            assert os.path.isfile(os.path.join(m.dir, 'veh', f)), f
+    spec = SPECS['brick']
+    red = m.vehicle_texture('brick', spec, (0.80, 0.10, 0.09))
+    blue = m.vehicle_texture('brick', spec, (0.12, 0.26, 0.62))
+    a, b = PNMImage(), PNMImage()
+    red.store(a)
+    blue.store(b)
+    detail = PNMImage()
+    assert detail.read(os.path.join(m.dir, 'veh', 'volvo.png'))
+    painted = same = diff = 0
+    for y in range(0, 256, 4):
+        for x in range(0, 256, 4):
+            pa, pb = a.getXel(x, y), b.getXel(x, y)
+            d = abs(pa[0] - pb[0]) + abs(pa[1] - pb[1]) + abs(pa[2] - pb[2])
+            if detail.getAlpha(x, y) < 0.5:
+                painted += 1
+                diff += d > 0.15
+                assert pa[0] > pa[2] and pb[2] > pb[0], (x, y)             # красный красен, синий синь
+            else:
+                same += d < 0.02
+    assert painted > 400 and diff > painted * 0.9 and same > 1000
+
+
+def test_cruiser_and_bicycles_are_models(game, world):
+    """Мотоцикл-круизер и оба велосипеда — готовые модели; на круизере собраны ещё четыре вида со своим
+    оборудованием.  Остальные двухколёсные по-прежнему строит код — и он же строит всё, если моделей нет."""
+    from game import bikes, bikemodels
+    w = world
+    m = w.models
+    assert set(m.meta['bikes']) == {'moto', 'cycle', 'bmx'}
+    for name, info in m.meta['bikes'].items():
+        assert os.path.isfile(os.path.join(m.dir, 'veh', 'b_%s.bam' % name))
+        assert info['pose'] in bikes.POSES and info['tris'] > 500
+        # руль подведён к рукам ездока: по позе кисти приходятся на ручки
+        fwd, up = bikes.POSES[info['pose']]['hand']
+        assert abs(info['seat'][0] + 0.06 + fwd - info['grips'][1]) < 0.02, name
+        assert abs(info['seat'][1] + up - 0.02 - info['grips'][2]) < 0.02, name
+        assert abs(info['seat'][1] - bikes.PELVIS_UP - info['seat_top']) < 1e-6
+        assert abs(info['wheel_f'][0] + info['wheel_r'][0]) < 0.01          # начало координат — посередине базы
+    real = sorted(k for k in bikes.KINDS if bikes.modelled(k))
+    assert real == ['bicycle', 'bmx', 'chopper', 'copbike', 'sidecar', 'tourer', 'trike']
+    x, y = w.city.landmarks['terminal']['road']
+    for kind in real + ['scooter']:
+        v = w.spawn_vehicle(kind, x, y - 1.5, 0.0, paint=1)
+        spec = v.spec
+        model = bikemodels.KINDS.get(kind, (None, None))[0]
+        tris = sum(len(_node_mesh(n)[1]) for n in (v.body, v.fork))
+        if model:
+            info = m.meta['bikes'][model]
+            assert tris > 500, (kind, tris)
+            assert abs(spec.front_axle - info['wheel_f'][0]) < 0.02 and abs(spec.wheel_r - info['wheel_f'][1]) < 0.011, kind
+            assert v.bparts['pose'] == info['pose'] and abs(v.bparts['seat'][2] - info['seat'][1]) < 1e-6
+            g = bikes.geo(kind)
+            assert abs(g.gy - info['grips'][1]) < 1e-6 and abs(g.sz - info['seat_top']) < 1e-6
+        else:
+            assert not bikes.modelled(kind) and tris > 100
+        w.remove_vehicle(v)
+    # своё оборудование: у «Странника» и патрульного — кофры и стекло на руле, у трайка и «Тайги» три колеса
+    def measure(kind):
+        v = w.spawn_vehicle(kind, x, y - 1.5, 0.0)
+        res = (len(_node_mesh(v.body)[1]), len(_node_mesh(v.fork)[1]), len(v.wheels), v.fork.getTightBounds(v.tilt)[1].z,
+               v.body.getTightBounds(v.tilt))
+        w.remove_vehicle(v)
+        return res
+    base = measure('chopper')
+    for kind in ('tourer', 'copbike'):
+        got = measure(kind)
+        assert got[0] > base[0] + 40 and got[1] > base[1] and got[3] > base[3] + 0.1, kind      # кофры; стекло выше руля
+        assert got[2] == 2
+    assert measure('copbike')[4][1].z > base[4][1].z + 0.2                                       # маячки на штангах
+    for kind in ('trike', 'sidecar'):
+        got = measure(kind)
+        assert got[2] == 3 and got[4][1].x - got[4][0].x > base[4][1].x - base[4][0].x + 0.3, kind
+    assert base[2] == 2
+    # без моделей всё строит код
+    keep = bikes._models
+    try:
+        bikes.use_models(None)
+        assert not bikes.modelled('chopper')
+        res = bikes.build(w.assets, 'chopper', (0.5, 0.1, 0.1))
+        assert res['pose'] == bikes.KINDS['chopper']['pose'] and len(res['wheels']) == 2
+        assert bikes.light_points('chopper')[0]
+    finally:
+        bikes.use_models(keep)
+
+
+def test_tuning_parts_are_models(game, world):
+    """Спойлеры на стойках и силовой бампер — готовые детали, растянутые под машину и покрашенные в её цвет."""
+    w = world
+    x, y = w.city.landmarks['terminal']['road']
+    v = w.spawn_vehicle('sedan', x, y - 1.5, 0.0, paint=0)
+    assert set(w.models.meta['parts']) == {'spoiler_a', 'spoiler_b', 'bumper'}
+    hw, hl = v.spec.W * 0.5, v.spec.L * 0.5
+    for tune, n in (({'spoiler': 2}, 1), ({'spoiler': 3}, 1), ({'spoiler': 3, 'bumper': 1}, 2), ({'spoiler': 1}, 0), ({}, 0)):
+        v.apply_tune(tune)
+        parts = v.tune_np.findAllMatches('part') if v.tune_np is not None else []
+        assert len(parts) == n, (tune, len(parts))
+        for p in parts:
+            mn, mx = p.getTightBounds(v.tilt)
+            assert 1.2 < mx.x - mn.x <= v.spec.W + 0.02 and abs(mx.x + mn.x) < 0.02       # по ширине машины, посередине
+            if mn.y > 0:
+                assert mn.y > hl - 0.35 and mx.z < 0.9                                    # бампер — спереди, внизу
+            else:
+                assert mx.y < -hl + 0.6 and mn.z > 0.6                                    # спойлер — на крышке багажника
+    w.remove_vehicle(v)

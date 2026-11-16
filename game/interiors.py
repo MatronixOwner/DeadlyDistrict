@@ -77,6 +77,7 @@ class Room(object):
         self.tall = []              # [(узел, x, y, радиус)] в координатах мира
         self.spots = {}             # имя -> (x, y, курс)
         self.people = []            # описания жильцов
+        self.seats = []             # на чём можно сидеть: (x, y, поворот, масштаб, сиденье) в координатах комнаты
         self.cars = []              # (тип, x, y, курс, цвет)
         self.door_x = 1.5
         self.exit = (0.0, 0.0)      # точка у двери внутри
@@ -500,6 +501,7 @@ class Builder(object):
     def finish(self, assets, static, parent):
         r = self.room
         models = self.world.models
+        r.seats = list(self.seats)
         for (info, x, y, yaw) in self.sitters:
             pose = self.seat_pose(x, y, yaw)
             if pose is None:

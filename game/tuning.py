@@ -230,6 +230,8 @@ def _model_part(v, name, pos, scale, paint=None):
         if src.isEmpty():
             return None
         np_ = src.copyTo(NodePath('part'))
+        np_.setName('part')
+        np_.setTag('part', name)
         np_.setTexture(bikemodels._texture(mdl, 'grain'), 1)
         np_.setPos(*pos)
         np_.setScale(*scale)
