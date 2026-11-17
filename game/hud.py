@@ -126,6 +126,7 @@ class Hud(object):
         self.help_text.hide()
         # большое сообщение: полоса через экран, заголовок и строка под ним
         self.band = kit.panel(self.msg, -5, 5, -0.03, 0.37, ui.SKIN_BAND, 0.86, edge=0.30, name='band')
+        self._band_skin = ui.SKIN_BAND
         self.band.hide()
         self.big_text = kit.label(self.msg, '', 0, 0.165, 0.15, ACCENT, kit.title, 'c', shadow=False)
         self.big_sub = kit.label(self.msg, '', 0, 0.045, 0.056, PAPER, kit.bold, 'c', shadow=False)
@@ -262,6 +263,14 @@ class Hud(object):
     def big(self, text, color=GOLD, dur=4.0, sub=''):
         self.big_text.setText(text.upper())
         self.big_text.setFg(color)
+        # красное сообщение («потрачено», «задание провалено») — на красной полосе, остальные — на бордовой
+        alert = color[0] > 0.7 and color[1] < 0.45 and color[2] < 0.45
+        skin = ui.SKIN_ALERT if alert else ui.SKIN_BAND
+        if skin != self._band_skin:
+            self._band_skin = skin
+            self.band.setTexture(self.kit.assets.tex(skin, clamp=True, smooth=True), 1)
+        if alert:
+            self.big_text.setFg(PAPER)          # красным по красному не прочесть
         self.big_sub.setText(sub)
         self.big_t = dur
 

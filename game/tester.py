@@ -229,7 +229,9 @@ class Tester(object):
                 it.action = self._safe(it.action)
             if it.change is not None:
                 it.change = self._safe(it.change)
-        return Menu(self.game.ui, title, items, back=back, wide=True)
+        m = Menu(self.game.ui, title, items, back=back, wide=True)
+        m.skin = ui.SKIN_PLATE          # серо-оливковая плашка: меню тестера с обычным не спутать
+        return m
 
     def _safe(self, fn):
         """Действие меню не должно закрывать игру: сбой записывается в crash.log и показывается в меню."""

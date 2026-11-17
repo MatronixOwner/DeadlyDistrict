@@ -334,7 +334,7 @@ def main():
     for v in row:
         w.remove_vehicle(v)
 
-    # готовые модели крупно: круизер с ездоком и пассажиром, рядом оба велосипеда.  Камера — спереди сбоку
+    # готовые модели крупно: чоппер «Ворон» с ездоком и пассажиром, рядом оба велосипеда.  Камера — спереди сбоку
     from game.defs import random_look
     cx, cy = bx + 4.0, by
     yaw = -0.33
@@ -356,7 +356,7 @@ def main():
     nohelp(('space',))
     w.hud.show(False)
     harness.run(g, 0.2, keys=('space',))
-    snap('cruiser', ('space',))
+    snap('chopper', ('space',))
     w.cam.override = None
     pl.leave_vehicle(force=True)
     harness.run(g, 0.6)
@@ -379,6 +379,31 @@ def main():
     snap('cars')
     for v in row:
         w.remove_vehicle(v)
+
+    # такси — жёлтый кэб с шашечками: стоянка таксопарка
+    lot = c.landmarks['taxi']['lot']
+    pl.teleport(lot[0] + 2.0, lot[1] + 9.0)
+    harness.run(g, 1.0)
+    for v in list(w.vehicles):
+        if math.hypot(v.x - lot[0], v.y - lot[1]) < 30.0 and v is not pl.vehicle:
+            w.remove_vehicle(v)
+    row = []
+    for dx, dyaw in ((-6.8, 0.0), (-3.4, 0.0), (0.0, 0.0), (5.2, math.pi - 0.5)):
+        v = w.spawn_vehicle('taxi', lot[0] + dx, lot[1] + (1.6 if dyaw else 0.0), math.pi / 2 + dyaw)
+        v.keep = True
+        row.append(v)
+    w.sky.set_time(16.5)
+    view(lot[0] + 6.4, lot[1] + 8.6, 2.1, lot[0] - 1.6, lot[1] + 0.4, 0.75)
+    snap('taxi')
+    for v in row:
+        w.remove_vehicle(v)
+
+    # мусор у контейнера во дворе и остов машины на пустыре; под предметами и вдоль стен — мягкие тени
+    w.sky.set_time(11.0)
+    view(-49.6, -117.6, 2.3, -55.8, -121.6, 0.45)
+    snap('yard')
+    view(-404.5, 191.5, 2.1, -396.0, 198.2, 0.55)
+    snap('lot')
     w.cam.override = None
     w.hud.show(True)
 

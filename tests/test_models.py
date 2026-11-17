@@ -1587,15 +1587,24 @@ def test_ui_panels_keep_their_edges(game, world):
     harness.run(game, 0.2)
     menu = game.ui
     assert menu.stack and not menu.panel.isHidden() and menu.panel.getNumChildren() == 1
-    w0 = menu._panel_w
+    w0, skin = menu._panel_w
+    assert skin == ui.SKIN_PANEL
     mn, mx = menu.panel.getTightBounds(menu.left)
     assert abs(mx.x - w0) < 1e-4
     harness.press(game, 'escape')
     harness.run(game, 0.2)
     # полоса большого сообщения и рамка мини-карты — тоже плашки с текстурой
-    assert w.hud.band.getTexture().getName().startswith('ui_band')
     assert any(ch.getTexture() is not None and ch.getTexture().getName().startswith('ui_panel')
                for ch in w.hud.radar.getChildren() if ch.getName() == 'panel')
     w.hud.big(u'ПРОВЕРКА', sub=u'строка')
     harness.run(game, 0.2)
     assert not w.hud.band.isHidden()
+    assert w.hud.band.getTexture().getName().startswith('ui_band')
+    # красное сообщение — на красной полосе и светлыми буквами
+    from game.missions import REDC
+    w.hud.big(u'ПОТРАЧЕНО', REDC, 5.0)
+    assert w.hud.band.getTexture().getName().startswith('ui_alert')
+    fg = w.hud.big_text.textNode.getTextColor()
+    assert abs(fg[0] - ui.PAPER[0]) < 0.01 and abs(fg[1] - ui.PAPER[1]) < 0.01
+    w.hud.big(u'ГОТОВО')
+    assert w.hud.band.getTexture().getName().startswith('ui_band')

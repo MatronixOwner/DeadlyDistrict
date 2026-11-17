@@ -107,6 +107,10 @@ README_TXT = u"""DEADLY DISTRICT — «Гиблый район»
   Мебель — Elbolilloduro («Pack of low poly psx style models»).
   Машины — GGBot («PSX Style Cars»); маршрутка и старый седан — Elbolilloduro;
   седан «Кирпич» и городской велосипед — из сборника M3-org/retro3d-assets.
+  Такси — MoiDev («Yellow Taxi/Cab — PS1 Style»).
+  Чоппер «Ворон» — Duhgless («Another PSX Style Low Poly Bike»).
+  Уличный мусор — Daniel Jurys («PSX Waste»).
+  Плашки меню и рамки — ROHHSA («Free PSX UI»).
   Мотоцикл-круизер, спойлеры и силовой бампер — Kenney (kenney.nl).
   Велосипед «Трюкач», бита, граната и бутылка — Quaternius.
   Спортивный и кроссовый мотоциклы, скутеры, мопед, квадроцикл, карт
