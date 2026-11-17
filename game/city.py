@@ -399,11 +399,15 @@ class City(object):
                     elif q < 0.75:
                         add('boxes', px, py, blk, n=rnd.pick((1, 1, 2)))
                     add('litter', px + 0.6, py + 0.5, blk, n=rnd.randint(2, 5), r=1.1)
-        # не ставим мусор туда, где уже что-то стоит
+        # не ставим мусор туда, где уже что-то стоит, на тайники, на места для находок и на стоянки
         solid = [(p['x'], p['y']) for p in self.props if p['kind'] not in ('tree', 'palm', 'lamp')]
+        keep_out = [(q[0], q[1], 1.8) for q in self.packages] + [(q[0], q[1], 1.8) for q in self.pickup_spots]
+        keep_out += [(q['x'], q['y'], 3.0) for q in self.parking]
         for d in out:
             if d['kind'] != 'litter':
                 if any(abs(d['x'] - sx) < 1.0 and abs(d['y'] - sy) < 1.0 for sx, sy in solid):
+                    continue
+                if any(abs(d['x'] - kx) < r and abs(d['y'] - ky) < r for kx, ky, r in keep_out):
                     continue
                 solid.append((d['x'], d['y']))
             self.props.append(d)

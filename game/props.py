@@ -336,9 +336,9 @@ def trashbag(mb, night, p, rnd):
                   yaw=rnd.random() * 6.28)
         if s is None:
             mb.cylinder(None, 0, 0, 0, 0.5, 0.28, 6, (0.10, 0.10, 0.11, 1))
-            return ('c', 0.3, 0.5, BREAK_SOFT)
+            return ('c', 0.3, 0.5, BREAK_HARD)
         r = max(r, d + 0.30)
-    return ('c', r, 0.6, BREAK_SOFT)
+    return ('c', r, 0.6, BREAK_HARD)                    # машина раскидывает, пешком — обходить
 
 
 def boxes(mb, night, p, rnd):
@@ -350,7 +350,7 @@ def boxes(mb, night, p, rnd):
                  x=(rnd.random() - 0.5) * 0.12, y=(rnd.random() - 0.5) * 0.12, z=z, yaw=rnd.random() * 0.7 - 0.35) is None:
             mb.box(None, -0.22, -0.37, z, 0.22, 0.37, z + 0.30, (0.62, 0.50, 0.36, 1))
         z += 0.30
-    return ('c', 0.42, z, BREAK_SOFT)
+    return ('c', 0.42, z, BREAK_HARD)
 
 
 def litter(mb, night, p, rnd):

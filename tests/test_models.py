@@ -1501,6 +1501,16 @@ def test_street_trash_comes_from_models(game, world):
         assert d < 5.4, (p['kind'], d)
         for b in c.buildings:
             assert not (b.x0 - 0.2 < p['x'] < b.x1 + 0.2 and b.y0 - 0.2 < p['y'] < b.y1 + 0.2), p
+    # тайники, места для находок и стоянки мусором не завалены
+    for p in kinds['trashbag'] + kinds['boxes']:
+        for q in list(c.packages) + list(c.pickup_spots):
+            assert max(abs(p['x'] - q[0]), abs(p['y'] - q[1])) >= 1.8, (p['kind'], q)
+        for q in c.parking:
+            assert max(abs(p['x'] - q['x']), abs(p['y'] - q['y'])) >= 3.0, (p['kind'], q)
+    # мешки и коробки машина раскидывает, пешеход обходит; бутылки и банки не мешают никому
+    from game.props import BREAK_HARD
+    assert P.BUILDERS['trashbag'](MeshBuilder(), MeshBuilder(), dict(n=3), random.Random(2))[3] == BREAK_HARD
+    assert P.BUILDERS['boxes'](MeshBuilder(), MeshBuilder(), dict(n=2), random.Random(2))[3] == BREAK_HARD
     # новые предметы дописаны в конец списка: у прежних сохранились номера (а с ними — вид деревьев)
     first = min(i for i, p in enumerate(c.props) if p['kind'] in ('trashbag', 'boxes', 'litter'))
     assert all(p['kind'] in ('trashbag', 'boxes', 'litter') for p in c.props[first:])
