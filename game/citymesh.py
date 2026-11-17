@@ -491,9 +491,35 @@ class CityMesh(object):
     # мягкие тени: пятна под предметами и затемнение земли у стен
     # ------------------------------------------------------------------
     def _blob(self, mb, x, y, hx, hy, yaw=0.0, k=1.0, n=1):
-        """Пятно тени на земле: hx, hy — полуразмеры; ложится по рельефу (n — на сколько частей делить сторону)."""
-        gz = self.city.ground_z
+        """Пятно тени на земле: hx, hy — полуразмеры.
+
+        В городе земля ровная, но со ступенькой бордюра: пятно обрезается по ступеньке (тень предмета на тротуаре
+        не висит над дорогой).  За городом пятно ложится по рельефу (n — на сколько частей делить сторону)."""
+        c = self.city
+        gz = c.ground_z
         ca, sa = math.cos(yaw), math.sin(yaw)
+        z0 = gz(x, y)
+        col = (0.0, 0.0, 0.0, k)
+        steps = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1)
+        if c.where(x, y)[0] is not None:
+            ext = []
+            for (dx, dy, h) in ((1.0, 0.0, hx), (-1.0, 0.0, hx), (0.0, 1.0, hy), (0.0, -1.0, hy)):
+                e = 0.0
+                for q in steps:
+                    lx, ly = dx * h * q, dy * h * q
+                    if abs(gz(x + lx * ca - ly * sa, y + lx * sa + ly * ca) - z0) < 0.02:
+                        e = h * q
+                        break
+                ext.append(e)
+            x1, x0, y1, y0 = ext[0], -ext[1], ext[2], -ext[3]
+            if x1 - x0 < 0.05 or y1 - y0 < 0.05:
+                return
+            pts, uvs = [], []
+            for (lx, ly) in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+                pts.append((x + lx * ca - ly * sa, y + lx * sa + ly * ca, z0 + 0.03))
+                uvs.append((lx / hx * 0.5 + 0.5, ly / hy * 0.5 + 0.5))
+            mb.quad(SHADE, pts[0], pts[1], pts[2], pts[3], uvs=uvs, color=col)
+            return
         rows = []
         for j in range(n + 1):
             row = []
@@ -503,11 +529,10 @@ class CityMesh(object):
                 wx, wy = x + lx * ca - ly * sa, y + lx * sa + ly * ca
                 row.append(((wx, wy, gz(wx, wy) + 0.03), (u, v)))
             rows.append(row)
-        col = (0.0, 0.0, 0.0, k)
         for j in range(n):
             for i in range(n):
-                a, b, c, d = rows[j][i], rows[j][i + 1], rows[j + 1][i + 1], rows[j + 1][i]
-                mb.quad(SHADE, a[0], b[0], c[0], d[0], uvs=(a[1], b[1], c[1], d[1]), color=col)
+                a, b, cc, d = rows[j][i], rows[j][i + 1], rows[j + 1][i + 1], rows[j + 1][i]
+                mb.quad(SHADE, a[0], b[0], cc[0], d[0], uvs=(a[1], b[1], cc[1], d[1]), color=col)
 
     def _prop_shade(self, mb, kind, p, x, y, yaw, col):
         """Тень под уличным предметом: по его очертанию, у деревьев — по кроне."""
@@ -538,8 +563,12 @@ class CityMesh(object):
         col = (0.0, 0.0, 0.0, WALL_SHADE_K)
         x0, y0, x1, y1 = b.x0, b.y0, b.x1, b.y1
 
+        city = self.city.where((x0 + x1) * 0.5, (y0 + y1) * 0.5)[0] is not None
+        zb = gz((x0 + x1) * 0.5, (y0 + y1) * 0.5) + 0.03
+
         def pt(x, y):
-            return (x, y, gz(x, y) + 0.03)
+            # в городе земля у дома ровная: полоса лежит на высоте его подножия (и не «сползает» с бордюра)
+            return (x, y, zb if city else gz(x, y) + 0.03)
 
         def inside(x, y):
             for o in near:
@@ -552,6 +581,11 @@ class CityMesh(object):
                                          (x1, y1, x0, y1, 0.0, 1.0), (x0, y1, x0, y0, -1.0, 0.0)):
             L = math.hypot(bx - ax, by - ay)
             n = max(1, int(L // 14.0))                              # длинные стены — частями: по рельефу
+            if city:
+                # дом у самой дороги: за бордюром полосы нет
+                mx_, my_ = (ax + bx) * 0.5 + nx * W, (ay + by) * 0.5 + ny * W
+                if abs(gz(mx_, my_) + 0.03 - zb) > 0.02:
+                    continue
             for i in range(n):
                 t0, t1 = i / float(n), (i + 1) / float(n)
                 px, py = ax + (bx - ax) * t0, ay + (by - ay) * t0
@@ -561,6 +595,8 @@ class CityMesh(object):
         # углы; если вплотную стоит соседний дом, у его стены уже есть своя полоса — угол не нужен
         for (cx, cy, sx, sy) in ((x0, y0, -1.0, -1.0), (x1, y0, 1.0, -1.0), (x1, y1, 1.0, 1.0), (x0, y1, -1.0, 1.0)):
             if inside(cx + sx * 0.5, cy - sy * 0.5) or inside(cx - sx * 0.5, cy + sy * 0.5):
+                continue
+            if city and abs(gz(cx + sx * W, cy + sy * W) + 0.03 - zb) > 0.02:
                 continue
             pa, pb, pc, pd = pt(cx, cy), pt(cx + sx * W, cy), pt(cx + sx * W, cy + sy * W), pt(cx, cy + sy * W)
             uv = ((0.5, 0.5), (1.0, 0.5), (1.0, 1.0), (0.5, 1.0))

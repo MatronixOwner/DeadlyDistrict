@@ -1154,7 +1154,6 @@ CARS = {
 # модели с готовой раскраской: имя -> (папка, файл модели, текстура)
 CARS_FIXED = {
     'police': ('Car 05', 'Car5_Police.obj', 'car5_police.png'),
-    'taxi': ('Car 05', 'Car5_Taxi.obj', 'car5_taxi.png'),
     'wreck': ('Car 06', 'Car6.obj', 'car6.png'),
 }
 # фары и задние фонари (в единицах модели, для правого борта): (x, y, z)
@@ -1168,7 +1167,6 @@ CAR_LIGHTS = {
     'stepvan': dict(head=(0.95, 3.00, 1.06), tail=(1.20, -3.78, 0.86)),
 }
 CAR_LIGHTS['police'] = dict(CAR_LIGHTS['caprice'], siren=(0.52, -0.28, 2.26))
-CAR_LIGHTS['taxi'] = CAR_LIGHTS['caprice']
 CAR_LIGHTS['stepvan']['siren'] = (0.62, 1.72, 3.36)
 
 

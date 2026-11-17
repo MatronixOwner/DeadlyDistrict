@@ -72,7 +72,8 @@ class MenuUI(object):
         self.dim.setTransparency(TransparencyAttrib.MAlpha)
         self.dim.hide()
         self.left = self.root.attachNewNode('left')              # всё меню привязано к левому краю экрана
-        self.panel = kit.card(self.left, 0.0, LEFT + ROW_WIDE + 0.10, -1.5, 1.5, INK, 0.78, 'panel')
+        self.panel = self.left.attachNewNode('panel')            # плашка под меню поверх игры (пауза, магазины)
+        self._panel_w = None
         self.panel.hide()
         # название игры в главном меню: две строки и подпись
         self.logo = kit.label(self.left, '', LEFT, 0.60, 0.21, PAPER, kit.title, 'l', shadow=False)
@@ -145,11 +146,13 @@ class MenuUI(object):
         asp = self.base.getAspectRatio()
         self.aspect = asp
         self.left.setX(-asp)
-        if m.dim < 0.4:
-            self.panel.show()
-            self.panel.setSx((LEFT + (ROW_WIDE if m.wide else ROW_W) + 0.10) / (LEFT + ROW_WIDE + 0.10))
-        else:
-            self.panel.hide()
+        # плашка под столбцом меню; своей ширины она собирается заново: её края не растягиваются
+        pw = LEFT + (ROW_WIDE if m.wide else ROW_W) + 0.10
+        if pw != self._panel_w:
+            self._panel_w = pw
+            self.panel.getChildren().detach()
+            self.kit.panel(self.panel, -0.3, pw, -1.6, 1.6, ui.SKIN_PANEL, 0.90, edge=0.11, turn=True)
+        self.panel.show()
         logo = self.show_logo and len(self.stack) == 1
         if logo:
             self.logo.setText('DEADLY')

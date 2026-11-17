@@ -182,6 +182,7 @@ class Game(object):
         self._ld = a2d.attachNewNode('loading')
         kit.card(self._ld, -5, 5, -1.5, 1.5, ui.INK, 1.0)
         asp = self.base.getAspectRatio()
+        kit.panel(self._ld, -asp - 0.2, asp + 0.2, -1.2, 1.2, ui.SKIN_PANEL, 1.0, edge=0.5, tint=0.8)
         x = -asp + 0.14
         kit.label(self._ld, 'DEADLY', x, 0.20, 0.21, ui.PAPER, kit.title, 'l', shadow=False)
         kit.label(self._ld, 'DISTRICT', x, 0.015, 0.21, ui.ACCENT, kit.title, 'l', shadow=False)

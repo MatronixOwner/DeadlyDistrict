@@ -1396,3 +1396,206 @@ def test_gun_in_the_hands_points_where_the_ped_looks(game, world):
             assert muzzle.y - hand.y > need, (m.weapon_name(wid), clip, k, round(muzzle.y - hand.y, 3))
     ped.keep = False
     w.remove_ped(ped)
+
+
+# ---------------------------------------------------------------------------
+# наборы с itch.io: такси MoiDev, чоппер Duhgless, мусор PSX Waste, плашки Free PSX UI
+# ---------------------------------------------------------------------------
+def test_taxi_is_the_yellow_cab_model(game, world):
+    """Такси — модель MoiDev со своей раскраской: жёлтый кузов, шашечки и фонарь на крыше нарисованы в текстуре,
+    поэтому цвет машины из палитры игры на неё не действует."""
+    w = world
+    m = w.models
+    assert VEHICLE_MODELS['taxi'][0] == 'cab'
+    info = m.meta['vehicles']['cab']
+    assert info.get('fixed') and info.get('tex') and len(info['wheels']) == 4
+    assert 'taxi' not in m.meta['vehicles']                              # прежняя модель убрана
+    assert not os.path.exists(os.path.join(m.dir, 'veh', 'taxi.bam'))
+    spec = SPECS['taxi']
+    assert abs(spec.L - info['L']) < 0.3 and abs(spec.W - info['W']) < 0.12 and abs(spec.H - info['H']) < 0.1
+    a = m.vehicle_texture('taxi', spec, (0.8, 0.1, 0.1), 0)
+    b = m.vehicle_texture('taxi', spec, (0.1, 0.1, 0.8), 1)
+    assert a is b or bytes(a.getRamImage()) == bytes(b.getRamImage())    # краска не подмешивается
+    x, y = w.city.landmarks['airfield']['apron']
+    v = w.spawn_vehicle('taxi', x - 30.0, y, 0.0)
+    assert v.kind == 'taxi' and len(v.wheels) == 4
+    mn, mx = v.body.getTightBounds(v.tilt)
+    assert mx.z > spec.H - 0.12                                          # фонарь «такси» — часть модели
+    w.remove_vehicle(v)
+    assert 'taxi' not in m.failed
+
+
+def test_chopper_is_a_model_with_painted_tank(game, world):
+    """«Ворон» — чоппер Duhgless: рама и колёса со своей текстурой, а бак красится в цвет мотоцикла
+    (пламя на баке остаётся).  Спицы настоящие: между ними видно насквозь."""
+    from game import bikemodels, bikes
+    w = world
+    m = w.models
+    assert bikemodels.KINDS['chopper'] == ('chop', None)
+    info = m.meta['bikes']['chop']
+    assert info['pose'] == 'chair' and 8.0 <= info['lean'] <= 20.0 and info['tris'] > 3000
+    assert info['seat2'][0] < info['seat'][0] - 0.25                     # пассажир — позади ездока
+    for fn in ('b_chop.bam', 'b_chop.png', 'b_chop_tank.png', 'b_chop_tank_shade.png'):
+        assert os.path.isfile(os.path.join(m.dir, 'veh', fn)), fn
+    red = bikes.build(w.assets, 'chopper', (0.8, 0.1, 0.1))
+    blue = bikes.build(w.assets, 'chopper', (0.1, 0.2, 0.8))
+    assert red['lean'] == info['lean'] and red['seat2'][3] == 'pillion'
+    assert abs(red['seat2'][1] - info['seat2'][0]) < 1e-6
+    from panda3d.core import TextureAttrib
+    tanks = []
+    for res in (red, blue):
+        # кузов склеен в один узел: бак — та его часть, у которой своя текстура с краской
+        parts = {}
+        for gp in res['body'].findAllMatches('**/+GeomNode'):
+            gn = gp.node()
+            for i in range(gn.getNumGeoms()):
+                tex = gn.getGeomState(i).getAttrib(TextureAttrib).getTexture()
+                parts[tex.getName()] = (tex, gn.getGeom(i).getPrimitive(0).getNumFaces())
+        tank = [v for k, v in parts.items() if k.startswith('bike-b_chop_tank')]
+        assert len(tank) == 1 and tank[0][1] > 150, sorted(parts)
+        assert parts['b_chop'][1] > 1500                                 # рама и двигатель — своя текстура
+        tanks.append(bytes(tank[0][0].getRamImageAs('RGB')))
+    assert tanks[0] != tanks[1]                                          # краска разная
+    # пламя не перекрашивается: в обеих текстурах есть одинаковые точки (рисунок) и разные (краска)
+    same = sum(1 for i in range(0, len(tanks[0]), 3) if tanks[0][i:i + 3] == tanks[1][i:i + 3])
+    assert 0.5 < same / (len(tanks[0]) / 3.0) < 0.995
+    # спицы — отдельные полоски: у колеса несколько сотен треугольников
+    assert len(_node_mesh(m._load('veh', 'b_chop.bam').find('**/wheel_f'))[1]) > 400
+
+
+def test_street_trash_comes_from_models(game, world):
+    """Мусорный контейнер, бочка, мешки, коробки, бутылки и банки — модели набора PSX Waste; остов машины
+    на пустыре — ржавый кузов.  Мусор лежит у контейнеров и урн, а не в стенах и не перед дверями."""
+    from game import props as P
+    from game.meshbuilder import MeshBuilder
+    w = world
+    c = w.city
+    md = P.models()
+    assert set(md) == {'dumpster', 'barrel', 'bag', 'box', 'bottle', 'can', 'wreck'}
+    for name, (tex, tris, size) in md.items():
+        assert os.path.isfile(os.path.join(w.assets.root, 'assets', 'tex', tex + '.png')), tex
+        assert len(tris) >= 12 and min(size) > 0.0
+        zs = [p[2] for t in tris for p in t[:3]]
+        assert abs(min(zs)) < 1e-3 and abs(max(zs) - size[2]) < 1e-3     # стоит на земле
+        for t in tris:
+            assert all(-0.01 <= q <= 1.01 for uv in t[3:] for q in uv)
+    assert 1.2 < md['dumpster'][2][2] < 1.5 and 0.8 < md['barrel'][2][2] < 1.0 and 4.4 < md['wreck'][2][0] * 2 < 4.8
+    # предметы строятся из моделей: в сетке — их текстуры
+    for kind, key, col in (('dumpster', 'px_dumpster', 'b'), ('barrel', 'px_barrel', 'c'), ('wreck', 'px_wreck', 'b'),
+                           ('trashbag', 'px_bag', 'c'), ('boxes', 'px_box', 'c')):
+        mb, night = MeshBuilder(), MeshBuilder()
+        res = P.BUILDERS[kind](mb, night, dict(n=2), random.Random(4))
+        assert key in mb.groups and res[0] == col, kind
+    mb = MeshBuilder()
+    assert P.BUILDERS['litter'](mb, MeshBuilder(), dict(n=12, r=1.0), random.Random(4)) is None    # не мешает
+    assert set(mb.groups) == {'px_can', 'px_bottle'}
+    assert {'trashbag', 'boxes'} <= P.BREAKABLE and 'litter' not in P.BREAKABLE and 'dumpster' not in P.BREAKABLE
+    # раскладка: у каждого мешка и каждой коробки рядом контейнер или остов; в домах мусора нет
+    kinds = {}
+    for p in c.props:
+        kinds.setdefault(p['kind'], []).append(p)
+    assert len(kinds['trashbag']) >= 30 and len(kinds['boxes']) >= 15 and len(kinds['litter']) >= 100
+    anchors = kinds['dumpster'] + kinds['wreck']
+    for p in kinds['trashbag'] + kinds['boxes']:
+        d = min(math.hypot(p['x'] - a['x'], p['y'] - a['y']) for a in anchors)
+        assert d < 5.4, (p['kind'], d)
+        for b in c.buildings:
+            assert not (b.x0 - 0.2 < p['x'] < b.x1 + 0.2 and b.y0 - 0.2 < p['y'] < b.y1 + 0.2), p
+    # новые предметы дописаны в конец списка: у прежних сохранились номера (а с ними — вид деревьев)
+    first = min(i for i, p in enumerate(c.props) if p['kind'] in ('trashbag', 'boxes', 'litter'))
+    assert all(p['kind'] in ('trashbag', 'boxes', 'litter') for p in c.props[first:])
+    # без файла моделей контейнер и бочку рисует код
+    keep = P._models
+    try:
+        P._models = {}
+        mb = MeshBuilder()
+        assert P.BUILDERS['dumpster'](mb, MeshBuilder(), {}, random.Random(1))[0] == 'b' and 'px_dumpster' not in mb.groups
+        mb = MeshBuilder()
+        assert P.BUILDERS['wreck'](mb, MeshBuilder(), {}, random.Random(1))[0] == 'b' and mb.groups
+    finally:
+        P._models = keep
+
+
+def test_soft_shadows_under_props_and_along_walls(game, world):
+    """Под уличными предметами и деревьями лежат мягкие тени, вдоль стен домов земля затемнена.
+    Тень сломанного предмета исчезает вместе с ним."""
+    from panda3d.core import NodePath
+    from game import citymesh as CM
+    w = world
+    cm = w.citymesh
+    key = CM.SHADE
+    assert key == ('shadow', 'decal_c') and 0.5 < CM.WALL_SHADE_K <= 1.0 and 1.0 < CM.WALL_SHADE_W < 2.5
+    # тени есть и в постоянной геометрии кварталов, и в ломаемой
+    names = {}
+    for np_ in cm.root.findAllMatches('**/+GeomNode'):
+        if np_.getName() == str(key):
+            par = np_.getParent().getName().split('-')[0]
+            names[par] = names.get(par, 0) + sum(np_.node().getGeom(i).getPrimitive(0).getNumFaces()
+                                                 for i in range(np_.node().getNumGeoms()))
+    assert names.get('chunk', 0) > 10000 and names.get('brk', 0) > 1000, names
+    # у ломаемого предмета тень — часть его геометрии
+    lamps = [b for b in cm.breakables if b.kind == 'lamp' and b.alive]
+    bins = [b for b in cm.breakables if b.kind == 'bin' and b.alive]
+    for br in (lamps[0], bins[0]):
+        assert any(gn.getName() == str(key) for gn, start, count in br.ranges), br.kind
+    # сама тень: два треугольника пятна лежат на земле под предметом
+    br = bins[0]
+    gn, start, count = [r for r in br.ranges if r[0].getName() == str(key)][0]
+    assert count == 6
+    pts, _ = _node_mesh(NodePath(gn))
+    z = w.city.ground_z(br.x, br.y)
+    near = [p for p in pts if abs(p[0] - br.x) < 1.0 and abs(p[1] - br.y) < 1.0]
+    assert len(near) >= 4 and all(abs(p[2] - z - 0.03) < 0.01 for p in near)
+    assert w.citymesh.break_prop(br)
+    pts2, _ = _node_mesh(NodePath(gn))
+    assert len([p for p in pts2 if abs(p[0] - br.x) < 1.0 and abs(p[1] - br.y) < 1.0 and abs(p[2] - z - 0.03) < 0.01]) < len(near)
+    # мелкий мусор и дорожные столбики тени не дают
+    assert {'litter', 'roadpost'} <= set(CM.NO_SHADE)
+
+
+def test_ui_panels_keep_their_edges(game, world):
+    """Плашки интерфейса — текстуры набора Free PSX UI; края плашки не растягиваются вместе с ней."""
+    from panda3d.core import NodePath
+    from game import ui
+    w = world
+    kit = w.hud.kit
+    for skin in (ui.SKIN_PANEL, ui.SKIN_BAND, ui.SKIN_PLATE, ui.SKIN_ALERT):
+        t = w.assets.tex(skin, clamp=True, smooth=True)
+        assert (t.getXSize(), t.getYSize()) == (512, 128), skin
+    assert not w.assets.missing
+    root = NodePath('t')
+    for turn in (False, True):
+        for (x0, x1, z0, z1) in ((0.0, 2.0, 0.0, 0.5), (-1.0, 0.2, -1.5, 1.5), (0.0, 0.06, 0.0, 0.04)):
+            p = kit.panel(root, x0, x1, z0, z1, ui.SKIN_PANEL, 0.9, edge=0.05, turn=turn)
+            mn, mx = p.getTightBounds()
+            assert abs(mn.x - x0) < 1e-5 and abs(mx.x - x1) < 1e-5 and abs(mn.z - z0) < 1e-5 and abs(mx.z - z1) < 1e-5
+            pts, tris = _node_mesh(p)
+            xs = sorted(set(round(q[0], 5) for q in pts))
+            zs = sorted(set(round(q[2], 5) for q in pts))
+            if x1 - x0 > 0.5:
+                assert len(xs) == 4 and len(zs) == 4 and len(tris) == 18     # девять частей
+                # края одной толщины, какой бы ни была плашка
+                long_edge = (zs[1] - zs[0]) if turn else (xs[1] - xs[0])
+                assert abs(long_edge - 0.05) < 1e-5
+            else:
+                assert 2 <= len(xs) <= 4 and 2 <= len(zs) <= 4               # крошечной плашке края ужимаются
+            assert abs(p.getColor()[3] - 0.9) < 1e-3
+            p.setAlphaScale(0.5)                                         # плавное исчезновение не мешает цвету
+            assert abs(p.getColor()[3] - 0.9) < 1e-3
+    # меню: плашка под столбцом, при смене ширины собирается заново
+    harness.press(game, 'escape')
+    harness.run(game, 0.2)
+    menu = game.ui
+    assert menu.stack and not menu.panel.isHidden() and menu.panel.getNumChildren() == 1
+    w0 = menu._panel_w
+    mn, mx = menu.panel.getTightBounds(menu.left)
+    assert abs(mx.x - w0) < 1e-4
+    harness.press(game, 'escape')
+    harness.run(game, 0.2)
+    # полоса большого сообщения и рамка мини-карты — тоже плашки с текстурой
+    assert w.hud.band.getTexture().getName().startswith('ui_band')
+    assert any(ch.getTexture() is not None and ch.getTexture().getName().startswith('ui_panel')
+               for ch in w.hud.radar.getChildren() if ch.getName() == 'panel')
+    w.hud.big(u'ПРОВЕРКА', sub=u'строка')
+    harness.run(game, 0.2)
+    assert not w.hud.band.isHidden()

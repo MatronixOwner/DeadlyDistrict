@@ -99,7 +99,9 @@ def wreck():
     v[:, 2] -= v[:, 2].min()
     tv = v.reshape(-1, 3, 3)
     uv = np.array(uvs).reshape(-1, 3, 2)
-    Image.open(os.path.join(veh, 'wreck.png')).convert('RGB').save(os.path.join(TEX, 'px_wreck.png'), optimize=True)
+    im = Image.open(os.path.join(veh, 'wreck.png')).convert('RGB')
+    im.info.clear()                                                     # без цветового профиля исходника
+    im.save(os.path.join(TEX, 'px_wreck.png'), optimize=True)
     return tv, uv, v
 
 
@@ -155,6 +157,7 @@ def ui():
         box = im.getbbox()                                              # ниже плашки — чёрное поле
         assert box[0] == 0 and box[1] == 0 and box[2] == im.size[0], (name, box)
         im = im.crop(box).resize(UI_SIZE, Image.LANCZOS)
+        im.info.clear()                                                 # без цветового профиля исходника
         im.save(os.path.join(TEX, name + '.png'), optimize=True)
         print('  %-9s набор %s  %dx%d' % (name, skin, im.size[0], im.size[1]))
 

@@ -7,9 +7,12 @@
   * надписи без обводки: читаемость дают тёмная плашка под текстом или мягкая тень;
   * цвета: почти чёрный, тёплый белый, серый для второстепенного и один акцент — жёлтый; зелёный и
     синий остаются только за деньгами, здоровьем и бронёй;
-  * выбранная строка меню — светлая плашка с тёмным текстом, без стрелок и свечения.
+  * выбранная строка меню — светлая плашка с тёмным текстом, без стрелок и свечения;
+  * большие плашки (меню, рамка мини-карты, полоса сообщений, экран загрузки) — не ровная заливка, а «шлифованный
+    металл» в духе меню игр для PlayStation: текстуры набора Free PSX UI (ROHHSA).  Края плашки при любом её
+    размере остаются одной толщины: картинка режется на девять частей, растягивается только середина.
 """
-from panda3d.core import CardMaker, TextNode, TransparencyAttrib, NodePath, LColor
+from panda3d.core import CardMaker, TextNode, TransparencyAttrib, NodePath, LColor, LTexCoord
 from direct.gui.OnscreenText import OnscreenText
 
 INK = (0.055, 0.06, 0.07, 1.0)              # фон плашек и тёмный текст
@@ -27,6 +30,16 @@ SHADOW = (0.0, 0.0, 0.0, 0.72)
 # старые названия цветов, которыми пользуются сценарии заданий
 GOLD = ACCENT
 WHITE = PAPER
+
+# текстуры плашек (assets/tex/ui_*.png, 512x128): расцветки набора Free PSX UI
+SKIN_PANEL = 'ui_panel'                     # стальной синий: меню, рамка мини-карты, экран загрузки
+SKIN_BAND = 'ui_band'                       # тёмно-бордовый: полоса больших сообщений
+SKIN_PLATE = 'ui_plate'                     # серо-оливковый: подсказки
+SKIN_ALERT = 'ui_alert'                     # красный: «потрачено», «арестован»
+# края картинки, которые не растягиваются: доли ширины и высоты (слева/справа, снизу, сверху)
+PANEL_EDGE_U = 0.060
+PANEL_EDGE_V0 = 0.20
+PANEL_EDGE_V1 = 0.22
 
 
 def rgba(c, a=None):
@@ -54,6 +67,54 @@ class Kit(object):
         np_.setColor(*rgba(color, alpha))
         np_.setTransparency(TransparencyAttrib.MAlpha)
         return np_
+
+    def panel(self, parent, x0, x1, z0, z1, skin=SKIN_PANEL, alpha=1.0, edge=0.045, turn=False, tint=1.0,
+              name='panel'):
+        """Плашка с текстурой: края толщиной edge не растягиваются, середина тянется под размер.
+
+        turn — картинка повёрнута на четверть оборота (для высоких плашек: «шлифовка» идёт сверху вниз, светлая
+        кромка — по правому краю).  Возвращает узел; прозрачность можно менять через setAlphaScale."""
+        tex = self.assets.tex(skin, clamp=True, smooth=True)
+        root = parent.attachNewNode(name)
+        k = tex.getYSize() / float(max(1, tex.getXSize()))          # 128 / 512
+        eu, ev0, ev1 = PANEL_EDGE_U, PANEL_EDGE_V0, PANEL_EDGE_V1
+        U = (0.0, eu, 1.0 - eu, 1.0)
+        V = (0.0, ev0, 1.0 - ev1, 1.0)
+        # толщина краёв на экране: у длинной стороны картинки — edge, у короткой — в ту же меру точек
+        ea = edge
+        eb0, eb1 = edge * ev0 * k / eu, edge * ev1 * k / eu
+        if turn:
+            xs = self._cuts(x0, x1, eb0, eb1)
+            zs = self._cuts(z0, z1, ea, ea)
+        else:
+            xs = self._cuts(x0, x1, ea, ea)
+            zs = self._cuts(z0, z1, eb0, eb1)
+        for i in range(3):
+            for j in range(3):
+                if xs[i + 1] - xs[i] < 1e-6 or zs[j + 1] - zs[j] < 1e-6:
+                    continue
+                cm = CardMaker('p')
+                cm.setFrame(xs[i], xs[i + 1], zs[j], zs[j + 1])
+                if turn:
+                    cm.setUvRange(LTexCoord(U[j], V[i]), LTexCoord(U[j], V[i + 1]),
+                                  LTexCoord(U[j + 1], V[i + 1]), LTexCoord(U[j + 1], V[i]))
+                else:
+                    cm.setUvRange(LTexCoord(U[i], V[j]), LTexCoord(U[i + 1], V[j]),
+                                  LTexCoord(U[i + 1], V[j + 1]), LTexCoord(U[i], V[j + 1]))
+                root.attachNewNode(cm.generate())
+        root.flattenStrong()
+        root.setTexture(tex)
+        root.setColor(tint, tint, tint, alpha)
+        root.setTransparency(TransparencyAttrib.MAlpha)
+        return root
+
+    @staticmethod
+    def _cuts(a, b, e0, e1):
+        """Четыре границы вдоль стороны: край, начало и конец середины, край.  Узкой плашке края ужимаются."""
+        if e0 + e1 > (b - a):
+            s = (b - a) / (e0 + e1)
+            e0, e1 = e0 * s, e1 * s
+        return (a, a + e0, b - e1, b)
 
     def image(self, parent, tex, x, z, sx, sz=None, color=None, smooth=True):
         cm = CardMaker(tex)
