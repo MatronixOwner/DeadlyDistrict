@@ -97,7 +97,7 @@ _add(Spec('pickup', 'Трудяга', 4.6, 1.9, 1.74, belt=0.95, clear=0.34, hoo
           wheel_r=0.38, mass=1900.0, top=34.0, accel=5.2, health=1200.0, extras=('bed',), value=600))
 _add(Spec('van', 'Грузовичок', 5.2, 1.95, 2.36, hood=0.7, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
           cargo=0.6, mass=2300.0, top=32.0, accel=4.6, health=1300.0, value=500, wheel_r=0.34))
-_add(Spec('taxi', 'Такси', 5.0, 1.8, 1.56, extras=('taxi',), paints=[(0.95, 0.74, 0.08)], value=450))
+_add(Spec('taxi', 'Такси', 5.0, 1.81, 1.47, extras=('taxi',), paints=[(0.95, 0.74, 0.08)], value=450))
 _add(Spec('police', 'Патруль', 5.1, 1.84, 1.6, extras=('police',), paints=[(0.92, 0.92, 0.94)], top=47.0,
           accel=8.4, grip=8.5, health=1400.0, value=0, radio=False))
 _add(Spec('ambulance', 'Скорая', 5.4, 2.05, 2.5, hood=0.75, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
@@ -163,8 +163,8 @@ _add(Spec('tuner', 'Дрифт', 3.9, 1.7, 1.38, trunk=0.02, rw_rake=0.35, hood=
 _add(Spec('bike', 'Стрела', 2.10, 0.74, 1.16, bike=True, lean=True, seats=1, mass=230.0, top=64.0, accel=13.0,
           grip=9.0, brake=18.0, health=420.0, wheel_r=0.30, front_axle=0.70, rear_axle=-0.70, radio=False,
           value=2200, engine='bike', steer=0.50))
-_add(Spec('chopper', 'Ворон', 2.60, 0.86, 1.30, bike=True, lean=True, seats=2, mass=310.0, top=50.0, accel=9.0,
-          grip=7.6, brake=14.0, health=520.0, wheel_r=0.32, front_axle=0.81, rear_axle=-0.81, radio=False,
+_add(Spec('chopper', 'Ворон', 2.30, 0.86, 1.26, bike=True, lean=True, seats=2, mass=310.0, top=50.0, accel=9.0,
+          grip=7.6, brake=14.0, health=520.0, wheel_r=0.37, front_axle=0.76, rear_axle=-0.76, radio=False,
           value=1900, engine='bike', steer=0.44,
           paints=[(0.05, 0.05, 0.06), (0.60, 0.08, 0.20), (0.12, 0.26, 0.62), (0.36, 0.22, 0.14)]))
 _add(Spec('scooter', 'Оса', 1.80, 0.66, 1.16, bike=True, lean=True, seats=1, mass=120.0, top=27.0, accel=6.0,
@@ -851,8 +851,9 @@ class Vehicle(object):
         sty = self.bparts['steer'][1]
         deg = self._steer_deg
         self._arms_deg = deg
+        # у чоппера руль высокий и далёкий: корпус подан к нему и на прямой (lean из описания модели)
         self._arms.ride_arms(self.steer_np, LPoint3(-gx, gy - sty, gz), LPoint3(gx, gy - sty, gz), self._arms_mix,
-                             deg * 0.3, min(8.0, abs(deg) * 0.33))
+                             deg * 0.3, self.bparts.get('lean', 0.0) + min(8.0, abs(deg) * 0.33))
 
     def _let_go(self, vis):
         if vis is not None and self._arms is vis:

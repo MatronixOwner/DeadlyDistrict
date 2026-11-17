@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Двухколёсные с готовыми моделями: мотоцикл (круизер) и два велосипеда.
+"""Двухколёсные с готовыми моделями: чоппер, мотоцикл (круизер) и два велосипеда.
 
 Модели лежат в assets/models/veh/b_*.bam (импорт — tools/import_vehicles.py): кузов, вилка с рулём и колёса
 идут отдельными узлами, окрашиваемые части — своими (paint, fork_paint).  Вместе с моделью импорт сохраняет
 посадку ездока: какая из готовых поз к ней подходит и где при этом таз, ручки руля и стопы.
 
-На одном мотоцикле собрано пять видов техники: «Ворон» как есть, а «Странник», патрульный, трайк и «Тайга»
-получают своё оборудование — кофры и ветровое стекло, маячки, задний мост с двумя колёсами, коляску.
+«Ворон» — чоппер Duhgless с пламенем на баке: красится у него бак (краска подставляется в текстуру, пламя
+остаётся).  На круизере собрано четыре вида техники: «Странник», патрульный, трайк и «Тайга» получают своё
+оборудование — кофры и ветровое стекло, маячки, задний мост с двумя колёсами, коляску.
 Это оборудование достраивается здесь из простых деталей (как раньше строились все мотоциклы целиком).
 
 Видов, для которых готовой модели не нашлось (спортивный и кроссовый мотоциклы, скутеры, мопед, квадроцикл,
 грузовой мотороллер, гольф-кар, карт), здесь нет: их по-прежнему собирает bikes.py.
 """
-from panda3d.core import NodePath, TransparencyAttrib
+from panda3d.core import NodePath, TransparencyAttrib, PNMImage, Texture
 
 # вид техники -> (модель, оборудование)
 KINDS = {
-    'chopper': ('moto', None),
+    'chopper': ('chop', None),
     'tourer': ('moto', 'tourer'),
     'copbike': ('moto', 'police'),
     'trike': ('moto', 'trike'),
@@ -64,9 +65,30 @@ def _texture(models, name, alpha=False):
     return t
 
 
-def _part(models, src, name, parent, tex, paint=None, x=0.0):
+def _painted(models, name, paint):
+    """Текстура с краской: цвет × светотень, сверху всё, что не красится (у чоппера — пламя на баке).
+    Слои те же, что у автомобилей: <имя>.png с прозрачностью на месте краски и <имя>_shade.png."""
+    from .models import PAINT_GAIN, PAINT_SAT
+    key = (name, int(paint[0] * 255), int(paint[1] * 255), int(paint[2] * 255))
+    t = _tex.get(key)
+    if t is None:
+        detail = models._pnm(name)
+        w, h = detail.getXSize(), detail.getYSize()
+        g = paint[0] * 0.30 + paint[1] * 0.59 + paint[2] * 0.11
+        img = PNMImage(w, h, 3)
+        img.fill(min(1.0, (g + (paint[0] - g) * PAINT_SAT) * PAINT_GAIN), min(1.0, (g + (paint[1] - g) * PAINT_SAT) * PAINT_GAIN),
+                 min(1.0, (g + (paint[2] - g) * PAINT_SAT) * PAINT_GAIN))
+        img.multSubImage(models._pnm(name + '_shade'), 0, 0, 0, 0, w, h, 2.0)
+        img.blendSubImage(detail, 0, 0, 0, 0, w, h)
+        t = _tex[key] = Texture('bike-%s' % '-'.join(str(q) for q in key))
+        t.load(img)
+        models.assets.setup_filter(t)
+    return t
+
+
+def _part(models, src, name, parent, tex, paint=None, x=0.0, ptex=None):
     """Скопировать узел модели: зернистая текстура на гладкие детали, своя — на детали с развёрткой;
-    окрашиваемым — цвет."""
+    окрашиваемым — цвет.  ptex — готовая текстура с краской для деталей «p» (бак чоппера)."""
     n = src.find(name)
     if n.isEmpty():
         return None
@@ -74,6 +96,10 @@ def _part(models, src, name, parent, tex, paint=None, x=0.0):
     g = c.find('g')
     if not g.isEmpty():
         g.setTexture(_texture(models, 'grain'), 1)
+    pt = c.find('p')
+    if not pt.isEmpty() and ptex is not None:
+        pt.setTexture(ptex, 1)
+        pt.setTwoSided(True)
     t = c.find('t')
     if not t.isEmpty() and tex:
         t.setTexture(_texture(models, tex), 1)
@@ -117,7 +143,8 @@ def build(assets, models, kind, paint):
     col = (paint[0], paint[1], paint[2], 1.0)
     p2 = (paint[0] * 0.70, paint[1] * 0.70, paint[2] * 0.70, 1.0)
     body = NodePath('body')
-    _part(models, src, 'body', body, tex, x=x)
+    ptex = _painted(models, m['ptex'], paint) if m.get('ptex') else None
+    _part(models, src, 'body', body, tex, x=x, ptex=ptex)
     _part(models, src, 'paint', body, tex, WHITE_POLICE if extra == 'police' else paint, x=x)
     fork = NodePath('fork')
     _part(models, src, 'fork', fork, tex)
@@ -134,6 +161,8 @@ def build(assets, models, kind, paint):
     gx, gy, gz = m['grips']
     if model == 'moto':
         seat2 = (x, py - 0.42, pz + 0.07, 'pillion')
+    elif 'seat2' in m:
+        seat2 = (x, m['seat2'][0], m['seat2'][1], 'pillion')
     if extra == 'tourer':
         _luggage(B, k, col, p2, ry, rr, py, pz, top=True)
         _screen(B, f, fy, gy, gz, col)
@@ -184,8 +213,10 @@ def build(assets, models, kind, paint):
     f.build('extra', assets).reparentTo(fork)
     body.flattenStrong()                                # краска и сдвиг — прямо в вершины; узлов остаётся два-три
     fork.flattenStrong()
+    # lean — на сколько градусов корпус ездока подан вперёд (к далёкому рулю чоппера)
     res = dict(body=body, fork=fork, wheels=wheels, seat=(x, py, pz), pose=m['pose'], seat2=seat2, steer=(x, fy),
-               head=head, tail=tail, siren=siren, grips=(gx, gy, gz), axis=tuple(m['axis']) if 'axis' in m else (gy, gz))
+               head=head, tail=tail, siren=siren, grips=(gx, gy, gz), axis=tuple(m['axis']) if 'axis' in m else (gy, gz),
+               lean=float(m.get('lean', 0.0)))
     _cache[key] = res
     return res
 

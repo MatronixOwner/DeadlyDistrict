@@ -29,7 +29,7 @@ VEHICLE_MODELS = {
     'suv': ('minivan', {'wheel_k': 1.17}),
     'pickup': ('minivan', {}),
     'van': ('stepvan', {'overlay': {12: 'stepvan_mail'}}),
-    'taxi': ('taxi', {}),
+    'taxi': ('cab', {}),
     'police': ('police', {'siren': True}),
     'ambulance': ('stepvan', {'overlay': 'stepvan_ambulance', 'siren': True}),
     'bus': ('bus', {}),

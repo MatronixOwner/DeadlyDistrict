@@ -1135,19 +1135,29 @@ def test_new_cars_are_real_models_and_take_paint(game, world):
 
 
 def test_cruiser_and_bicycles_are_models(game, world):
-    """Мотоцикл-круизер и оба велосипеда — готовые модели; на круизере собраны ещё четыре вида со своим
+    """Чоппер, мотоцикл-круизер и оба велосипеда — готовые модели; на круизере собраны ещё четыре вида со своим
     оборудованием.  Остальные двухколёсные по-прежнему строит код — и он же строит всё, если моделей нет."""
     from game import bikes, bikemodels
     w = world
     m = w.models
-    assert set(m.meta['bikes']) == {'moto', 'cycle', 'bmx'}
+    assert set(m.meta['bikes']) == {'moto', 'cycle', 'bmx', 'chop'}
     for name, info in m.meta['bikes'].items():
         assert os.path.isfile(os.path.join(m.dir, 'veh', 'b_%s.bam' % name))
         assert info['pose'] in bikes.POSES and info['tris'] > 500
-        # руль подведён к рукам ездока: по позе кисти приходятся на ручки
-        fwd, up = bikes.POSES[info['pose']]['hand']
-        assert abs(info['seat'][0] + 0.06 + fwd - info['grips'][1]) < 0.02, name
-        assert abs(info['seat'][1] + up - 0.02 - info['grips'][2]) < 0.02, name
+        if info.get('lean'):
+            # высокий руль чоппера: ездок подаёт корпус вперёд и достаёт до ручек почти прямыми руками
+            sx, sf, su = bikes.SHOULDER
+            a = math.radians(info['lean'])
+            sh = (sx, info['seat'][0] + sf * math.cos(a) + (su - bikes.WAIST) * math.sin(a),
+                  info['seat'][1] + bikes.WAIST + (su - bikes.WAIST) * math.cos(a) - sf * math.sin(a))
+            d = math.sqrt(sum((p - q) ** 2 for p, q in zip(sh, info['grips'])))
+            assert 0.55 < d < bikes.ARM + 0.03, (name, d)                   # до середины ладони: рука + 5 см
+            assert abs(info['bend'][0]) < 0.08 and info['bend'][1] == 0.0   # сам руль почти не тронут
+        else:
+            # руль подведён к рукам ездока: по позе кисти приходятся на ручки
+            fwd, up = bikes.POSES[info['pose']]['hand']
+            assert abs(info['seat'][0] + 0.06 + fwd - info['grips'][1]) < 0.02, name
+            assert abs(info['seat'][1] + up - 0.02 - info['grips'][2]) < 0.02, name
         assert abs(info['seat'][1] - bikes.PELVIS_UP - info['seat_top']) < 1e-6
         assert abs(info['wheel_f'][0] + info['wheel_r'][0]) < 0.01          # начало координат — посередине базы
     real = sorted(k for k in bikes.KINDS if bikes.modelled(k))
@@ -1175,7 +1185,15 @@ def test_cruiser_and_bicycles_are_models(game, world):
                v.body.getTightBounds(v.tilt))
         w.remove_vehicle(v)
         return res
-    base = measure('chopper')
+    # круизер без оборудования сам по себе в игре не ездит («Ворон» теперь — чоппер): меряем его, подменив модель
+    keep_kind = bikemodels.KINDS['chopper']
+    try:
+        bikemodels.clear()
+        bikemodels.KINDS['chopper'] = ('moto', None)
+        base = measure('chopper')
+    finally:
+        bikemodels.KINDS['chopper'] = keep_kind
+        bikemodels.clear()
     for kind in ('tourer', 'copbike'):
         got = measure(kind)
         assert got[0] > base[0] + 40 and got[1] > base[1] and got[3] > base[3] + 0.1, kind      # кофры; стекло выше руля

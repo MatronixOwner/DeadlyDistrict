@@ -2,7 +2,7 @@
 """Чтение исходных моделей разных форматов в один простой вид — список деталей (Part).
 
 Нужен только импорту (tools/import_vehicles.py): игра читает готовые .bam.  Форматы: .blend (через
-tools/blend_read.py), Collada .dae, Wavefront .obj, glTF .glb, OpenUSD .usda (текстовый).
+tools/blend_read.py), Collada .dae, Wavefront .obj, glTF (.glb и .gltf с отдельным .bin), OpenUSD .usda (текстовый).
 
     python tools/mesh_src.py файл [имена деталей…]        # список деталей и их габариты
 """
@@ -252,29 +252,38 @@ def obj_colors(path):
     return out
 
 
-def read_glb(path):
-    """Детали из .glb: по одной на узел с сеткой, матрицы узлов применены.  Возвращает (детали, картинки):
-    картинки — {номер материала: байты PNG/JPEG или путь к внешнему файлу}."""
+def read_glb(path, nodes=False):
+    """Детали из .glb или .gltf: по одной на узел с сеткой, матрицы узлов применены.  Возвращает
+    (детали, картинки): картинки — {номер материала: байты PNG/JPEG/WebP или путь к внешнему файлу}.
+    nodes=True — третьим идёт словарь {имя узла: его место в мире} (узлы-метки без сетки: седло, ручки руля)."""
     with open(path, 'rb') as f:
         data = f.read()
-    magic, ver, total = struct.unpack('<4sII', data[:12])
-    assert magic == b'glTF', path
-    pos = 12
-    js = blob = None
-    while pos < total:
-        n, kind = struct.unpack('<I4s', data[pos:pos + 8])
-        chunk = data[pos + 8:pos + 8 + n]
-        if kind == b'JSON':
-            js = json.loads(chunk.decode('utf-8'))
-        elif kind == b'BIN\x00':
-            blob = chunk
-        pos += 8 + n
+    if data[:4] == b'glTF':
+        magic, ver, total = struct.unpack('<4sII', data[:12])
+        pos = 12
+        js = blob = None
+        while pos < total:
+            n, kind = struct.unpack('<I4s', data[pos:pos + 8])
+            chunk = data[pos + 8:pos + 8 + n]
+            if kind == b'JSON':
+                js = json.loads(chunk.decode('utf-8'))
+            elif kind == b'BIN\x00':
+                blob = chunk
+            pos += 8 + n
+        blobs = [blob]
+    else:                                           # .gltf: описание текстом, данные — в соседних файлах
+        js = json.loads(data.decode('utf-8'))
+        blobs = []
+        for b in js.get('buffers', []):
+            with open(os.path.join(os.path.dirname(path), b['uri'].replace('%20', ' ')), 'rb') as f:
+                blobs.append(f.read())
     CT = {5120: 'b', 5121: 'B', 5122: 'h', 5123: 'H', 5125: 'I', 5126: 'f'}
     NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}
 
     def acc(i):
         a = js['accessors'][i]
         bv = js['bufferViews'][a['bufferView']]
+        blob = blobs[bv.get('buffer', 0)]
         dt = np.dtype('<' + CT[a['componentType']])
         k = NC[a['type']]
         off = bv.get('byteOffset', 0) + a.get('byteOffset', 0)
@@ -293,13 +302,21 @@ def read_glb(path):
         mats.append(m.get('name') or 'mat%d' % mi)
         tex = m.get('pbrMetallicRoughness', {}).get('baseColorTexture')
         if tex is not None:
-            img = js['images'][js['textures'][tex['index']]['source']]
+            t = js['textures'][tex['index']]
+            source = t.get('source')
+            if source is None:                      # картинка в WebP: её номер лежит в расширении
+                source = t.get('extensions', {}).get('EXT_texture_webp', {}).get('source')
+            if source is None:
+                continue
+            img = js['images'][source]
             if 'bufferView' in img:
                 bv = js['bufferViews'][img['bufferView']]
+                blob = blobs[bv.get('buffer', 0)]
                 images[mi] = blob[bv.get('byteOffset', 0):bv.get('byteOffset', 0) + bv['byteLength']]
             elif 'uri' in img:
                 images[mi] = os.path.join(os.path.dirname(path), img['uri'].replace('%20', ' '))
     out = []
+    marks = {}
 
     def local(n):
         if 'matrix' in n:
@@ -322,6 +339,8 @@ def read_glb(path):
     def walk(ni, m):
         n = js['nodes'][ni]
         m = m.dot(local(n))
+        if n.get('name'):
+            marks[n['name']] = m[:3, 3].copy()
         if 'mesh' in n:
             verts, tris, uvs, mat = [], [], [], []
             base = 0
@@ -346,6 +365,8 @@ def read_glb(path):
             walk(c, m)
     for r in js['scenes'][js.get('scene', 0)]['nodes']:
         walk(r, np.eye(4))
+    if nodes:
+        return out, images, marks
     return out, images
 
 
@@ -545,7 +566,7 @@ def read(path, **kw):
         for p in parts:
             p.color = col or None
         return parts
-    if ext == '.glb':
+    if ext in ('.glb', '.gltf'):
         return read_glb(path)[0]
     if ext == '.usda':
         return read_usda(path)

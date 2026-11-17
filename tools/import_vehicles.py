@@ -1,20 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Импорт готовых моделей транспорта, которых нет в основном наборе машин: ещё три автомобиля в стиле PS1,
-мотоцикл, два велосипеда, карт и детали тюнинга.
+"""Импорт готовых моделей транспорта, которых нет в основном наборе машин: ещё четыре автомобиля в стиле PS1,
+два мотоцикла, два велосипеда, карт и детали тюнинга.
 
 Нужен только тому, кто пересобирает модели: игра читает готовые файлы из assets/models/veh.
 
     pip install panda3d numpy pillow blender-asset-tracer
     python tools/import_vehicles.py fetch         # скачать исходники в .cache/model_src/new
     python tools/import_vehicles.py all           # машины, двухколёсные, детали
-    python tools/import_vehicles.py sheet out.jpg # лист с результатом (для проверки глазами)
+    python tools/import_vehicles.py cars cab      # только одна машина (так же: bikes chop)
 
 Откуда что берётся (лицензии и авторы — в assets/models/CREDITS.md):
   * «Волга» (седан), фургон-маршрутка — «Pack of low poly psx style models» (Elbolilloduro), из сборника
     M3-org/retro3d-assets (Large_kits/Models pack psx);
   * «Кирпич» (седан Volvo 240) и городской велосипед — тот же сборник, папка Vehicles;
+  * такси — Yellow Taxi/Cab, PS1 Car (MoiDev); копия со Sketchfab из репозитория Langorithm/3d-models;
+  * чоппер — Another PSX Style Low-poly Bike (Duhgless, CC0); копия с текстурами 256 точек из
+    репозитория webbertakken/citymap;
   * мотоцикл — Kenney, Starter Kit Racing (CC0);  карт, спойлеры, бампер, колёса — Kenney, Car Kit (CC0);
   * второй велосипед, бутылка — Quaternius (CC0), репозиторий chibifire-stages/quaternius-stage.
+
+Модели с itch.io сюда попадают через их копии на GitHub: с самого itch.io файлы скриптом не скачать.
 
 Что делает импорт:
   * всё приводится к осям игры (Z вверх, нос — к +Y, колёса стоят на земле, середина — в начале координат)
@@ -68,6 +73,20 @@ SOURCES = [
     ('chibifire-stages/quaternius-stage', None, [
         ('models/PublicTransport/S_Bicycle.usda', 'quat/S_Bicycle.usda'),
         ('models/Survival/S_WaterBottle_1.usda', 'quat/S_WaterBottle_1.usda'),
+    ]),
+    # MoiDev, Yellow Taxi/Cab — PS1 Car (https://moidev.itch.io/yellow-taxicab-ps1-style): выгрузка со Sketchfab
+    ('Langorithm/3d-models', 'e24d7f517d6fa275053a34ab5b3c5164d8ef6952', [
+        ('yellow_taxicab_-_ps1_car/scene.gltf', 'moidev_taxi/scene.gltf'),
+        ('yellow_taxicab_-_ps1_car/scene.bin', 'moidev_taxi/scene.bin'),
+        ('yellow_taxicab_-_ps1_car/textures/Taxi_baseColor.png', 'moidev_taxi/textures/Taxi_baseColor.png'),
+        ('yellow_taxicab_-_ps1_car/license.txt', 'moidev_taxi/license.txt'),
+    ]),
+    # Duhgless, Another PSX Style Low-poly Bike (https://duhgless.itch.io/another-psx-style-low-poly-bike):
+    # тот же Bike3.glb, но с текстурами 256 точек (WebP) и названными деталями
+    ('webbertakken/citymap', '575fefa7fa4643dd4adcc60ab87f09e1fff5eecf', [
+        ('apps/web/public/models/vehicles/motorbike.glb', 'duhgless/motorbike.glb'),
+        ('apps/web/public/models/CREDITS.md', 'duhgless/CREDITS.md'),
+        ('LICENSE', 'duhgless/LICENSE'),
     ]),
 ]
 
@@ -338,6 +357,12 @@ CARS = {
         turn='x-', width=1.70, paint=dict(tint=(0.34, 0.30), keep=[(13, 203, 30, 220), (99, 203, 115, 220)]),
         flat={'Material_155': GLASS},
         head=(0.36, 0.72), tail=(0.42, 0.80)),
+    # такси MoiDev: текстура как есть (жёлтый кузов с «шашечками»), не перекрашивается
+    'cab': dict(
+        file=('moidev_taxi', 'scene.gltf'), tex=('moidev_taxi', 'textures', 'Taxi_baseColor.png'),
+        parts=('Object_4', 'Object_6'), wheels=('Object_8', 'Object_10', 'Object_12', 'Object_14'),
+        yup=True, turn='y+', width=1.86, fixed=True, flat={},
+        head=(0.47, 0.74), tail=(0.50, 0.80)),
     'volvo': dict(
         file=('m3', 'volvo.blend'), tex=('m3', 'volvo.jpg'),
         parts=('Plane',), wheels=None, mirror=True,
@@ -365,7 +390,14 @@ def car_texture(name, d, body, wheels, flat_uv):
     краски — прозрачно) и <имя>_shade.png (светотень краски).  Краска находится по цвету: у каждого кузова
     он свой, а стёкла, шины, хром, ржавчина и грязь от него отличаются."""
     from PIL import Image
-    img = Image.open(src(*d['tex'])).convert('RGB').resize((TEX_SIZE, TEX_SIZE), Image.LANCZOS)
+    img = Image.open(src(*d['tex'])).convert('RGB')
+    if d.get('fixed'):
+        # текстура идёт как есть: её рисовали точка в точку, и сглаживание при пересчёте размера её портит
+        if img.size != (TEX_SIZE, TEX_SIZE):
+            img = img.resize((TEX_SIZE, TEX_SIZE), Image.NEAREST)
+        img.save(os.path.join(VEH, name + '.png'), optimize=True)
+        return 0.0
+    img = img.resize((TEX_SIZE, TEX_SIZE), Image.LANCZOS)
     a = np.asarray(img).copy()
     # гладкие материалы (стекло): закрашиваем квадратик в свободном углу, грани смотрят в него
     for (u, v), col in flat_uv:
@@ -417,6 +449,9 @@ def convert_car(name, d):
     from panda3d.core import NodePath
     _panda()
     allp = named(ms.read(src(*d['file'])))
+    if d.get('yup'):                                # у glTF вверх смотрит Y, нос — на +Z
+        for p in allp.values():
+            p.transform(YUP)
     body = [allp[n].copy() for n in d['parts']]
     wheels = [allp[n].copy() for n in d['wheels']] if d.get('wheels') else []
     if d.get('mirror'):
@@ -479,6 +514,8 @@ def convert_car(name, d):
     b.attachNewNode(out.node('skin'))
     info = dict(W=round(float(pts[:, 0].max() - pts[:, 0].min()), 3), L=round(float(pts[:, 1].max() - pts[:, 1].min()), 3),
                 H=round(float(pts[:, 2].max()), 3), tex=True, wheels=[])
+    if d.get('fixed'):
+        info['fixed'] = True
     ws = []
     for w in wheels:
         wp = tri_points(w)
@@ -502,9 +539,11 @@ def convert_car(name, d):
     return info
 
 
-def do_cars(meta):
+def do_cars(meta, only=None):
     os.makedirs(VEH, exist_ok=True)
     for name in sorted(CARS):
+        if only and name not in only:
+            continue
         meta['vehicles'][name] = convert_car(name, CARS[name])
 
 
@@ -573,6 +612,7 @@ class Bike(object):
         tris = 0
         for node in ('body', 'paint', 'fork', 'fork_paint', 'wheel_f', 'wheel_r'):
             np_ = root.attachNewNode(node)
+            # «g» — зернистая текстура, «t» — своя текстура модели, «p» — текстура с краской (бак чоппера)
             for kind, o in sorted(self.nodes.get(node, {}).items()):
                 if len(o):
                     np_.attachNewNode(o.node(kind))
@@ -923,21 +963,167 @@ def bike_bmx():
     return b.write()
 
 
-BIKES = {'moto': bike_moto, 'cycle': bike_cycle, 'bmx': bike_bmx}
+CHOP_K = 0.45               # масштаб чоппера: исходник в 2,2 раза крупнее настоящего мотоцикла
+CHOP_LEAN = 14.0            # ездок тянется к высокому рулю: корпус подан вперёд, градусы
+CHOP_REACH = 0.665          # от плеча до середины ладони при почти прямой руке, м
 
 
-def do_bikes(meta):
+def bike_chop():
+    """Чоппер Duhgless (Another PSX Style Low-poly Bike): рама, вилка и колёса со своими текстурами.
+
+    Четыре текстуры исходника сведены на один лист 512x512 (рама, вилка, переднее и заднее колесо).  Спицы у
+    модели настоящие — отдельные полоски, между ними видно насквозь.  Бак вынесен отдельно: его чёрная краска
+    заменяется цветом мотоцикла, пламя остаётся (b_chop_tank.png — что не красится, b_chop_tank_shade.png —
+    светотень краски).
+
+    Руль высокий и далёкий: ездок достаёт до него почти прямыми руками, подав корпус вперёд (CHOP_LEAN);
+    сколько не хватает — на столько ручки сдвигаются к ездоку.  Подножки исходника вынесены вперёд дальше,
+    чем достают ноги, поэтому под стопами ставятся свои, как у остальных мотоциклов."""
+    from PIL import Image, ImageDraw
+    import io
+    parts, images, marks = ms.read_glb(src('duhgless', 'motorbike.glb'), nodes=True)
+    P = named(parts)
+    turn = np.array([[0.0, 0, 1.0], [1.0, 0, 0], [0, 1.0, 0]])      # исходник: нос на +X, вверх Y, вправо Z
+    for p in P.values():
+        p.transform(turn)
+    marks = dict((k, turn.dot(v)) for k, v in marks.items())
+    frame, fork = P['motorbike_frame'], P['motorbike_fork']
+    wf, wr = P['motorbike_wheel_front'], P['motorbike_wheel_back']
+    K = CHOP_K
+
+    def axle(p):
+        lo, hi = p.bounds()
+        return (lo + hi) * 0.5, float(hi[2] - lo[2]) * 0.5, float(hi[0] - lo[0])
+    cf, rf, wfw = axle(wf)
+    cr, rr, wrw = axle(wr)
+    ground = 0.5 * ((cf[2] - rf) + (cr[2] - rr))
+    mid = (cf[1] + cr[1]) * 0.5
+    off = np.array((0.0, mid, ground))
+    for p in (frame, fork, wf, wr):
+        p.verts = (p.verts - off) * K
+    marks = dict((k, (v - off) * K) for k, v in marks.items())
+    fy, ry = float((cf[1] - mid) * K), float((cr[1] - mid) * K)
+    rf, rr, wfw, wrw = rf * K, rr * K, wfw * K, wrw * K
+
+    # --- лист текстур: рама и вилка сверху, колёса снизу
+    SZ = 256
+    tex = dict((mi, Image.open(io.BytesIO(data)).convert('RGB')) for mi, data in images.items())
+    for im in tex.values():
+        assert im.size == (SZ, SZ), im.size
+    atlas = np.zeros((SZ * 2, SZ * 2, 3), np.uint8)
+    src_uv = {}
+    for part, (cx, cy) in ((frame, (0, 0)), (fork, (1, 0)), (wf, (0, 1)), (wr, (1, 1))):
+        assert len(set(part.mat.tolist())) == 1 and part.uvs.min() >= 0.0 and part.uvs.max() <= 1.0, part.name
+        atlas[cy * SZ:(cy + 1) * SZ, cx * SZ:(cx + 1) * SZ] = np.asarray(tex[int(part.mat[0])])
+        src_uv[part.name] = part.uvs.copy()
+        part.uvs = np.stack([(part.uvs[..., 0] + cx) * 0.5, (part.uvs[..., 1] + (1 - cy)) * 0.5], axis=-1)
+    Image.fromarray(atlas, 'RGB').save(os.path.join(VEH, 'b_chop.png'), optimize=True)
+
+    def raster(uvs, size):
+        im = Image.new('L', (size, size), 0)
+        d = ImageDraw.Draw(im)
+        for uv in uvs:
+            d.polygon([(float(u) * size, (1.0 - float(v)) * size) for u, v in uv], fill=255, outline=255)
+        return np.asarray(im) > 0
+
+    b = Bike('chop')
+    for part, node, cy, r in ((wf, 'wheel_f', fy, rf), (wr, 'wheel_r', ry, rr)):
+        b.out(node, 't').part(part, xf=lambda q, cy=cy, r=r: q - (0.0, cy, r))
+
+    # --- бак: грани над двигателем, у которых на текстуре чёрная краска с пламенем (а не металл)
+    ft = np.asarray(tex[int(frame.mat[0])]).astype(np.float64)
+    orange = (ft[..., 0] > 90.0) & (ft[..., 0] - ft[..., 2] > 45.0) & (ft[..., 0] >= ft[..., 1])
+    edge = (ft[..., 0] > 50.0) & (ft[..., 0] - ft[..., 2] > 22.0) & (ft[..., 0] >= ft[..., 1])
+    fl = lum(ft)
+    cen = frame.verts[frame.tris].mean(1)
+    fuv = src_uv[frame.name]
+    y0, y1, z0 = (-0.36 - mid) * K, (0.56 - mid) * K, (1.62 - ground) * K
+    tank = np.zeros(len(frame.tris), bool)
+    for i in np.where((cen[:, 1] > y0) & (cen[:, 1] < y1) & (cen[:, 2] > z0) & (np.abs(cen[:, 0]) < 0.33 * K))[0]:
+        m = raster(fuv[i:i + 1], SZ)
+        if m.any() and float(fl[m & ~edge].mean() if (m & ~edge).any() else 0.0) < 46.0:
+            tank[i] = True
+    assert 120 <= int(tank.sum()) <= 420, tank.sum()
+    tm = raster(fuv[tank], SZ) & ~raster(fuv[~tank], SZ)
+    paint = tm & ~edge                                  # краска: всё на баке, кроме пламени
+    rgba = np.zeros((SZ, SZ, 4), np.uint8)
+    rgba[..., :3] = ft.astype(np.uint8)
+    rgba[..., 3] = np.where(paint, 0, 255)
+    Image.fromarray(rgba, 'RGBA').save(os.path.join(VEH, 'b_chop_tank.png'), optimize=True)
+    shade = np.where(paint, np.clip(104.0 + fl * 1.5, 0.0, 255.0), 128.0)
+    Image.fromarray(shade.astype(np.uint8), 'L').save(os.path.join(VEH, 'b_chop_tank_shade.png'), optimize=True)
+    o_t, o_p = b.out('body', 't'), b.out('body', 'p')
+    for i in range(len(frame.tris)):
+        if tank[i]:
+            o_p.tri(frame.verts[frame.tris[i]], fuv[i])
+        else:
+            o_t.tri(frame.verts[frame.tris[i]], frame.uvs[i])
+
+    # --- посадка: таз — в ложбине седла, стопы — как в позе, руки тянутся к рулю
+    POS, up, sole = poses()
+    pose = 'chair'
+    ftris = frame.verts[frame.tris]
+    sy = float(marks['motorbike_seat'][1])
+    seat_top = top_z(ftris, 0.0, sy)
+    assert seat_top is not None and 0.55 < seat_top < 0.80, seat_top
+    py, pz = sy, seat_top + up
+    v = fork.verts
+    ends = v[np.abs(v[:, 0]) > 0.44 * K]                 # концы руля — ручки
+    gx, gy, gz = float(np.abs(ends[:, 0]).mean()), float(ends[:, 1].mean()), float(ends[:, 2].mean())
+    from game import bikes as B
+    sx, sf, su = B.SHOULDER
+    a = math.radians(CHOP_LEAN)
+    sh_y = py + sf * math.cos(a) + (su - B.WAIST) * math.sin(a)
+    sh_z = pz + B.WAIST + (su - B.WAIST) * math.cos(a) - sf * math.sin(a)
+    need = math.sqrt(max(0.0, CHOP_REACH ** 2 - (gx - sx) ** 2 - (gz - sh_z) ** 2))
+    dy = min(0.0, sh_y + need - gy)
+    dz = 0.0
+    bar0 = float(v[np.abs(v[:, 0]) > 0.12 * K][:, 2].min())          # руль — всё, что шире вилки…
+    bar0 = max(bar0, (2.28 - ground) * K)                             # …и выше её верха
+    fv = bend(v, bar0 - 0.05, bar0 + 0.02, dy, dz)
+    o = b.out('fork', 't')
+    for i in range(len(fork.tris)):
+        o.tri(fv[fork.tris[i]] - (0.0, fy, 0.0), fork.uvs[i])
+    fx, ff, fu = POS[pose]['foot']
+    foot = (fx, py + ff, pz + fu - sole)
+    _pegs(b, foot)
+    head = marks['motorbike_head']
+    lamp = v[(np.abs(v[:, 0]) < 0.12 * K) & (v[:, 2] > (1.75 - ground) * K) & (v[:, 2] < (2.2 - ground) * K)]
+    hy = float(lamp[:, 1].max())
+    hz = float(lamp[lamp[:, 1] > hy - 0.06][:, 2].mean())
+    fpts = frame.verts
+    rear = fpts[np.argmin(fpts[:, 1])]
+    b.info.update(
+        wheel_f=[round(fy, 3), round(rf, 3), round(wfw, 3)], wheel_r=[round(ry, 3), round(rr, 3), round(wrw, 3)],
+        tex='b_chop', ptex='b_chop_tank', pose=pose, lean=CHOP_LEAN,
+        seat=[round(py, 3), round(pz, 3)], seat2=[round(py - 0.33, 3), round(pz + 0.06, 3)],
+        grips=[round(gx, 3), round(gy + dy, 3), round(gz + dz, 3)], foot=[round(q, 3) for q in foot],
+        seat_top=round(seat_top, 3), seat_y=[round(sy - 0.06, 3), round(sy + 0.04, 3)], bend=[round(dy, 3), round(dz, 3)],
+        head=[0.0, round(hy + 0.02, 3), round(hz, 3)], tail=[0.0, round(float(rear[1]) - 0.02, 3), round(float(rear[2]), 3)],
+        L=round(float(fy + rf - (ry - rr)), 3), y0=round(float(ry - rr), 3), y1=round(float(fy + rf), 3),
+        W=round(float(np.abs(fv[:, 0]).max() * 2.0), 3), H=round(float(fv[:, 2].max()), 3),
+        axis=[round(float(head[1]), 3), round(float(head[2]), 3)])
+    return b.write()
+
+
+BIKES = {'moto': bike_moto, 'cycle': bike_cycle, 'bmx': bike_bmx, 'chop': bike_chop}
+
+
+def do_bikes(meta, only=None):
     os.makedirs(VEH, exist_ok=True)
-    grain_texture(os.path.join(VEH, 'grain.png'))
-    meta['bikes'] = {}
+    if not only:
+        grain_texture(os.path.join(VEH, 'grain.png'))
+        meta['bikes'] = {}
     for name in sorted(BIKES):
+        if only and name not in only:
+            continue
         info = BIKES[name]()
         meta['bikes'][name] = info
         print('  %-6s поза %-6s таз (%.2f, %.2f)  ручки (±%.2f, %.2f, %.2f), руль сдвинут на (%+.2f, %+.2f)  Д %.2f Ш %.2f В %.2f  '
-              'оси %+.2f / %+.2f  треугольников %d' % (
+              'оси %+.2f / %+.2f  колёса r %.2f / %.2f  треугольников %d' % (
                   name, info['pose'], info['seat'][0], info['seat'][1], info['grips'][0], info['grips'][1], info['grips'][2],
                   info['bend'][0], info['bend'][1], info['L'], info['W'], info['H'], info['wheel_f'][0], info['wheel_r'][0],
-                  info['tris']))
+                  info['wheel_f'][1], info['wheel_r'][1], info['tris']))
 
 
 # ---------------------------------------------------------------------------
@@ -1031,10 +1217,11 @@ def main():
     mpath = os.path.join(OUT, 'models.json')
     with open(mpath, encoding='utf-8') as f:
         meta = json.load(f)
+    only = set(sys.argv[2:]) or None                 # «cars cab», «bikes chop»: пересобрать только названное
     if cmd in ('all', 'cars'):
-        do_cars(meta)
+        do_cars(meta, only)
     if cmd in ('all', 'bikes'):
-        do_bikes(meta)
+        do_bikes(meta, only)
     if cmd in ('all', 'parts'):
         do_parts(meta)
     if cmd in ('all', 'bottle'):
