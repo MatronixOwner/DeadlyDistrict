@@ -88,6 +88,15 @@ SOURCES = [
         ('apps/web/public/models/CREDITS.md', 'duhgless/CREDITS.md'),
         ('LICENSE', 'duhgless/LICENSE'),
     ]),
+    # Daniel Jurys, PSX Waste (https://daniel-jurys.itch.io/psx-waste, CC0): уличный мусор — tools/import_extra.py
+    ('morganholly/bike-bullet-delivery', '70f9927c760d6880ed9ba2957da3fbb428e5c22e', [
+        ('enviroment/PSX-Waste/PSX-Waste/glb/%s.glb' % n, 'psx_waste/%s.glb' % n)
+        for n in ('dumpster', 'barrel', 'trash-bag', 'cardboard-box', 'glass-bottle', 'crumpled-can')]),
+    # ROHHSA, Free PSX UI (https://rohhsa.itch.io/free-psx-ui, CC0): плашки интерфейса — tools/import_extra.py
+    ('Balwanek-ola/haven-2026', 'e58d9bfc33f2280d640d41aff795b7a13d87a147', [
+        ('FREEPSXUI/README.txt', 'rohhsa_ui/README.txt'),
+    ] + [('FREEPSXUI/fullres_720p/Skin%s-Cropped_Text-Block.png' % n, 'rohhsa_ui/Skin%s-Cropped_Text-Block.png' % n)
+         for n in ('01', '02', '05', '08')]),
 ]
 
 

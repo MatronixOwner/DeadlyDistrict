@@ -18,6 +18,12 @@ SHOULDER = 2.2                  # обочина трассы: ширина, в�
 SHOULDER_Z = -0.04
 SHOULDER_C = (0.80, 0.78, 0.74, 1.0)
 
+# мягкие тени на земле: пятно под каждым предметом и затемнение вдоль стен домов
+SHADE = ('shadow', 'decal_c')
+NO_SHADE = frozenset(['litter', 'roadpost', 'windsock', 'plane', 'crane', 'cone'])
+WALL_SHADE_W = 1.7              # ширина полосы у стены, м
+WALL_SHADE_K = 0.90             # её сила (1 — как тень под машиной)
+
 
 def _c4(c, k=1.0):
     return (c[0] * k, c[1] * k, c[2] * k, 1.0)
@@ -481,14 +487,100 @@ class CityMesh(object):
         if back:
             mb.quad(None, b, a, d, c, color=(0.2, 0.2, 0.22, 1))
 
+    # ------------------------------------------------------------------
+    # мягкие тени: пятна под предметами и затемнение земли у стен
+    # ------------------------------------------------------------------
+    def _blob(self, mb, x, y, hx, hy, yaw=0.0, k=1.0, n=1):
+        """Пятно тени на земле: hx, hy — полуразмеры; ложится по рельефу (n — на сколько частей делить сторону)."""
+        gz = self.city.ground_z
+        ca, sa = math.cos(yaw), math.sin(yaw)
+        rows = []
+        for j in range(n + 1):
+            row = []
+            for i in range(n + 1):
+                u, v = i / float(n), j / float(n)
+                lx, ly = (u * 2.0 - 1.0) * hx, (v * 2.0 - 1.0) * hy
+                wx, wy = x + lx * ca - ly * sa, y + lx * sa + ly * ca
+                row.append(((wx, wy, gz(wx, wy) + 0.03), (u, v)))
+            rows.append(row)
+        col = (0.0, 0.0, 0.0, k)
+        for j in range(n):
+            for i in range(n):
+                a, b, c, d = rows[j][i], rows[j][i + 1], rows[j + 1][i + 1], rows[j + 1][i]
+                mb.quad(SHADE, a[0], b[0], c[0], d[0], uvs=(a[1], b[1], c[1], d[1]), color=col)
+
+    def _prop_shade(self, mb, kind, p, x, y, yaw, col):
+        """Тень под уличным предметом: по его очертанию, у деревьев — по кроне."""
+        if kind in NO_SHADE:
+            return
+        if kind == 'tree':
+            r = 3.0 * p.get('size', 1.0)
+            self._blob(mb, x, y, r, r, 0.0, 1.0, 2)
+        elif kind == 'palm':
+            r = 2.1 * p.get('size', 1.0)
+            self._blob(mb, x, y, r, r, 0.0, 0.7, 2)
+        elif col is None:
+            return
+        elif col[0] == 'c':
+            r = max(0.45, col[1] * 1.6 + 0.2)
+            self._blob(mb, x, y, r, r, 0.0, 1.0)
+        elif col[0] == 'b':
+            self._blob(mb, x, y, col[1] * 1.22 + 0.22, col[2] * 1.22 + 0.22, yaw, 1.0, 2 if max(col[1], col[2]) > 2.5 else 1)
+        elif col[0] == 'legs':
+            hx = max(abs(q[0]) for q in col[1]) + 0.5
+            hy = max(abs(q[1]) for q in col[1]) + 0.5
+            self._blob(mb, x, y, hx, hy, yaw, 0.8)
+
+    def _wall_shade(self, mb, b, near):
+        """Затемнение земли вдоль стен здания: полоса у каждой стены и четверть круга у каждого угла."""
+        gz = self.city.ground_z
+        W = WALL_SHADE_W
+        col = (0.0, 0.0, 0.0, WALL_SHADE_K)
+        x0, y0, x1, y1 = b.x0, b.y0, b.x1, b.y1
+
+        def pt(x, y):
+            return (x, y, gz(x, y) + 0.03)
+
+        def inside(x, y):
+            for o in near:
+                if o is not b and o.x0 < x < o.x1 and o.y0 < y < o.y1:
+                    return True
+            return False
+        e = 0.04                                                    # полоса чуть заходит под стену: без щели
+        # стены: ближний край — середина пятна (самое тёмное), дальний — его край
+        for (ax, ay, bx, by, nx, ny) in ((x0, y0, x1, y0, 0.0, -1.0), (x1, y0, x1, y1, 1.0, 0.0),
+                                         (x1, y1, x0, y1, 0.0, 1.0), (x0, y1, x0, y0, -1.0, 0.0)):
+            L = math.hypot(bx - ax, by - ay)
+            n = max(1, int(L // 14.0))                              # длинные стены — частями: по рельефу
+            for i in range(n):
+                t0, t1 = i / float(n), (i + 1) / float(n)
+                px, py = ax + (bx - ax) * t0, ay + (by - ay) * t0
+                qx, qy = ax + (bx - ax) * t1, ay + (by - ay) * t1
+                mb.quad(SHADE, pt(px - nx * e, py - ny * e), pt(px + nx * W, py + ny * W), pt(qx + nx * W, qy + ny * W),
+                        pt(qx - nx * e, qy - ny * e), uvs=((0.5, 0.5), (0.5, 1.0), (0.5, 1.0), (0.5, 0.5)), color=col)
+        # углы; если вплотную стоит соседний дом, у его стены уже есть своя полоса — угол не нужен
+        for (cx, cy, sx, sy) in ((x0, y0, -1.0, -1.0), (x1, y0, 1.0, -1.0), (x1, y1, 1.0, 1.0), (x0, y1, -1.0, 1.0)):
+            if inside(cx + sx * 0.5, cy - sy * 0.5) or inside(cx - sx * 0.5, cy + sy * 0.5):
+                continue
+            pa, pb, pc, pd = pt(cx, cy), pt(cx + sx * W, cy), pt(cx + sx * W, cy + sy * W), pt(cx, cy + sy * W)
+            uv = ((0.5, 0.5), (1.0, 0.5), (1.0, 1.0), (0.5, 1.0))
+            if sx * sy > 0:
+                mb.quad(SHADE, pa, pb, pc, pd, uvs=uv, color=col)
+            else:                                                   # обход против часовой стрелки
+                mb.quad(SHADE, pa, pd, pc, pb, uvs=(uv[0], uv[3], uv[2], uv[1]), color=col)
+
     def _buildings(self):
         c = self.city
         fac = Facades(self)
+        by_block = {}
+        for b in c.buildings:
+            by_block.setdefault(b.block, []).append(b)
         for b in c.buildings:
             mb = self._mb(b.block)
             night = self._night(b.block)
             rnd = random.Random(int(b.x0 * 7 + b.y0 * 13) & 0xffff)
             top = fac.build(b, mb, night, rnd)
+            self._wall_shade(mb, b, by_block[b.block])
             canopy = fac.canopy.get(id(b), ())
             # вывески
             for s in b.signs:
@@ -663,6 +755,7 @@ class CityMesh(object):
             col = fn(mb, night, p, rnd)
             mb.clear_xform()
             night.clear_xform()
+            self._prop_shade(mb, kind, p, x, y, yaw, col)
             cid = None
             if col is not None:
                 if col[0] == 'c':

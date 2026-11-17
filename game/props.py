@@ -5,10 +5,17 @@
 объекта, Z вверх, начало координат на земле.  Возвращает описание
 столкновения:  None | ('c', r, h, flags) | ('b', hx, hy, h, flags)
 (для 'b' — полуразмеры вдоль локальных X и Y).
+
+Мусорный контейнер, бочка и мелкий мусор (мешки, коробки, бутылки, банки) — готовые модели набора PSX Waste
+(Daniel Jurys): их треугольники лежат в assets/models/props.json (tools/import_extra.py) и добавляются в те же
+общие сетки кварталов, что и всё остальное.  Нет файла — контейнер и бочку рисует код, как раньше.
 """
+import json
 import math
+import os
 import random
 
+from . import settings
 from .collision import F_CAR, F_PED, F_BULLET, F_BREAK, F_SIGHT, F_CAM, F_SOLID
 
 GLOW = ('glow', 'add')
@@ -20,6 +27,46 @@ BREAK_HARD = F_CAR | F_PED | F_BULLET | F_BREAK   # машина сносит, �
 
 METAL = (0.26, 0.28, 0.31, 1.0)
 WOOD = (0.50, 0.34, 0.20, 1.0)
+
+_models = None
+
+
+def models():
+    """Готовые модели мелких предметов: имя -> (текстура, [треугольник: три вершины (точка, uv)], полуразмеры)."""
+    global _models
+    if _models is None:
+        _models = {}
+        try:
+            with open(os.path.join(settings.find_root(), 'assets', 'models', 'props.json'), 'rb') as f:
+                raw = json.loads(f.read().decode('utf-8'))
+            for name, m in raw.items():
+                v = m['v']
+                tris = []
+                for i in range(0, len(v), 15):
+                    tris.append(((v[i], v[i + 1], v[i + 2]), (v[i + 5], v[i + 6], v[i + 7]), (v[i + 10], v[i + 11], v[i + 12]),
+                                 (v[i + 3], v[i + 4]), (v[i + 8], v[i + 9]), (v[i + 13], v[i + 14])))
+                _models[name] = (m['tex'], tris, tuple(m['size']))
+        except (IOError, OSError, ValueError, KeyError):
+            _models = {}
+    return _models
+
+
+def model(mb, name, color=(1.0, 1.0, 1.0, 1.0), x=0.0, y=0.0, z=0.0, yaw=0.0, tip=0.0):
+    """Добавить готовую модель в сетку.  yaw — поворот вокруг вертикали, tip — завалить набок (вокруг оси Y).
+    Возвращает полуразмеры модели или None, если такой модели нет."""
+    m = models().get(name)
+    if m is None:
+        return None
+    tex, tris, size = m
+    ca, sa = math.cos(yaw), math.sin(yaw)
+    ct, st = math.cos(tip), math.sin(tip)
+
+    def tr(q):
+        px, pz = q[0] * ct + q[2] * st, -q[0] * st + q[2] * ct
+        return (x + px * ca - q[1] * sa, y + px * sa + q[1] * ca, z + pz)
+    for a, b, c, ua, ub, uc in tris:
+        mb.tri(tex, tr(a), tr(b), tr(c), ua, ub, uc, color)
+    return size
 
 
 def glow(night, x, y, z, size, color=LAMP_COLOR):
@@ -233,8 +280,14 @@ def busstop(mb, night, p, rnd):
     return ('b', 0.7, 1.7, 2.4, F_SOLID | F_CAM)
 
 
+DUMPSTER_TINTS = [(1.0, 1.0, 1.0, 1.0), (0.84, 0.92, 1.0, 1.0), (1.0, 0.92, 0.78, 1.0), (0.88, 0.88, 0.88, 1.0)]
+
+
 def dumpster(mb, night, p, rnd):
     c = rnd.choice([(0.14, 0.32, 0.20, 1), (0.16, 0.24, 0.40, 1), (0.36, 0.20, 0.14, 1)])
+    size = model(mb, 'dumpster', DUMPSTER_TINTS[rnd.randrange(len(DUMPSTER_TINTS))])
+    if size is not None:
+        return ('b', size[0], size[1], size[2], F_SOLID)
     c = (min(1.0, c[0] * 1.7), min(1.0, c[1] * 1.7), min(1.0, c[2] * 1.7), 1.0)
     mb.box('metal_paint', -0.55, -0.95, 0.12, 0.55, 0.95, 1.2, c, uv_m=1.6)
     mb.box(None, -0.6, -1.0, 1.2, 0.6, 1.0, 1.28, (0.1, 0.1, 0.1, 1))
@@ -252,10 +305,14 @@ def crate(mb, night, p, rnd):
     return ('c', s * 1.15, s * 2, BREAK_HARD)
 
 
+BARREL_TINTS = [(1.0, 1.0, 1.0, 1.0), (1.0, 0.86, 0.66, 1.0), (0.72, 0.80, 0.92, 1.0), (0.86, 0.86, 0.80, 1.0)]
+
+
 def barrel(mb, night, p, rnd):
     c = rnd.choice([(0.40, 0.22, 0.14, 1), (0.16, 0.26, 0.42, 1), (0.5, 0.42, 0.12, 1)])
-    c = (min(1.0, c[0] * 1.6), min(1.0, c[1] * 1.6), min(1.0, c[2] * 1.6), 1.0)
-    mb.cylinder('metal_paint', 0, 0, 0, 0.9, 0.3, 8, c, top_color=(0.07, 0.06, 0.05, 1), uv_wrap=2.0)
+    if model(mb, 'barrel', BARREL_TINTS[rnd.randrange(len(BARREL_TINTS))], yaw=rnd.random() * 6.28) is None:
+        c = (min(1.0, c[0] * 1.6), min(1.0, c[1] * 1.6), min(1.0, c[2] * 1.6), 1.0)
+        mb.cylinder('metal_paint', 0, 0, 0, 0.9, 0.3, 8, c, top_color=(0.07, 0.06, 0.05, 1), uv_wrap=2.0)
     if p.get('fire'):
         glow(night, 0, 0, 1.1, 2.4, (1.0, 0.55, 0.15, 0.9))
         pool(night, -3.5, -3.5, 3.5, 3.5, 0.05, color=(1.0, 0.5, 0.15, 1.0), k=0.5)
@@ -265,6 +322,53 @@ def barrel(mb, night, p, rnd):
     return ('c', 0.32, 0.9, BREAK_HARD)
 
 
+BAG_TINTS = [(1.0, 1.0, 1.0, 1.0), (0.80, 0.84, 0.95, 1.0), (0.78, 0.78, 0.78, 1.0), (1.0, 0.96, 0.86, 1.0)]
+
+
+def trashbag(mb, night, p, rnd):
+    """Мешки с мусором: один или кучка из двух-трёх."""
+    n = int(p.get('n', 1))
+    r = 0.0
+    for k in range(n):
+        ang = k * 2.4 + rnd.random()
+        d = 0.0 if n == 1 else 0.30 + 0.08 * k
+        s = model(mb, 'bag', BAG_TINTS[rnd.randrange(len(BAG_TINTS))], x=math.cos(ang) * d, y=math.sin(ang) * d,
+                  yaw=rnd.random() * 6.28)
+        if s is None:
+            mb.cylinder(None, 0, 0, 0, 0.5, 0.28, 6, (0.10, 0.10, 0.11, 1))
+            return ('c', 0.3, 0.5, BREAK_SOFT)
+        r = max(r, d + 0.30)
+    return ('c', r, 0.6, BREAK_SOFT)
+
+
+def boxes(mb, night, p, rnd):
+    """Картонные коробки: одна, стопка или россыпь."""
+    n = int(p.get('n', 1))
+    z = 0.0
+    for k in range(n):
+        if model(mb, 'box', (1.0, 1.0, 1.0, 1.0) if rnd.random() < 0.6 else (0.86, 0.80, 0.72, 1.0),
+                 x=(rnd.random() - 0.5) * 0.12, y=(rnd.random() - 0.5) * 0.12, z=z, yaw=rnd.random() * 0.7 - 0.35) is None:
+            mb.box(None, -0.22, -0.37, z, 0.22, 0.37, z + 0.30, (0.62, 0.50, 0.36, 1))
+        z += 0.30
+    return ('c', 0.42, z, BREAK_SOFT)
+
+
+def litter(mb, night, p, rnd):
+    """Мелкий мусор под ногами: бутылки и мятые банки.  Не мешает ни пройти, ни проехать."""
+    for k in range(int(p.get('n', 3))):
+        ang = rnd.random() * 6.28
+        d = float(p.get('r0', 0.15)) + rnd.random() * float(p.get('r', 0.9))
+        x, y = math.cos(ang) * d, math.sin(ang) * d
+        q = rnd.random()
+        if q < 0.45:
+            model(mb, 'can', x=x, y=y, z=0.004, yaw=rnd.random() * 6.28)
+        elif q < 0.72:
+            model(mb, 'bottle', x=x, y=y, yaw=rnd.random() * 6.28)                              # стоит
+        else:
+            model(mb, 'bottle', x=x, y=y, z=0.048, yaw=rnd.random() * 6.28, tip=math.pi / 2)    # лежит на боку
+    return None
+
+
 def tires(mb, night, p, rnd):
     for i in range(3):
         mb.cylinder(None, (i % 2) * 0.06, 0, i * 0.24, i * 0.24 + 0.22, 0.36, 8, (0.09, 0.09, 0.10, 1),
@@ -272,7 +376,14 @@ def tires(mb, night, p, rnd):
     return ('c', 0.38, 0.72, BREAK_HARD)
 
 
+WRECK_TINTS = [(1.0, 1.0, 1.0, 1.0), (0.80, 0.78, 0.76, 1.0), (0.62, 0.60, 0.60, 1.0)]
+
+
 def wreck(mb, night, p, rnd):
+    """Брошенный остов машины на пустыре: ржавый кузов без колёс, стёкол и дверных ручек."""
+    size = model(mb, 'wreck', WRECK_TINTS[rnd.randrange(len(WRECK_TINTS))], z=-0.04, tip=(rnd.random() - 0.5) * 0.05)
+    if size is not None:
+        return ('b', size[0], size[1], size[2], F_SOLID)
     rust = (0.30, 0.17, 0.10, 1)
     dark = (0.12, 0.10, 0.09, 1)
     mb.box(None, -2.1, -0.85, 0.15, 2.1, 0.85, 0.7, rust)
@@ -485,9 +596,9 @@ BUILDERS = {
     'crate': crate, 'barrel': barrel, 'tires': tires, 'wreck': wreck, 'hoop': hoop, 'fountain': fountain,
     'statue': statue, 'gazebo': gazebo, 'pump': pump, 'umbrella': umbrella, 'lifeguard': lifeguard,
     'crane': crane, 'bollard': bollard, 'rock': rock, 'plane': plane, 'windsock': windsock,
-    'roadpost': roadpost,
+    'roadpost': roadpost, 'trashbag': trashbag, 'boxes': boxes, 'litter': litter,
 }
 
 # объекты, которые можно снести машиной
 BREAKABLE = set(['lamp', 'bench', 'bin', 'hydrant', 'newsbox', 'mailbox', 'cone', 'crate', 'barrel', 'tires',
-                 'umbrella', 'roadpost'])
+                 'umbrella', 'roadpost', 'trashbag', 'boxes'])

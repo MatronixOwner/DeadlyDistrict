@@ -322,6 +322,7 @@ class City(object):
         self._gen_coast()
         self._gen_country()
         self._gen_extras()
+        self._litter()
         self._align_doors()
         self._clear_driveways()
         self.n_chunks = self._outer_chunk_base + len(self._chunk_ids)
@@ -354,6 +355,58 @@ class City(object):
         bw = L / n
         k = min(n - 1, max(0, int(((b.x0 + b.x1) * 0.5 - b.x0) / bw)))
         return b.x0 + k * bw, bw, ent
+
+    def _litter(self):
+        """Мусор: мешки и коробки у контейнеров, банки и бутылки у урн, кучи на пустырях.
+
+        Отдельный проход со своим счётчиком случайных чисел: раскладка города от него не меняется, а новые
+        предметы дописываются в конец списка (у прежних сохраняются номера, а с ними форма деревьев и цвета)."""
+        rnd = Rng(977)
+        out = []
+
+        def add(kind, x, y, block, **kw):
+            d = dict(kind=kind, x=x, y=y, yaw=rnd.rangef(0.0, 6.28), block=block)
+            d.update(kw)
+            out.append(d)
+
+        for p in self.props:
+            kind = p['kind']
+            x, y, yaw, blk = p['x'], p['y'], p['yaw'], p['block']
+            ca, sa = math.cos(yaw), math.sin(yaw)
+            if kind == 'dumpster':
+                # у длинных бортов контейнера — вдоль той же стены, у которой он стоит
+                for side in (-1.0, 1.0):
+                    q = rnd.random()
+                    lx, ly = side * rnd.rangef(1.15, 1.35), rnd.rangef(-0.55, 0.55)
+                    if q < 0.50:
+                        add('trashbag', x + lx * ca - ly * sa, y + lx * sa + ly * ca, blk, n=rnd.pick((1, 2, 2, 3)))
+                    elif q < 0.74:
+                        add('boxes', x + lx * ca - ly * sa, y + lx * sa + ly * ca, blk, n=rnd.pick((1, 2, 3)))
+                side = rnd.pick((-1.0, 1.0))
+                lx, ly = side * 1.9, rnd.rangef(-0.8, 0.8)
+                add('litter', x + lx * ca - ly * sa, y + lx * sa + ly * ca, blk, n=rnd.randint(2, 5), r=0.7)
+            elif kind == 'bin':
+                if rnd.chance(0.4):
+                    add('litter', x, y, blk, n=rnd.randint(1, 3), r=0.3, r0=0.42)      # мимо урны
+            elif kind == 'wreck':
+                # пустырь вокруг брошенной машины: туда свозят мусор
+                for _ in range(rnd.randint(2, 4)):
+                    ang, d = rnd.rangef(0.0, 6.28), rnd.rangef(3.4, 5.2)
+                    px, py = x + math.cos(ang) * d, y + math.sin(ang) * d
+                    q = rnd.random()
+                    if q < 0.45:
+                        add('trashbag', px, py, blk, n=rnd.pick((1, 2, 3, 3)))
+                    elif q < 0.75:
+                        add('boxes', px, py, blk, n=rnd.pick((1, 1, 2)))
+                    add('litter', px + 0.6, py + 0.5, blk, n=rnd.randint(2, 5), r=1.1)
+        # не ставим мусор туда, где уже что-то стоит
+        solid = [(p['x'], p['y']) for p in self.props if p['kind'] not in ('tree', 'palm', 'lamp')]
+        for d in out:
+            if d['kind'] != 'litter':
+                if any(abs(d['x'] - sx) < 1.0 and abs(d['y'] - sy) < 1.0 for sx, sy in solid):
+                    continue
+                solid.append((d['x'], d['y']))
+            self.props.append(d)
 
     def _align_doors(self):
         """Двери особых мест — в проёмы, нарисованные на фасаде; перед дверью на тротуаре ничего не стоит."""
