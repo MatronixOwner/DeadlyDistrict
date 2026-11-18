@@ -163,6 +163,24 @@ def siren():
     return x
 
 
+def alarm():
+    """Звонок охранной сигнализации: молоточек колотит по чашке 16 раз в секунду.  Петля ровно в секунду:
+    отзвук последних ударов заворачивается в её начало."""
+    n = SR
+    x = np.zeros(n)
+    rate = 16
+    m = int(0.30 * SR)
+    tk = np.arange(m) / float(SR)
+    hit = (np.sin(2 * np.pi * 2140 * tk) + 0.55 * np.sin(2 * np.pi * 3420 * tk) + 0.3 * np.sin(2 * np.pi * 5310 * tk)
+           + 0.5 * np.sin(2 * np.pi * 1290 * tk)) * np.exp(-tk / 0.05)
+    hit[:40] += rng.randn(40) * np.linspace(0.8, 0.0, 40)          # сам удар молоточка
+    for k in range(rate):
+        i0 = k * n // rate
+        idx = (i0 + np.arange(m)) % n
+        x[idx] += hit * (0.9 + 0.1 * (k % 2))
+    return x
+
+
 # ---------------------------------------------------------------------------
 # оружие
 # ---------------------------------------------------------------------------
@@ -755,6 +773,7 @@ def main():
     S('horn', lambda: horn())
     S('horn_truck', lambda: horn(185.0, 233.0, 0.7))
     S('siren', siren, 0.7)
+    S('alarm', alarm, 0.6)
     S('pistol', lambda: gunshot(0.32, 0.035, 190, 4200))
     S('uzi', lambda: gunshot(0.18, 0.022, 260, 5500))
     S('shotgun', lambda: gunshot(0.6, 0.07, 120, 3000, 1.3))

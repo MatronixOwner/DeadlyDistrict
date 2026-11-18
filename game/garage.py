@@ -4,6 +4,8 @@
 Она не исчезает, когда герой уходит, попадает в сохранение вместе с цветом и тюнингом и ждёт на
 своём месте после загрузки.  Мест — по числу парковочных клеток (три).  Ворота поднимаются сами,
 когда герой подходит или подъезжает.
+
+Здесь же — машина героя, «Ласточка» (HeroCar): она своя с самого начала и стоит в этом гараже.
 """
 import math
 
@@ -12,6 +14,9 @@ from .vehicle import Vehicle, SPECS
 
 OPEN_AT = 13.0              # с какого расстояния ворота начинают открываться
 SPEED = 1.6                 # полных ходов ворот в секунду
+HERO_KIND = 'retro'         # машина героя (vehicle.SPECS)
+HERO_BACK = 25.0            # через сколько секунд пропавшая машина героя снова стоит у дома
+HERO_FAR = 90.0             # …если герой в это время не ближе стольких метров от гаража
 
 
 class Garage(object):
@@ -115,7 +120,7 @@ class Garage(object):
                 if v is not mine or not self.contains(v.x, v.y, 0.3):
                     self.cars.remove(v)
                     v.garage = False
-                    if not v.removed and v is not mine:
+                    if not v.removed and v is not mine and not v.hero:
                         v.keep = False
                     self.dirty = True
         if self.full_msg is not None and self.full_msg not in found:
@@ -165,3 +170,119 @@ class Garage(object):
                 v.apply_tune(tune)
             self.cars.append(v)
         self.dirty = False
+
+
+class HeroCar(object):
+    """Машина героя — «Ласточка».
+
+    Она одна на весь город и своя с первой минуты: за её угон не ищут, на карте она отмечена значком.
+    Ждёт в гараже у дома.  Если её разбили, утопили или она пропала, через некоторое время она снова стоит
+    в гараже — в той же окраске и с тем же тюнингом."""
+
+    def __init__(self, world):
+        self.w = world
+        self.v = None
+        self.paint = 0
+        self.tune = {}
+        self.lost_t = 0.0
+        self.blip = None
+
+    def reset(self):
+        """Мир очищен (новая игра, выход в меню): машину уже убрали вместе со всеми остальными."""
+        self._unblip()
+        self.v = None
+        self.paint = 0
+        self.tune = {}
+        self.lost_t = 0.0
+
+    def _unblip(self):
+        if self.blip is not None:
+            self.w.hud.remove_blip(self.blip)
+            self.blip = None
+
+    def alive(self):
+        v = self.v
+        return v is not None and not v.removed and not v.dead and not v.sunk
+
+    def adopt(self, v):
+        v.hero = True
+        v.keep = True
+        v.owner = 'player'
+        v.stolen = True                     # своя: в счёт угонов не идёт
+        self.v = v
+        self.lost_t = 0.0
+
+    def spawn_home(self):
+        """Поставить машину у дома: в свободную клетку гаража, а если гараж занят — на площадку перед воротами."""
+        w = self.w
+        g = w.garage
+        if not g.ok or HERO_KIND not in SPECS:
+            return None
+        spot = None
+        for (sx, sy) in g.slots:
+            if not any(not c.removed and (c.x - sx) ** 2 + (c.y - sy) ** 2 < 2.4 ** 2 for c in w.vehicles):
+                spot = (sx, sy)
+                break
+        inside = spot is not None
+        if not inside:
+            x0, y0, x1, y1 = g.rect
+            spot = ((x0 + x1) * 0.5, y0 - 4.2)
+            for c in list(w.vehicles):          # площадка должна быть свободна
+                if not c.keep and (c.x - spot[0]) ** 2 + (c.y - spot[1]) ** 2 < 4.5 ** 2:
+                    w.remove_vehicle(c)
+        v = w.spawn_vehicle(HERO_KIND, spot[0], spot[1], g.yaw, self.paint)
+        v.mode = Vehicle.PARKED
+        if self.tune:
+            v.apply_tune(dict(self.tune))
+        self.adopt(v)
+        if inside and len(g.cars) < g.capacity():
+            g.cars.append(v)
+            v.garage = True
+        return v
+
+    def update(self, dt):
+        w = self.w
+        pl = w.player
+        if self.alive():
+            v = self.v
+            self.paint = int(v.paint)
+            self.tune = dict(v.tune or {})
+            self.lost_t = 0.0
+            # значок на карте — пока герой не за её рулём
+            if pl.vehicle is v:
+                self._unblip()
+            elif self.blip is None:
+                self.blip = w.hud.add_blip('blip_car', obj=v, scale=1.0, edge=False)
+            return
+        self._unblip()
+        ms = w.missions
+        if ms is None or ms.intro is not None or w.respawn_kind is not None:
+            return
+        self.lost_t += dt
+        g = w.garage
+        if self.lost_t < HERO_BACK or not g.ok:
+            return
+        px, py = pl.pos()
+        if math.hypot(px - g.cx, py - g.cy) < HERO_FAR and self.v is not None:
+            return                              # на глазах у героя машины не появляются
+        had = self.v is not None
+        if self.spawn_home() is not None and had:
+            w.hud.help('«Ласточку» вернули в гараж у дома.', 6.0)
+
+    # ------------------------------------------------------------------
+    def state(self):
+        """Для сохранения: окраска и тюнинг (место — всегда гараж у дома)."""
+        return dict(paint=int(self.paint), tune=dict(self.tune or {}))
+
+    def restore(self, info):
+        """После загрузки: машина героя — та «Ласточка», что стоит в гараже; если её там нет — ставим."""
+        w = self.w
+        self.reset()
+        if info:
+            self.paint = int(info.get('paint', 0))
+            self.tune = dict(info.get('tune') or {})
+        for c in w.garage.cars:
+            if c.kind == HERO_KIND and not c.removed:
+                self.adopt(c)
+                return
+        self.spawn_home()

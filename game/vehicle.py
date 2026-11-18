@@ -17,6 +17,8 @@ HUB = (0.62, 0.64, 0.66, 1.0)
 LIGHT_F = (1.0, 0.97, 0.80, 1.0)
 LIGHT_R = (0.75, 0.06, 0.05, 1.0)
 CHROME = (0.72, 0.74, 0.78, 1.0)
+CABIN_SCALE = 0.90          # сидящие в салоне чуть мельче: кузова в стиле PS1 ниже настоящих
+STEER_TURNS = 2.4           # во сколько раз рулевое колесо поворачивается сильнее колёс
 
 PAINTS = [
     (0.80, 0.10, 0.09), (0.12, 0.26, 0.62), (0.90, 0.90, 0.88), (0.10, 0.10, 0.12), (0.55, 0.57, 0.60),
@@ -114,7 +116,7 @@ _add(Spec('truck', 'Тягач', 6.8, 2.4, 2.5, hood=0.35, ws_rake=0.2, trunk=4.
 _add(Spec('enforcer', 'Спецназ', 5.8, 2.2, 2.7, hood=0.8, ws_rake=0.4, trunk=0.02, rw_rake=0.04, belt=1.1,
           cargo=0.66, mass=3800.0, top=41.0, accel=6.8, health=2600.0, extras=('lightbar',),
           paints=[(0.10, 0.13, 0.24)], value=0, wheel_r=0.4, clear=0.38, radio=False, engine='truck'))
-_add(Spec('fbi', 'Агент', 4.7, 1.86, 1.46, paints=[(0.05, 0.05, 0.06)], top=53.0, accel=9.4, grip=9.0,
+_add(Spec('fbi', 'Агент', 4.9, 1.78, 1.46, paints=[(0.05, 0.05, 0.06)], top=53.0, accel=9.4, grip=9.0,
           health=1600.0, value=0, radio=False))
 _add(Spec('army', 'Барракуда', 6.8, 2.4, 2.6, hood=0.4, ws_rake=0.2, trunk=4.7, rw_rake=0.05, belt=1.3,
           clear=0.5, wheel_r=0.52, wheel_w=0.32, mass=8000.0, top=34.0, accel=4.6, steer=0.5, health=3200.0,
@@ -132,9 +134,9 @@ _add(Spec('limo', 'Лимузин', 6.9, 1.9, 1.42, hood=1.7, trunk=1.0, top=40.
 _add(Spec('racer', 'Болид', 4.5, 1.9, 1.16, hood=1.4, ws_rake=0.8, rw_rake=0.9, trunk=0.5, nose_drop=0.2,
           belt=0.62, clear=0.12, top=66.0, accel=12.0, grip=11.0, brake=19.0, value=6000, mass=1050.0,
           paints=[(0.92, 0.72, 0.10), (0.80, 0.10, 0.09), (0.12, 0.26, 0.62)], kit=('wing',)))
-_add(Spec('minibus', 'Маршрутка', 4.7, 1.9, 2.0, hood=0.5, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
-          mass=1900.0, top=31.0, accel=4.4, health=1300.0, value=600, wheel_r=0.31, seats=8,
-          paints=[(0.92, 0.72, 0.10), (0.90, 0.90, 0.88), (0.30, 0.50, 0.62), (0.62, 0.20, 0.14)], kit=('route',)))
+_add(Spec('minibus', 'Маршрутка', 5.6, 2.0, 2.5, hood=0.7, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
+          mass=2500.0, top=31.0, accel=4.4, health=1400.0, value=600, wheel_r=0.34, seats=8,
+          paints=[(0.92, 0.72, 0.10), (0.90, 0.90, 0.88)], kit=('route',)))
 _add(Spec('firetruck', 'Пожарная', 7.6, 2.5, 3.1, hood=0.5, ws_rake=0.3, trunk=0.02, rw_rake=0.04, belt=1.2,
           clear=0.42, wheel_r=0.46, wheel_w=0.3, mass=7500.0, top=34.0, accel=4.4, steer=0.5, health=3000.0,
           front_axle=2.7, rear_axle=-2.4, seats=4, paints=[(0.80, 0.10, 0.09)], value=0, radio=False,
@@ -153,12 +155,26 @@ _add(Spec('jeep', 'Вездеход', 4.5, 2.0, 2.02, belt=1.1, clear=0.50, whee
           paints=[(0.26, 0.31, 0.20), (0.44, 0.38, 0.26), (0.24, 0.28, 0.34)], kit=('bullbar', 'lightbar', 'spare')))
 _add(Spec('pizza', 'Доставка', 3.9, 1.65, 1.45, trunk=0.02, rw_rake=0.35, hood=0.9, top=33.0, accel=5.6,
           mass=950.0, value=300, paints=[(0.80, 0.10, 0.09), (0.90, 0.90, 0.88)], kit=('box',)))
-_add(Spec('brick', 'Кирпич', 4.8, 1.76, 1.44, hood=1.35, trunk=1.0, top=33.0, accel=4.8, mass=1350.0, value=320,
-          health=1150.0, grip=7.2))
 _add(Spec('tuner', 'Дрифт', 3.9, 1.7, 1.38, trunk=0.02, rw_rake=0.35, hood=0.9, top=46.0, accel=8.6, grip=8.0,
           mass=900.0, value=2400, clear=0.14,
           paints=[(0.16, 0.56, 0.66), (0.42, 0.10, 0.44), (0.85, 0.42, 0.10), (0.10, 0.42, 0.22)],
           tune={'spoiler': 3, 'rims': 3, 'susp': 1, 'neon': 0, 'exhaust': 1}))
+# --- готовые модели с itch.io: у каждой свой кузов, габариты сняты с модели
+_add(Spec('shade', 'Тень', 4.86, 1.74, 1.45, hood=1.3, trunk=1.0, top=38.0, accel=5.8, mass=1250.0, value=520,
+          health=1100.0, grip=7.4,
+          paints=[(0.07, 0.07, 0.08), (0.16, 0.20, 0.42), (0.34, 0.23, 0.16), (0.12, 0.24, 0.56), (0.50, 0.09, 0.09),
+                  (0.86, 0.86, 0.84)]))
+_add(Spec('gti', 'Зажигалка', 3.83, 1.79, 1.35, trunk=0.02, rw_rake=0.35, hood=0.9, top=46.0, accel=8.4, grip=8.8,
+          mass=920.0, value=950, clear=0.16))
+_add(Spec('coupe', 'Катана', 4.03, 1.76, 1.18, hood=1.35, ws_rake=0.8, rw_rake=0.9, trunk=0.6, nose_drop=0.18,
+          belt=0.66, clear=0.14, top=58.0, accel=10.0, grip=9.8, value=3400, mass=1150.0, seats=2,
+          paints=[(0.90, 0.90, 0.88), (0.94, 0.78, 0.10), (0.12, 0.30, 0.74), (0.30, 0.62, 0.90), (0.50, 0.07, 0.12),
+                  (0.10, 0.36, 0.22), (0.32, 0.42, 0.30), (0.60, 0.62, 0.64), (0.96, 0.86, 0.30), (0.84, 0.14, 0.10)]))
+# машина героя: в потоке её нет, она одна — стоит у дома Макса (см. garage.py)
+_add(Spec('retro', 'Ласточка', 4.73, 1.71, 1.48, hood=1.25, trunk=1.0, top=46.0, accel=7.6, grip=8.6, mass=1250.0,
+          value=1400, health=1500.0,
+          paints=[(0.10, 0.22, 0.56), (0.60, 0.08, 0.10), (0.88, 0.88, 0.86), (0.07, 0.07, 0.08), (0.10, 0.36, 0.22),
+                  (0.55, 0.57, 0.60), (0.80, 0.62, 0.12), (0.36, 0.22, 0.14)]))
 # --- мотоциклы, скутер, мопед, велосипеды, квадроцикл, трайк, мотоцикл с коляской (модели собирает bikes.py)
 _add(Spec('bike', 'Стрела', 2.10, 0.74, 1.16, bike=True, lean=True, seats=1, mass=230.0, top=64.0, accel=13.0,
           grip=9.0, brake=18.0, health=420.0, wheel_r=0.30, front_axle=0.70, rear_axle=-0.70, radio=False,
@@ -223,25 +239,26 @@ BIKES = tuple(k for k, s in SPECS.items() if s.bike)
 
 # какие машины встречаются в каком районе (тип, вес)
 ZONE_CARS = {
-    'D': [('sedan', 5), ('taxi', 4), ('sports', 1.2), ('suv', 2), ('hatch', 2), ('bus', 0.8), ('van', 1), ('brick', 2),
+    'D': [('sedan', 5), ('taxi', 4), ('sports', 1.2), ('suv', 2), ('hatch', 2), ('bus', 0.8), ('van', 1), ('shade', 2),
           ('muscle', 0.6), ('limo', 0.5), ('minibus', 0.9), ('bike', 0.7), ('scooter', 0.9), ('pizza', 0.6),
           ('cashvan', 0.3), ('racer', 0.15), ('firetruck', 0.2), ('tourer', 0.5), ('copbike', 0.35),
-          ('courier', 1.0)],
-    'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('beater', 1.5), ('bus', 0.6), ('pickup', 1), ('brick', 3),
+          ('courier', 1.0), ('gti', 1.2), ('coupe', 0.6)],
+    'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('beater', 1.5), ('bus', 0.6), ('pickup', 1), ('shade', 3),
           ('minibus', 1.2), ('scooter', 1.4), ('bicycle', 1.0), ('pizza', 0.8), ('icecream', 0.3), ('chopper', 0.4),
-          ('moped', 1.0), ('sidecar', 0.4), ('copbike', 0.25), ('courier', 1.1), ('cargo', 0.7)],
-    'G': [('beater', 6), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1), ('chopper', 1.6), ('brick', 1.5),
+          ('moped', 1.0), ('sidecar', 0.4), ('copbike', 0.25), ('courier', 1.1), ('cargo', 0.7), ('gti', 1.6)],
+    'G': [('beater', 6), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1), ('chopper', 1.6), ('shade', 1.5),
           ('hotrod', 0.6), ('dirt', 0.8), ('bicycle', 0.8), ('moped', 1.0), ('trike', 0.7), ('bmx', 0.8),
-          ('sidecar', 0.5), ('cargo', 0.8), ('kart', 0.3)],
-    'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5), ('jeep', 1.0), ('brick', 2.5),
+          ('sidecar', 0.5), ('cargo', 0.8), ('kart', 0.3), ('gti', 0.8)],
+    'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5), ('jeep', 1.0), ('shade', 2.5),
           ('bicycle', 1.4), ('scooter', 0.8), ('icecream', 0.5), ('minibus', 0.6), ('quad', 0.3), ('bmx', 0.9),
-          ('moped', 0.6), ('tourer', 0.4), ('sidecar', 0.5), ('caddy', 0.9), ('courier', 0.6), ('kart', 0.3)],
-    'I': [('truck', 4), ('van', 4), ('pickup', 3), ('beater', 2), ('sedan', 1), ('jeep', 0.8), ('dirt', 0.7), ('brick', 1),
+          ('moped', 0.6), ('tourer', 0.4), ('sidecar', 0.5), ('caddy', 0.9), ('courier', 0.6), ('kart', 0.3),
+          ('gti', 1.5), ('coupe', 0.5)],
+    'I': [('truck', 4), ('van', 4), ('pickup', 3), ('beater', 2), ('sedan', 1), ('jeep', 0.8), ('dirt', 0.7), ('shade', 1),
           ('cashvan', 0.3), ('sidecar', 0.5), ('moped', 0.5), ('cargo', 1.4)],
     'B': [('sports', 2.5), ('sedan', 3), ('taxi', 3), ('muscle', 2), ('suv', 2), ('hatch', 2), ('bus', 0.5),
           ('limo', 0.8), ('bike', 1.4), ('chopper', 1.0), ('tuner', 1.2), ('racer', 0.4), ('hotrod', 0.6),
           ('quad', 0.5), ('icecream', 0.6), ('trike', 0.8), ('tourer', 0.7), ('bmx', 0.5), ('caddy', 1.0),
-          ('kart', 0.6), ('courier', 0.5)],
+          ('kart', 0.6), ('courier', 0.5), ('coupe', 1.4), ('gti', 1.0)],
     'P': [('sedan', 4), ('taxi', 3), ('hatch', 2), ('bicycle', 1.5), ('scooter', 0.8), ('bmx', 1.0), ('caddy', 0.8)],
 }
 
@@ -634,6 +651,8 @@ class Vehicle(object):
         self.removed = False
         self.keep = False                # не удалять автоматически (миссии, машина игрока)
         self.garage = False              # стоит в гараже игрока: сохраняется вместе с игрой
+        self.hero = False                # машина героя (garage.HeroCar): не пропадает, где бы её ни оставили
+        self.rescue = None               # функция(машина): вызывается вместо утопления (погоня в прологе)
         self.tune = {}                   # тюнинг: категория -> уровень или вариант (см. tuning.py)
         self.k_acc = self.k_top = self.k_brake = self.k_grip = 1.0      # множители ходовых качеств от тюнинга
         self.ride = 0.0                  # высота посадки относительно заводской, м
@@ -793,6 +812,13 @@ class Vehicle(object):
                 piv.setPos(wx, wy, spec.wheel_r)
                 wn = wt.copyTo(piv)
                 self.wheels.append((piv, wn))
+        # машина с салоном: за стёклами видно, кто в ней сидит, а рулевое колесо поворачивается
+        self.cabin = None
+        self.swheel = None
+        self._swheel_deg = 0.0
+        if not spec.bike and self.minfo is not None and self.minfo.get('seats'):
+            self.cabin = dict(seats=list(self.minfo['seats']), who={})
+            self._new_swheel()
         sh = shadow_template(w.assets).copyTo(self.node)
         sh.setScale(spec.W * 0.72, spec.L * 0.62, 1.0)
         sh.setZ(0.04)
@@ -801,6 +827,29 @@ class Vehicle(object):
         self.brake_np = None
         self.siren_np = None
         self.sync()
+
+    def _new_swheel(self):
+        """Рулевое колесо машины с салоном: отдельный узел в середине обода, ось — вдоль рулевой колонки."""
+        if self.swheel is not None:
+            self.swheel.removeNode()
+            self.swheel = None
+        st = self.minfo.get('steer') if self.minfo is not None else None
+        if st is None or self.dead:
+            return
+        t = self.world.models.vehicle_steer(self.kind, self.spec, self._paint_rgb(), self._paint_idx())
+        if t is None:
+            return
+        self.swheel = t.copyTo(self.tilt)
+        self.swheel.setPos(st[0][0], st[0][1], st[0][2])
+        self._swheel_ax = LVector3(st[1][0], st[1][1], st[1][2])
+        self._swheel_r = st[2]
+        self._turn_swheel(self._swheel_deg)
+
+    def _turn_swheel(self, deg):
+        self._swheel_deg = deg
+        q = LQuaternion()
+        q.setFromAxisAngle(deg, self._swheel_ax)
+        self.swheel.setQuat(q)
 
     def _texture_wheels(self):
         """Колёса модели нарисованы на той же текстуре, что и кузов (у старинных машин они ещё и в цвет)."""
@@ -818,6 +867,8 @@ class Vehicle(object):
             self.fork = self.bparts['fork'].copyTo(self.steer_np)
         elif self.minfo is not None and len(self.minfo['wheels']) == 4:
             self._texture_wheels()
+        if self.cabin is not None:
+            self._new_swheel()
         if self.tune:
             from . import tuning
             tuning.apply(self)                       # детали в цвет кузова красятся заново
@@ -839,7 +890,8 @@ class Vehicle(object):
             node.setPos(seat[0], seat[1], seat[2] - 0.92)
         else:
             node.setPos(seat[0] - pv.x, seat[1] - pv.y, seat[2] - pv.z)
-        if bars and pv is not None and self.bparts.get('grips') is not None:
+        if bars and pv is not None and (self.swheel is not None if self.cabin is not None
+                                        else self.bparts.get('grips') is not None):
             self._arms = vis
             self._arms_mix = mix
             self._reach()
@@ -847,6 +899,13 @@ class Vehicle(object):
     def _reach(self):
         """Подвести руки ездока к ручкам руля там, где они сейчас (руль поворачивается вместе с вилкой).
         Корпус идёт за рулём: плечи разворачиваются в сторону поворота, ездок подаётся вперёд."""
+        if self.cabin is not None:
+            # водитель в салоне: ладони на ободе рулевого колеса — «без четверти три»; обод ходит под руками
+            if self.swheel is not None:
+                r = self._swheel_r * 0.92
+                self._arms_deg = self._swheel_deg
+                self._arms.ride_arms(self.swheel, LPoint3(-r, 0.0, 0.0), LPoint3(r, 0.0, 0.0), self._arms_mix)
+            return
         gx, gy, gz = self.bparts['grips']
         sty = self.bparts['steer'][1]
         deg = self._steer_deg
@@ -871,8 +930,38 @@ class Vehicle(object):
         self.steer_np.setQuat(q)
         self.steer_np.setPos(ax[1] + q.xform(ax[2] - ax[1]))
 
+    def _seat_cabin(self, ped, passenger):
+        """Посадить персонажа в салон: водитель — за руль, пассажиры — на свободные места по порядку."""
+        cab = self.cabin
+        vis = ped.vis
+        if vis is None or self.dead:
+            return False
+        who = cab['who']
+        for q in [q for q in who if q.removed or q.vehicle is not self]:
+            del who[q]                                  # кто-то исчез, не выходя из машины: место свободно
+        idx = who.get(ped)
+        if idx is None:
+            if passenger:
+                taken = set(who.values())
+                free = [i for i in range(1, len(cab['seats'])) if i not in taken]
+                if not free:
+                    return False                        # мест не осталось: едет невидимкой, как в обычной машине
+                idx = free[0]
+            else:
+                idx = 0
+            who[ped] = idx
+        if getattr(ped, '_ride_parent', None) is None:
+            ped._ride_parent = ped.node.getParent()
+        self._pose_rider(vis, ped.node, cab['seats'][idx], 'car' if idx == 0 else 'seat', bars=(idx == 0))
+        ped.node.setScale(CABIN_SCALE)
+        ped.shadow.hide()
+        ped.node.show()
+        return True
+
     def seat_ped(self, ped, passenger=False):
         """Посадить персонажа в седло (или на место пассажира): он виден и едет вместе с машиной."""
+        if self.cabin is not None:
+            return self._seat_cabin(ped, passenger)
         bp = self.bparts
         if passenger:
             s2 = bp.get('seat2')
@@ -896,8 +985,13 @@ class Vehicle(object):
         par = getattr(ped, '_ride_parent', None)
         ped._ride_parent = None
         self._let_go(ped.vis)
+        if self.cabin is not None:
+            self.cabin['who'].pop(ped, None)
         if ped.removed or ped.node.isEmpty():
             return                                  # фигуру уже убрали: возвращать некого
+        if self.cabin is not None:
+            ped.node.setScale(1.0)
+            ped.shadow.show()
         if par is not None and not par.isEmpty():
             ped.node.reparentTo(par)
             ped.node.setHpr(0, 0, 0)
@@ -1253,6 +1347,9 @@ class Vehicle(object):
         if self.is_player and self.world.player.god:
             self.world.game.tester.rescue()     # меню тестера, бессмертие: машину возвращают на дорогу
             return
+        if self.rescue is not None:
+            self.rescue(self)
+            return
         self.sunk = True
         self.dead = True
         self.world.on_vehicle_sunk(self)
@@ -1347,6 +1444,9 @@ class Vehicle(object):
         self.body.removeNode()
         self.body = self._new_body(wreck=True)
         self._free_riders()
+        if self.swheel is not None:
+            self.swheel.removeNode()                 # у сгоревшей машины руль — часть кузова
+            self.swheel = None
         for piv, wn in self.wheels:
             piv.setColorScale(0.16, 0.15, 0.14, 1.0)         # обгоревшие колёса
         self.set_mode(Vehicle.PHYS)
@@ -1411,6 +1511,12 @@ class Vehicle(object):
             ws[1][0].setH(st)
             for i in range(4):
                 ws[i][1].setP(rot)
+            if self.swheel is not None:
+                deg = -st * STEER_TURNS
+                if abs(deg - self._swheel_deg) > 0.5:
+                    self._turn_swheel(deg)
+                    if self._arms is not None and abs(deg - self._arms_deg) > 2.0:
+                        self._reach()                       # руки водителя идут за ободом
         if self.mode == Vehicle.PHYS:
             # крен в поворотах и «клевок» при торможении
             lat = clamp(-self.slip * 0.9 - v * math.tan(self.steer) * 0.35, -7.0, 7.0)

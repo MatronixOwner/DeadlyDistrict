@@ -14,12 +14,12 @@ DESPAWN = 165.0
 PARK_MAX = 22
 PARK_KINDS = ['sedan', 'hatch', 'suv', 'muscle', 'beater', 'pickup', 'van', 'sports', 'lowrider']
 ZONE_PARKED = {
-    'D': ['sedan', 'sedan', 'suv', 'sports', 'hatch', 'taxi'],
-    'O': ['sedan', 'hatch', 'hatch', 'beater', 'van', 'muscle'],
-    'G': ['beater', 'beater', 'lowrider', 'pickup', 'hatch'],
-    'R': ['sedan', 'suv', 'suv', 'hatch', 'muscle', 'sports'],
+    'D': ['sedan', 'sedan', 'suv', 'sports', 'hatch', 'taxi', 'shade', 'gti'],
+    'O': ['sedan', 'hatch', 'hatch', 'beater', 'van', 'muscle', 'shade', 'gti'],
+    'G': ['beater', 'beater', 'lowrider', 'pickup', 'hatch', 'shade'],
+    'R': ['sedan', 'suv', 'suv', 'hatch', 'muscle', 'sports', 'gti', 'coupe'],
     'I': ['pickup', 'van', 'beater', 'truck', 'sedan'],
-    'B': ['sports', 'sedan', 'muscle', 'suv', 'hatch', 'lowrider'],
+    'B': ['sports', 'sedan', 'muscle', 'suv', 'hatch', 'lowrider', 'coupe', 'gti'],
 }
 
 

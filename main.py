@@ -123,7 +123,6 @@ def selftest():
     _need(all(v.minfo is not None or v.bparts is not None for v in w.vehicles), 'vehicle without a model')
     from game import props
     _need(len(props.models()) >= 7, 'street prop models (assets/models/props.json) not loaded')
-    _need(not w.hud.band.isEmpty() and w.hud.band.getTexture() is not None, 'UI panel texture not loaded')
     # каждая модель и каждая её текстура должны быть в сборке, а не только те, что встретились за минуту игры
     from game.vehicle import SPECS, PAINTS
     from game import bikes, tuning

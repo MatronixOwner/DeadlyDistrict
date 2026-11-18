@@ -49,6 +49,9 @@ POSES = {
     'pillion': dict(clips=(('sit', 0.55), ('ride', 0.45)), lean=4.0),
     'tub': dict(clips=(('sit', 0.6), ('sit_ground', 0.4)), lean=0.0),
     'bench': dict(clips=(('sit', 1.0),), lean=0.0),
+    # салон автомобиля: водитель — руки на баранке, спинка сиденья откинута; пассажир — руки на коленях
+    'car': dict(clips=(('drive', 1.0),), lean=-3.0),
+    'seat': dict(clips=(('sit', 0.7), ('drive', 0.3)), lean=-16.0),
     # карт: сидят низко, ноги вытянуты вперёд, руки на руле перед коленями
     'kart': dict(clips=(('drive', 0.6), ('sit_ground', 0.4)), lean=0.0, hand=(0.305, 0.09), foot=(0.20, 0.58, -0.275),
                  knee=(0.21, 0.445, 0.13)),

@@ -210,6 +210,7 @@ class Player(object):
         self.aiming = False
         self.indoors = False           # герой в помещении: оружие убрано
         self.no_enter_t = 0.0          # после сценки Enter ещё мгновение не сажает в машину
+        self.lock_in = False           # из машины не выйти (погоня в прологе)
         self.aim_yaw = syaw
         self.invincible = False
         self.god = False               # бессмертие из меню тестера (в обычной игре не включается)
@@ -641,8 +642,8 @@ class Player(object):
         p.speed = 0.0
         if v.spec.bike:
             v.remove_rider()
-            v.seat_ped(p)                           # на мотоцикле героя видно
-        else:
+        # на мотоцикле героя видно; в машине с салоном он сидит за стеклом, в остальных — спрятан
+        if not ((v.spec.bike or v.cabin is not None) and v.seat_ped(p)):
             p.node.hide()
         self.vehicle = v
         self.last_vehicle = v
@@ -701,7 +702,7 @@ class Player(object):
         v.siren = False
         v.set_brake_light(False)
         p.vehicle = None
-        if v.spec.bike:
+        if v.spec.bike or getattr(p, '_ride_parent', None) is not None:
             v.unseat_ped(p)
         p.x, p.y = spot
         p.z = w.city.ground_z(p.x, p.y)
@@ -775,7 +776,7 @@ class Player(object):
         if self.no_enter_t > 0.0:
             self.no_enter_t -= dt
         if inp.hit('f') or (inp.hit('enter') and self.no_enter_t <= 0.0):
-            self.exit_wish = True
+            self.exit_wish = not self.lock_in
         if self.exit_wish:
             if thr > 0.0:
                 self.exit_wish = False
@@ -812,6 +813,8 @@ class Player(object):
             v.is_player = False
             self.vehicle = None
             p.vehicle = None
+            if getattr(p, '_ride_parent', None) is not None:
+                v.unseat_ped(p)                     # сидел верхом или в салоне: фигуру — обратно в мир
         p.dead = False
         p.health = p.max_health
         p.armor = 0.0

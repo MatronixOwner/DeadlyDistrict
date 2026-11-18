@@ -76,8 +76,9 @@ class World(object):
         self.missions = None
         step(0.9, 'Обставляем комнаты…')
         self.interiors = Interiors(self)
-        from .garage import Garage
+        from .garage import Garage, HeroCar
         self.garage = Garage(self)
+        self.hero_car = HeroCar(self)
         self._cam_fx = 0.0
         self._cam_fy = 1.0
         self.slowmo = 1.0
@@ -212,6 +213,7 @@ class World(object):
             self.missions.update(dt)
         if not indoor:
             self.garage.update(dt)
+        self.hero_car.update(dt)
         self._update_emitters(dt)
         self.fx.update(dt)
         self._sweep()
@@ -525,7 +527,7 @@ class World(object):
         ped.aiming = False
         ped.speed = 0.0
         # в машине седока не видно; на мотоцикле он сидит верхом, а пассажир — сзади или в коляске
-        if not (v.spec.bike and v.seat_ped(ped, passenger=not driver)):
+        if not ((v.spec.bike or v.cabin is not None) and v.seat_ped(ped, passenger=not driver)):
             ped.node.hide()
         if driver:
             v.driver = ped

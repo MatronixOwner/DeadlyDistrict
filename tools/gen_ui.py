@@ -148,6 +148,15 @@ def g_ship(d, s, fg):
     d.rectangle([s * 0.46, s * 0.26, s * 0.52, s * 0.38], fill=fg)
 
 
+def g_car(d, s, fg):
+    # машина сбоку: кузов, крыша, два колеса
+    d.rounded_rectangle([s * 0.20, s * 0.47, s * 0.80, s * 0.64], radius=s * 0.04, fill=fg)
+    d.polygon([(s * 0.33, s * 0.47), (s * 0.40, s * 0.33), (s * 0.62, s * 0.33), (s * 0.70, s * 0.47)], fill=fg)
+    for x in (0.34, 0.66):
+        d.ellipse([s * (x - 0.075), s * 0.57, s * (x + 0.075), s * 0.72], fill=fg)
+        d.ellipse([s * (x - 0.03), s * 0.615, s * (x + 0.03), s * 0.675], fill=(0, 0, 0, 0))
+
+
 def blips():
     # заказчики: буква на своём цвете
     for name, letter, col in (('bruce', 'Б', (214, 96, 44)), ('boss', 'К', (120, 60, 150)),
@@ -167,6 +176,7 @@ def blips():
     badge('blip_race', PAPER, g_flag, fg=INK)
     badge('blip_phone', (44, 46, 52, 255), g_phone, fg=PAPER)
     badge('blip_ship', (44, 46, 52, 255), g_ship, fg=PAPER)
+    badge('blip_car', (40, 84, 170, 255), g_car, fg=PAPER)          # машина героя
     # цели и люди
     dot('blip_dest', ACCENT, shape='diamond')
     dot('blip_enemy', (224, 62, 54, 255))

@@ -2,16 +2,19 @@
 """Чтение исходных моделей разных форматов в один простой вид — список деталей (Part).
 
 Нужен только импорту (tools/import_vehicles.py): игра читает готовые .bam.  Форматы: .blend (через
-tools/blend_read.py), Collada .dae, Wavefront .obj, glTF (.glb и .gltf с отдельным .bin), OpenUSD .usda (текстовый).
+tools/blend_read.py), Collada .dae, Wavefront .obj, glTF (.glb и .gltf с отдельным .bin), OpenUSD .usda (текстовый),
+двоичный FBX.
 
     python tools/mesh_src.py файл [имена деталей…]        # список деталей и их габариты
 """
 import json
+import math
 import os
 import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
+import zlib
 
 import numpy as np
 
@@ -554,6 +557,194 @@ def read_usda(path):
     return out
 
 
+# ---------------------------------------------------------------------------
+# FBX (двоичный)
+# ---------------------------------------------------------------------------
+def fbx_nodes(data):
+    """Дерево двоичного FBX: список узлов (имя, свойства, вложенные узлы).  Массивы свойств — numpy."""
+    if data[:20] != b'Kaydara FBX Binary  ':
+        raise ValueError('FBX: нужен двоичный файл (текстовый FBX не поддерживается)')
+    ver = struct.unpack('<I', data[23:27])[0]
+    head = '<QQQ' if ver >= 7500 else '<III'
+    hs = struct.calcsize(head)
+    plain = {'Y': '<h', 'C': '<b', 'I': '<i', 'F': '<f', 'D': '<d', 'L': '<q'}
+    arrays = {'f': '<f4', 'd': '<f8', 'l': '<i8', 'i': '<i4', 'b': '<i1'}
+
+    def node(pos):
+        end, nprop, plen = struct.unpack(head, data[pos:pos + hs])
+        pos += hs
+        nl = data[pos]
+        name = data[pos + 1:pos + 1 + nl].decode('ascii', 'replace')
+        pos += 1 + nl
+        if end == 0:                                # пустая запись закрывает список вложенных узлов
+            return None, pos
+        props = []
+        for _ in range(nprop):
+            t = chr(data[pos])
+            pos += 1
+            if t in plain:
+                n = struct.calcsize(plain[t])
+                props.append(struct.unpack(plain[t], data[pos:pos + n])[0])
+                pos += n
+            elif t in arrays:
+                cnt, enc, clen = struct.unpack('<III', data[pos:pos + 12])
+                raw = data[pos + 12:pos + 12 + clen]
+                pos += 12 + clen
+                if enc == 1:
+                    raw = zlib.decompress(raw)
+                props.append(np.frombuffer(raw, dtype=arrays[t], count=cnt))
+            elif t in 'SR':
+                n = struct.unpack('<I', data[pos:pos + 4])[0]
+                v = data[pos + 4:pos + 4 + n]
+                pos += 4 + n
+                props.append(v.decode('utf-8', 'replace') if t == 'S' else v)
+            else:
+                raise ValueError('FBX: неизвестный тип свойства %r' % t)
+        kids = []
+        while pos < end:
+            k, pos = node(pos)
+            if k is None:
+                break
+            kids.append(k)
+        return (name, props, kids), end
+    out = []
+    pos = 27
+    while pos + hs < len(data):
+        n, pos = node(pos)
+        if n is None:
+            break
+        out.append(n)
+    return out
+
+
+def _fbx_euler(deg):
+    """Поворот FBX по углам Эйлера в порядке XYZ (сначала вокруг X, потом Y, потом Z)."""
+    rx, ry, rz = [math.radians(float(a)) for a in deg]
+    cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+    mx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+    my = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+    mz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+    m = np.eye(4)
+    m[:3, :3] = mz.dot(my).dot(mx)
+    return m
+
+
+def read_fbx(path):
+    """Детали из двоичного FBX (так его пишут Blender и большинство редакторов): по одной на объект с сеткой,
+    с применёнными матрицами объектов и их родителей.  Оси остаются как в файле (обычно Y вверх)."""
+    with open(path, 'rb') as f:
+        top = fbx_nodes(f.read())
+
+    def child(n, name):
+        for k in n[2]:
+            if k[0] == name:
+                return k
+        return None
+
+    def props70(n):
+        out = {}
+        p = child(n, 'Properties70')
+        for k in (p[2] if p else ()):
+            if k[0] == 'P' and k[1]:
+                out[k[1][0]] = k[1][4:]
+        return out
+
+    def move(v):
+        m = np.eye(4)
+        m[:3, 3] = [float(a) for a in v]
+        return m
+
+    objects = [n for n in top if n[0] == 'Objects']
+    geoms, models, materials = {}, {}, {}
+    for n in (objects[0][2] if objects else ()):
+        if n[0] == 'Geometry' and child(n, 'Vertices') is not None:
+            geoms[n[1][0]] = n
+        elif n[0] == 'Model':
+            models[n[1][0]] = n
+        elif n[0] == 'Material':
+            materials[n[1][0]] = n[1][1].split('\x00')[0]
+    parent, geom_of, mats_of = {}, {}, {}
+    for n in top:
+        if n[0] != 'Connections':
+            continue
+        for c in n[2]:
+            if c[0] != 'C' or c[1][0] != 'OO':
+                continue
+            a, b = c[1][1], c[1][2]
+            if a in geoms and b in models:
+                geom_of[b] = a
+            elif a in models:
+                parent[a] = b
+            elif a in materials and b in models:
+                mats_of.setdefault(b, []).append(materials[a])
+    world = {}
+
+    def matrix(mid):
+        m = world.get(mid)
+        if m is not None:
+            return m
+        p = props70(models[mid])
+        zero, one = (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)
+        t = move(p.get('Lcl Translation', zero))
+        r = _fbx_euler(p.get('Lcl Rotation', zero))
+        s = np.diag([float(a) for a in p.get('Lcl Scaling', one)] + [1.0])
+        pre = _fbx_euler(p.get('PreRotation', zero))
+        post = _fbx_euler(p.get('PostRotation', zero))
+        rp, sp = move(p.get('RotationPivot', zero)), move(p.get('ScalingPivot', zero))
+        roff, soff = move(p.get('RotationOffset', zero)), move(p.get('ScalingOffset', zero))
+        m = t.dot(roff).dot(rp).dot(pre).dot(r).dot(np.linalg.inv(post)).dot(np.linalg.inv(rp)) \
+            .dot(soff).dot(sp).dot(s).dot(np.linalg.inv(sp))
+        if parent.get(mid) in models:
+            m = matrix(parent[mid]).dot(m)
+        world[mid] = m
+        return m
+    out = []
+    for mid, node in models.items():
+        g = geoms.get(geom_of.get(mid))
+        if g is None:
+            continue
+        verts = np.asarray(child(g, 'Vertices')[1][0], dtype=np.float64).reshape(-1, 3)
+        index = child(g, 'PolygonVertexIndex')[1][0]
+        polys, cur = [], []
+        for k, i in enumerate(index):
+            if i < 0:
+                cur.append((int(~i), k))
+                polys.append(cur)
+                cur = []
+            else:
+                cur.append((int(i), k))
+        uv_layer = child(g, 'LayerElementUV')
+        corner_uv = None
+        if uv_layer is not None:
+            uv = np.asarray(child(uv_layer, 'UV')[1][0], dtype=np.float64).reshape(-1, 2)
+            how = child(uv_layer, 'MappingInformationType')[1][0]
+            ref = child(uv_layer, 'ReferenceInformationType')[1][0]
+            idx = child(uv_layer, 'UVIndex')[1][0] if ref == 'IndexToDirect' else None
+            if how == 'ByPolygonVertex':
+                corner_uv = (lambda vi, k: uv[idx[k]]) if idx is not None else (lambda vi, k: uv[k])
+            elif how in ('ByVertice', 'ByVertex'):
+                corner_uv = (lambda vi, k: uv[idx[vi]]) if idx is not None else (lambda vi, k: uv[vi])
+        mat_layer = child(g, 'LayerElementMaterial')
+        poly_mat = None
+        if mat_layer is not None and child(mat_layer, 'MappingInformationType')[1][0] == 'ByPolygon':
+            poly_mat = child(mat_layer, 'Materials')[1][0]
+        names = mats_of.get(mid) or ['']
+        tris, uvs, mat = [], [], []
+        for pi, poly in enumerate(polys):
+            for (a, b, c) in _fan(poly):
+                tris.append((a[0], b[0], c[0]))
+                if corner_uv is not None:
+                    uvs.append((corner_uv(*a), corner_uv(*b), corner_uv(*c)))
+                mat.append(min(int(poly_mat[pi]), len(names) - 1) if poly_mat is not None else 0)
+        p = props70(node)
+        geo = move(p.get('GeometricTranslation', (0.0, 0.0, 0.0))).dot(
+            _fbx_euler(p.get('GeometricRotation', (0.0, 0.0, 0.0)))).dot(
+            np.diag([float(a) for a in p.get('GeometricScaling', (1.0, 1.0, 1.0))] + [1.0]))
+        part = Part(node[1][1].split('\x00')[0], verts, tris, uvs if corner_uv is not None else None, mat, names)
+        out.append(part.transform(matrix(mid).dot(geo)))
+    return out
+
+
 def read(path, **kw):
     ext = os.path.splitext(path)[1].lower()
     if ext == '.blend':
@@ -570,6 +761,8 @@ def read(path, **kw):
         return read_glb(path)[0]
     if ext == '.usda':
         return read_usda(path)
+    if ext == '.fbx':
+        return read_fbx(path)
     raise ValueError(path)
 
 

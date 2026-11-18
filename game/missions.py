@@ -7,6 +7,7 @@ from .pickups import Marker, Arrow, Pickup, spot_pickup, PINK, YELLOW, BLUE, GRE
 from .defs import (WEAPONS, W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV,
                    make_look, gang_look, random_look, cop_look, SKINS)
 from .vehicle import Vehicle
+from .garage import HERO_KIND
 from .collision import F_PED, F_CAR
 from .mathutil import clamp, angle_diff
 from . import settings as settings_mod
@@ -1122,6 +1123,7 @@ def m_p4(m):
     pl = w.player
     yield from m.briefing('prof', [
         'Пора заканчивать с мелочами. Городской банк. Сегодня.',
+        'Да, тот самый. Три года назад вас у моста ждал заслон. В этот раз ждать будет некому.',
         'Мои люди уже внутри. Ваше дело — удержать вход, пока выносят деньги.',
         'Потом увезёте их в порт. Оружие и броня — в багажнике. Удачи, Макс.'])
     pl.give_weapon(W_AK, 300)
@@ -2109,12 +2111,14 @@ class Missions(object):
 
     # ------------------------------------------------------------------
     def start_intro(self):
-        """Пролог — сценка на движке: ночной автобус привозит Макса в город.
+        """Пролог: ограбление банка три года назад и возвращение Макса в город.
 
-        Enter, пробел или щелчок мыши — следующий кадр, Esc — пропустить целиком."""
+        Сценка на движке, а в середине — погоня, где машину ведёт игрок.  В сценке Enter, пробел или щелчок
+        мыши — следующий кадр, Esc — пропустить пролог целиком; в погоне Esc открывает паузу, как всегда."""
         w = self.w
         pl = w.player
-        it = dict(t=0.0, wait=0.0, tick=None, bus=None, hint=None)
+        it = dict(t=0.0, wait=0.0, tick=None, bus=None, hint=None, car=None, peds=[], cars=[], play=False, end=None,
+                  marker=None, blip=None, stats=dict(w.stats))
         it['gen'] = self._intro_script(it)
         self.intro = it
         w.hud.fade(1.0, instant=True)
@@ -2143,6 +2147,8 @@ class Missions(object):
         sky = w.sky
         cam = w.cam
         rn = w.roadnet
+        au = w.audio
+        pol = w.police
         sx, sy = c.landmarks['terminal']['door']
 
         def stage(x, y):
@@ -2183,29 +2189,227 @@ class Missions(object):
             w.scene_engine = ('engine_truck', clamp(1.0 - d / 70.0, 0.0, 1.0) * 0.6,
                               0.62 + 0.03 * min(abs(b.speed), 16.0))
 
-        # --- 1. ночная трасса на материке: автобус идёт к городу
+        # ==================================================================
+        # три года назад: банк на Банковской, ночь, дождь
+        # ==================================================================
+        bank = c.landmarks['bank']
+        bx, by = bank['door']
+        rx, ry = bank['road']
+        out = 1.0 if ry > by else -1.0                  # в какую сторону от двери лежит улица
+        # полоса, по которой уезжают: дальняя от банка; машина ждёт у её бордюра, носом по ходу
+        lane = None
+        for ln in rn.lanes_near(rx, ry + out * 4.0, 0.0, 16.0):
+            if ln.turn is None and abs(ln.y1 - ln.y0) < 0.5 and ln.length > 30.0 and abs(ln.y0 - ry) < 11.0 \
+                    and min(ln.x0, ln.x1) < bx < max(ln.x0, ln.x1):
+                if lane is None or abs(ln.y0 - by) > abs(lane.y0 - by):
+                    lane = ln
+        if lane is not None:
+            cyaw = 0.0 if lane.x1 > lane.x0 else math.pi
+            cy = lane.y0 + out * 2.5
+        else:
+            cyaw, cy = 0.0, ry + out * 8.5
+        fx = math.cos(cyaw)                             # +1 — машина смотрит на восток
+        cx = bx - fx * 1.5
         sky.set_weather('rain')
-        sky.set_time(23.4)
+        sky.set_time(23.6)
         p.node.hide()
-        lane, s0, d0 = rn.nearest_lane(640.0, 825.0, 30.0)
-        hy = lane.y0 if lane is not None else 824.8
-        stage(604.0, hy + 16.0)
-        bus = bus_at(668.0, hy, math.pi, 16.0)
+        stage(bx, by + out * 2.0)
+        self.clear_area(bx, ry + out * 3.0, 34.0, peds=True)
+        car = w.spawn_vehicle(HERO_KIND, cx, cy, cyaw, 0)
+        car.keep = True
+        car.immune = True
+        car.owner = 'player'
+        car.stolen = True
+        car.radio = -1                                  # радио молчит: слушают улицу
+        it['car'] = car
+        pl.enter_vehicle(car, silent=True)
+        car.set_lights(True)
+        w.scene_engine = ('engine', 0.30, 0.6)
+        # 1. улица: машина с включёнными фарами напротив банка
+        cam.override = (cx - fx * 8.5, cy + out * 2.7, 1.15, cx + fx * 2.2, cy - out * 5.0, 1.9)
+        hud.fade(0.0, 0.7)
+        yield say('Порт-Глухов. Три года назад.', 0.4)
+        # 2. Макс за рулём
+        cam.override = (cx + fx * 4.4, cy + out * 2.3, 1.3, cx + fx * 0.2, cy, 1.02)
+        yield say('Я не грабил банки. Я ждал у дверей с заведённым мотором — и уезжал быстрее всех в этом городе.')
+        # 3. сигнализация: двое выбегают из банка и бегут к машине
+        au.loop('alarm', 'alarm', 0.5)
+        crew = []
+        for i, (ox, look) in enumerate(((-0.8, make_look(model='m_old', scale=1.0, fat=1.05)),
+                                        (0.9, make_look(model='m_leather_b', scale=1.02, fat=1.0)))):
+            q = w.spawn_ped(bx + ox, by + out * (0.7 + 0.6 * i), math.atan2(out, 0.0), look, 'mission')
+            q.keep = True
+            q.health = q.max_health = 900.0
+            # к задней двери со стороны банка
+            q.tx, q.ty = cx - fx * (0.7 + 0.5 * i), cy - out * (car.spec.W * 0.5 + 0.7)
+            q.set_state('goto', 1.0)
+            q.timer = 1.0
+            crew.append(q)
+        it['peds'].extend(crew)
+        cam.override = (cx + fx * 7.5, cy + out * 3.0, 1.6, bx - fx * 1.0, by + out * 2.0, 1.2)
+        say('Сигнализация. На сорок секунд раньше, чем мы договаривались.', 0.6)
+        t = [0.0]
 
         def tick(dt):
-            bus.x -= 16.0 * dt
-            cam.override = (606.0, hy + 7.4, 1.25, bus.x, bus.y, 1.8)
-            engine(bus)
+            t[0] += dt
+            for q in crew:
+                if q.vehicle is None and (t[0] > 5.5 or math.hypot(q.x - q.tx, q.y - q.ty) < 1.3):
+                    w.put_in_vehicle(q, car)
+                    au.play_at('door', car.x, car.y, 0.9)
         it['tick'] = tick
-        tick(0.0)
-        hud.fade(0.0, 0.6)
-        yield say('Порт-Глухов. Город, в который не приезжают — в него попадают.', 0.8)
+        yield lambda: all(q.vehicle is car for q in crew)
+        it['tick'] = None
+        for q in crew:
+            if q.vehicle is not car:
+                w.put_in_vehicle(q, car)
+        cam.override = (cx + fx * 5.2, cy + out * 1.9, 1.15, cx - fx * 0.4, cy, 1.0)
+        yield say('Седой: Гони, Макс! На мост — и за город!', -0.8)
 
-        # --- 2. Большой мост: впереди огни острова
+        # ==================================================================
+        # погоня: машину ведёт игрок.  Чем бы она ни кончилась, кончится она арестом
+        # ==================================================================
+        br = None
+        for seg in c.bridges:
+            if seg['bridge'].get('name') == 'north':
+                br = seg
+        if br is not None and br['kind'] == 'v':
+            gx, gy0 = br['c'], br['a']
+        else:
+            gx, gy0 = bx + 240.0, by + 440.0
+        mx, my = gx + 3.4, gy0 + 26.0
+        hud.clear_subtitles()
+        cam.override = None
+        cam.face(car.x, car.y, car.yaw)
+        self.letterbox(False)
+        it['hint'].hide()
+        hud.show(True)
+        hud.mission_title('Пролог. Последнее дело')
+        w.scene_engine = None
+        w.traffic.enabled = True
+        it['play'] = True
+        it['end'] = None
+        pl.freeze = False
+        pl.lock_in = True
+        pl.no_enter_t = 0.5
+        car.rescue = lambda v: it.__setitem__('end', it['end'] or 'water')
+        pol.locked = 3
+        pol.set_level(3)
+        mk = Marker(w, mx, my, 9.0, YELLOW)
+        self.markers.append(mk)
+        it['marker'] = mk
+        it['blip'] = hud.add_blip('blip_dest', mx, my, None, (1, 1, 1, 1), 1.15, True)
+        hud.subtitle('Уходи от погони: гони на Большой мост!', 6.0, clear=True)
+        hud.help('W/S — газ и тормоз, A/D — руль, пробел — ручник. Жёлтая метка на радаре — Большой мост.', 9.0)
+        talk = [(7.0, 'Клык: Сзади! Сзади мигалки!'),
+                (16.0, 'Седой: Жми на мост, Макс. За мостом трасса — там нас не найдут.'),
+                (29.0, 'Клык: Откуда их столько?! Мы же всё рассчитали!'),
+                (42.0, 'Седой: Значит, кто-то рассчитал лучше нас.'),
+                (64.0, 'Клык: Мост, Макс! Давай на мост!'),
+                (96.0, 'Седой: Хватит кружить. На мост!')]
+        t = [0.0]
+
+        def tick(dt):
+            t[0] += dt
+            d = math.hypot(car.x - bx, car.y - by)
+            au.loop('alarm', 'alarm' if d < 150.0 else None, 0.5 * max(0.0, 1.0 - d / 150.0) ** 2)
+            if talk and t[0] >= talk[0][0]:
+                hud.subtitle(talk.pop(0)[1], 4.0)
+            if it['end'] is None:
+                if mk.player_inside(None):
+                    it['end'] = 'bridge'
+                elif t[0] > 120.0 or pl.vehicle is not car or car.dead:
+                    it['end'] = 'time'
+        it['tick'] = tick
+        yield lambda: it['end'] is not None
+        it['tick'] = None
+        end = it['end']
+        it['play'] = False
+        pl.lock_in = False
+        pl.freeze = True
+        car.rescue = None
+        hud.clear_subtitles()
+        hud.help_text.hide()
+        hud.mission_title('')
+        if end != 'busted':
+            hud.fade(1.0, 5.0)
+            yield 0.35
+        au.loop('alarm', None)
+        self._intro_unmark(it)
+        pol.locked = None
+        pol.clear()
+        hud.show(False)
+        self.letterbox(True)
+        it['hint'].show()
+        w.traffic.enabled = False
+        # погоня остаётся за кадром: убираем всех, кто в ней участвовал
+        for v in list(w.vehicles):
+            if not v.keep:
+                w.remove_vehicle(v)
+        for q in list(w.peds):
+            if not q.is_player and not q.keep:
+                w.remove_ped(q)
+        w._sweep()
+        if end != 'busted':
+            # заслон на мосту: три патрульные машины поперёк, мигалки, полицейские с оружием
+            zd = c.ground_z(gx, gy0 + 104.0)
+            if pl.vehicle is not car and not car.removed and not car.dead:
+                pl.enter_vehicle(car, silent=True)
+            car.scripted = True
+            car.set_mode(Vehicle.PARKED)
+            car.x, car.y, car.yaw = gx + 3.2, gy0 + 82.0, math.pi / 2
+            car.z = c.ground_z(car.x, car.y)
+            car.vx = car.vy = car.speed = car.omega = 0.0
+            car.steer = 0.0
+            car.sync()
+            car.set_lights(True)
+            for i, (ox, oy, yaw) in enumerate(((-4.4, 104.0, 0.25), (0.6, 105.5, math.pi - 0.2), (5.0, 103.5, 0.1))):
+                u = w.spawn_vehicle('police', gx + ox, gy0 + oy, yaw, 0)
+                u.keep = True
+                u.locked = True
+                u.siren = True
+                u.set_lights(True)
+                it['cars'].append(u)
+            for (ox, oy) in ((-5.8, 99.5), (-1.6, 100.5), (2.6, 100.0), (6.4, 99.0)):
+                q = w.spawn_ped(gx + ox, gy0 + oy, math.atan2(car.y - (gy0 + oy), car.x - (gx + ox)), cop_look(), 'cop')
+                q.keep = True
+                q.set_weapon(W_PISTOL)
+                q.set_state('stand')
+                q.aiming = True
+                q.fixed = True
+                it['peds'].append(q)
+            cam.override = (gx - 1.2, car.y - 9.5, car.z + 3.1, gx + 0.8, gy0 + 103.0, zd + 1.0)
+            w.scene_engine = ('engine', 0.25, 0.6)
+            hud.fade(0.0, 3.0)
+            line = {'bridge': 'Мост перекрыли раньше, чем мы до него доехали. Нас ждали.',
+                    'water': 'Из воды нас вытащили уже в наручниках. А мост всё это время был перекрыт: нас ждали.'}.get(
+                        end, 'Мы кружили по городу, пока не выскочили к мосту. Он был перекрыт. Нас ждали.')
+            yield say(line, 0.6)
+            hud.big('АРЕСТОВАН', BLUEC, 4.0)
+            au.play('failed', 0.8)
+            yield 2.4
+            hud.fade(1.0, 2.5)
+            yield 0.7
+        else:
+            # арест уже показан: «АРЕСТОВАН», экран тёмный
+            hud.big_t = 0.0
+            yield say('Далеко мы не ушли. Нас ждали — на каждом перекрёстке.', 0.4)
+
+        # ==================================================================
+        # три года спустя: автобус привозит Макса в город
+        # ==================================================================
+        w.scene_engine = None
+        self._intro_props_off(it)
+        hud.clear_subtitles()
+        p.node.hide()
+        sky.set_weather('cloudy')
+        sky.set_time(5.9)
+        hud.big('Три года спустя', GOLD, 3.2)
+        yield 2.6
+        # --- Большой мост на рассвете: автобус идёт к острову
         lane, s0, d0 = rn.nearest_lane(66.0, 520.0, 30.0)
-        bx = lane.x0 if lane is not None else 68.2
-        stage(bx + 14.0, 560.0)
-        bus = bus_at(bx, 584.0, -math.pi / 2, 15.0)
+        lx = lane.x0 if lane is not None else 68.2
+        stage(lx + 14.0, 560.0)
+        bus = bus_at(lx, 584.0, -math.pi / 2, 15.0)
 
         def tick(dt):
             bus.y -= 15.0 * dt
@@ -2214,10 +2418,10 @@ class Missions(object):
             engine(bus)
         it['tick'] = tick
         tick(0.0)
-        yield say('Три года я крутил баранку для чужих людей. Одно неудачное дело — и не стало ни людей, ни баранки.')
+        hud.fade(0.0, 0.8)
+        yield say('Три года — от звонка до звонка. Седого и Клыка я с тех пор не видел. Того, кто нас сдал, — тоже.')
 
-        # --- 3. рассвет, Старый город: автобус подходит к остановке у дома
-        sky.set_weather('cloudy')
+        # --- Старый город: автобус подходит к остановке
         sky.set_time(6.1)
         lane, s0, d0 = rn.nearest_lane(sx, sy - 5.0, 12.0)
         ly = lane.y0 if lane is not None else sy - 5.6
@@ -2240,7 +2444,7 @@ class Missions(object):
         say('Из имущества — сумка да телефон. Из родни в этом городе — один брат.', 2.0)
         yield lambda: t[0] >= total
 
-        # --- 4. конечная: Макс выходит, автобус уезжает
+        # --- конечная: Макс выходит, автобус уезжает
         bus = bus_at(stop_x, ly, math.pi, 0.0)
         w.audio.play_at('door', bus.x, bus.y, 0.9)
         p.node.show()
@@ -2258,7 +2462,7 @@ class Missions(object):
         it['tick'] = tick
         yield say('Водитель: Конечная, парень. Дальше — только море.', 1.6)
 
-        # --- 5. автобус ушёл, Макс остаётся на остановке: дальше играет игрок
+        # --- автобус ушёл, Макс остаётся на остановке: дальше играет игрок
         yield 2.2
         it['tick'] = None
         w.scene_engine = None
@@ -2269,15 +2473,62 @@ class Missions(object):
         hud.fade(1.0, 2.5)
         yield 0.5
 
+    def _intro_unmark(self, it):
+        mk = it.get('marker')
+        if mk is not None:
+            it['marker'] = None
+            mk.remove()
+            if mk in self.markers:
+                self.markers.remove(mk)
+        b = it.get('blip')
+        if b is not None:
+            it['blip'] = None
+            self.w.hud.remove_blip(b)
+
+    def _intro_props_off(self, it):
+        """Убрать то, что расставил пролог: машину ограбления, напарников, заслон на мосту."""
+        w = self.w
+        for q in it['peds']:
+            if not q.removed and q.vehicle is None:
+                w.remove_ped(q)
+        it['peds'] = []
+        for v in [it.get('car')] + list(it['cars']):
+            if v is not None and not v.removed:
+                v.keep = False
+                w.remove_vehicle(v)                     # вместе с теми, кто внутри (героя — высаживает)
+        it['car'] = None
+        it['cars'] = []
+
+    def _intro_caught(self, kind):
+        """Героя арестовали в погоне пролога (или он всё-таки погиб): вместо участка — следующая сценка."""
+        w = self.w
+        it = self.intro
+        pl = w.player
+        px, py = pl.pos()
+        pl.revive(px, py, pl.ped.yaw)
+        pl.ped.node.hide()
+        pl.freeze = True
+        pl.invincible = True
+        w.slowmo = 1.0
+        if it['end'] is None:
+            it['end'] = 'busted'
+
+    def skip_intro(self):
+        """Пропустить пролог целиком (Esc в сценке, пункт меню паузы в погоне)."""
+        if self.intro is not None and not self.respawning:
+            self._end_intro()
+
     def _step_intro(self, dt):
         w = self.w
         it = self.intro
         it['t'] += dt
         inp = w.game.inp
-        if inp.hit('escape'):
+        play = it['play']
+        if not play and inp.hit('escape'):
             self._end_intro()
             return
-        nxt = it['t'] > 0.3 and (inp.hit('enter') or inp.hit('space') or inp.hit('mouse1'))
+        # в погоне Enter, пробел и мышь — управление машиной, а не «следующий кадр»
+        nxt = not play and it['t'] > 0.3 and (inp.hit('enter') or inp.hit('space') or inp.hit('mouse1'))
         try:
             if it['tick'] is not None:
                 it['tick'](dt)
@@ -2309,6 +2560,9 @@ class Missions(object):
         w.traffic.enabled = True
         w.sky.time_scale = 1.0
         w.scene_engine = None
+        w.audio.loop('alarm', None)
+        w.player.lock_in = False
+        w.police.locked = None
 
     def _end_intro(self):
         """Конец пролога (или пропуск): убрать декорации, утро, герой на остановке — и тут звонит Брюс."""
@@ -2320,11 +2574,28 @@ class Missions(object):
         pl = w.player
         p = pl.ped
         hud = w.hud
+        it['play'] = False
+        self._intro_unmark(it)
+        self._intro_props_off(it)
         bus = it.get('bus')
         if bus is not None and not bus.removed:
             bus.keep = False
             w.remove_vehicle(bus)
         self._intro_off()
+        w.police.clear()
+        w.weapons.clear()
+        w.fx.clear()
+        # погоня могла собрать полгорода: на улицах остаётся только то, что должно остаться
+        for v in list(w.vehicles):
+            if not v.keep:
+                w.remove_vehicle(v)
+        for q in list(w.peds):
+            if not q.is_player and not q.keep:
+                w.remove_ped(q)
+        w._sweep()
+        w.traffic.parked = {}
+        for k, val in it['stats'].items():              # пролог в статистику не идёт
+            w.stats[k] = val
         w.interiors.cinema = False
         for mk in self.markers:
             mk.show(True)
@@ -2338,6 +2609,10 @@ class Missions(object):
         w.sky.set_time(8.0)
         w.cam.override = None
         hud.clear_subtitles()
+        hud.help_text.hide()
+        hud.help_t = 0.0
+        hud.big_t = 0.0
+        hud.mission_title('')
         hud.show(True)
         self.letterbox(False)
         pl.freeze = False
@@ -2375,7 +2650,10 @@ class Missions(object):
         if t0 < 3.6 <= t:
             hud.fade(1.0, 1.2)
         if t >= 5.0:
-            self._respawn(kind)
+            if self.intro is not None:
+                self._intro_caught(kind)                # погоня пролога: арест — часть сюжета
+            else:
+                self._respawn(kind)
             w.respawn_kind = None
             self.respawning = False
 
@@ -2429,7 +2707,7 @@ class Missions(object):
             ammo=dict((str(k), v) for k, v in pl.ammo.items()), weapon=pl.weapon_id,
             health=pl.ped.health, armor=pl.ped.armor, hour=w.sky.hour, day=w.sky.day,
             stats=w.stats, hints=sorted(self.hints), bonus=self.bonus_given, finale=self.finale_shown,
-            ckpt=dict(self.ckpt), garage=w.garage.state())
+            ckpt=dict(self.ckpt), garage=w.garage.state(), hero=w.hero_car.state())
         return settings_mod.write_save(data)
 
     def load_game(self, data):
@@ -2462,6 +2740,7 @@ class Missions(object):
         self.ckpt = dict((str(k), int(v)) for k, v in data.get('ckpt', {}).items())
         self.call_t = 9.0
         w.garage.restore(data.get('garage', []))
+        w.hero_car.restore(data.get('hero'))
         # убрать найденные тайники, выдать накопленные награды
         for pk in self.pickups:
             if pk.kind == 'package' and pk.index in self.packages:

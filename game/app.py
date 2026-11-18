@@ -183,7 +183,6 @@ class Game(object):
         self._ld = a2d.attachNewNode('loading')
         kit.card(self._ld, -5, 5, -1.5, 1.5, ui.INK, 1.0)
         asp = self.base.getAspectRatio()
-        kit.panel(self._ld, -asp - 0.2, asp + 0.2, -1.2, 1.2, ui.SKIN_PANEL, 1.0, edge=0.5, tint=0.8)
         x = -asp + 0.14
         kit.label(self._ld, 'DEADLY', x, 0.20, 0.21, ui.PAPER, kit.title, 'l', shadow=False)
         kit.label(self._ld, 'DISTRICT', x, 0.015, 0.21, ui.ACCENT, kit.title, 'l', shadow=False)
@@ -277,6 +276,7 @@ class Game(object):
         hud.set_counter(None)
         w.garage.cars = []                # сами машины уже удалены вместе со всеми остальными
         w.garage.reset()
+        w.hero_car.reset()
         w.interiors.reset()
         w.missions = Missions(w)
         self.audio.stop_loops()
@@ -310,6 +310,7 @@ class Game(object):
         self._begin()
         w = self.world
         w.player.add_money(0)
+        w.hero_car.spawn_home()             # «Ласточка» ждёт героя в гараже у дома
         w.missions.start_intro()
 
     def continue_game(self):
@@ -400,6 +401,13 @@ class Game(object):
             Item('В главное меню', self.to_main_menu),
             Item('Выйти из игры', self.quit),
         ]
+        if self.world.missions.intro is not None:
+            # пауза во время погони в прологе: её можно не доигрывать
+
+            def skip():
+                self.resume()
+                self.world.missions.skip_intro()
+            items.insert(1, Item('Пропустить пролог', skip))
         return Menu(self.ui, 'Пауза', items, back=self.resume)
 
     def text_menu(self, title, text, scale=0.06, back=None):
@@ -1061,7 +1069,8 @@ class Game(object):
                     inp.end_frame()
                     return
             # порядок важен: hit() «съедает» нажатие, а в прологе Esc нужен самой сценке (пропуск)
-            if w.respawn_kind is None and w.missions.intro is None and (inp.hit('escape') or inp.hit('p')):
+            intro = w.missions.intro
+            if w.respawn_kind is None and (intro is None or intro['play']) and (inp.hit('escape') or inp.hit('p')):
                 self.pause()
             else:
                 wdt = dt * (0.45 if (w.respawn_kind == 'wasted' and w.respawn_t < 3.6) else 1.0)

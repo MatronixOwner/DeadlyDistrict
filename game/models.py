@@ -9,7 +9,8 @@ PlayStation 1) и tools/import_models.py (оружие).  Здесь — тол�
 import json
 import os
 
-from panda3d.core import Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture, LColorf
+from panda3d.core import (Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture, LColorf,
+                          TransparencyAttrib)
 
 from .defs import (W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV, W_SILENCED,
                    W_M4, W_DOUBLE, W_SNIPER, W_KNIFE)
@@ -35,14 +36,14 @@ VEHICLE_MODELS = {
     'bus': ('bus', {}),
     'truck': ('stepvan', {'overlay': {2: 'stepvan_mail'}}),
     'enforcer': ('stepvan', {'siren': True}),
-    'fbi': ('volvo', {}),
+    'fbi': ('sus', {}),
     'army': ('stepvan', {}),
-    'beater': ('dacia', {}),
+    'beater': ('wagon', {'overlay': 'wagon_rust'}),
     'lowrider': ('vintage', {}),
-    # новые машины на тех же кузовах: модель растягивается под свои габариты (см. vehicle_info)
+    # машины на тех же кузовах: модель растягивается под свои габариты (см. vehicle_info)
     'limo': ('caprice', {'wheel_k': 0.86}),
     'racer': ('sleek', {}),
-    'minibus': ('hiace', {}),
+    'minibus': ('stepvan', {}),
     'firetruck': ('stepvan', {'siren': True, 'wheel_k': 1.1}),
     'cashvan': ('stepvan', {}),
     'icecream': ('stepvan', {}),
@@ -50,10 +51,15 @@ VEHICLE_MODELS = {
     'jeep': ('minivan', {'wheel_k': 1.3}),
     'pizza': ('hatch', {}),
     'tuner': ('hatch', {}),
-    'brick': ('volvo', {}),
+    # готовые модели с itch.io: седан MoiDev, хэтчбек designersoup, купе boggle и машина героя — Bricchi Games
+    'shade': ('sus', {}),
+    'gti': ('golf', {}),
+    'coupe': ('coupe', {}),
+    'retro': ('retro', {}),
 }
 
 WRECK = (0.20, 0.18, 0.16)
+GLASS_TINT = (0.06, 0.09, 0.12, 0.52)       # стёкла машины с салоном: тёмные, но сквозь них видно
 # Текстуры набора нарисованы приглушёнными красками; цвета игры приводим к тому же виду.
 PAINT_GAIN = 0.74
 PAINT_SAT = 0.86
@@ -119,6 +125,7 @@ class Models(object):
             self.ok = False
         self._files = {}
         self._bodies = {}
+        self._swheels = {}
         self._wheels = {}
         self._actors = {}
         self._weapons = {}
@@ -201,7 +208,12 @@ class Models(object):
         res = dict(model=ent[0], opt=opt, scale=(sx, sy, sz), wheel_scale=ws * wk, wheels=wheels, lift=lift,
                    wheel_r=(wheels[0][2] if wheels else spec.wheel_r), head=pts('head'), tail=pts('tail'),
                    siren=pts('siren') if opt.get('siren') else [], height=height + lift,
-                   fixed=bool(info.get('fixed')))
+                   fixed=bool(info.get('fixed')), cut=bool(info.get('cut')), seats=pts('seats'), steer=None)
+        st = info.get('steer')
+        if st:
+            # рулевое колесо: где стоит, куда смотрит колонка, радиус обода
+            res['steer'] = ((st['pos'][0] * sx, st['pos'][1] * sy, st['pos'][2] * sz + lift), tuple(st['axis']),
+                            st['r'] * sx)
         self._vinfo[kind] = res
         return res
 
@@ -250,6 +262,11 @@ class Models(object):
             if overlay:
                 img.blendSubImage(self._pnm(overlay), 0, 0, 0, 0, w, h)
             img.blendSubImage(detail, 0, 0, 0, 0, w, h)
+        if info['cut']:
+            # вырезы (колёсные арки, нарисованные на бортах): прозрачность — отдельной картинкой
+            img = PNMImage(img)
+            img.addAlpha()
+            img.copyChannel(self._pnm(model + '_cut'), 0, 3)
         tex = Texture('veh-%s' % '-'.join(str(x) for x in key))
         tex.load(img)
         self.assets.setup_filter(tex)
@@ -276,6 +293,30 @@ class Models(object):
                 sn.removeNode()
             skin = m.find('skin')
             skin.setTexture(self.vehicle_texture(kind, spec, paint, idx), 1)
+            if info['cut']:
+                skin.setTransparency(TransparencyAttrib.MBinary, 1)
+            gl = m.find('glass')
+            if not gl.isEmpty():
+                # стёкла машины с салоном: у сгоревшей их нет, у целой они тёмные и прозрачные
+                if wreck:
+                    gl.removeNode()
+                else:
+                    gl.setTextureOff(2)
+                    gl.setColor(GLASS_TINT[0], GLASS_TINT[1], GLASS_TINT[2], GLASS_TINT[3], 2)
+                    gl.setTransparency(TransparencyAttrib.MAlpha, 2)
+                    gl.setTwoSided(True)             # у исходника стёкла смотрят кто наружу, кто внутрь
+                    gl.setDepthWrite(False)
+                    gl.setBin('transparent', 5)
+            sw = m.find('**/swheel')
+            if not sw.isEmpty() and info['steer'] is not None and not wreck:
+                # рулевое колесо — отдельным узлом: оно поворачивается (у сгоревшей машины остаётся в кузове)
+                t = NodePath('swheel')
+                sw.reparentTo(t)
+                sw.setPos(0.0, 0.0, 0.0)
+                sw.setScale(*info['scale'])
+                sw.setTexture(self.vehicle_texture(kind, spec, paint, idx), 1)
+                t.flattenStrong()
+                self._swheels[key] = t
             if wreck:
                 m.setColorScale(WRECK[0], WRECK[1], WRECK[2], 1.0)
             root.flattenStrong()                     # масштаб и цвета — прямо в вершины
@@ -284,6 +325,12 @@ class Models(object):
             return None
         self._bodies[key] = root
         return root
+
+    def vehicle_steer(self, kind, spec, paint, idx=0):
+        """Рулевое колесо машины с салоном (узел-шаблон с началом координат в середине обода) или None."""
+        if self.vehicle_body(kind, spec, paint, False, idx) is None:
+            return None
+        return self._swheels.get((kind, tuple(paint), False, idx))
 
     def vehicle_wheel(self, kind, spec, left=False):
         """Колесо (ось вращения — X).  У левого наружная сторона смотрит в -X.  Текстуру ставит машина."""

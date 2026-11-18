@@ -51,11 +51,6 @@ VEH = os.path.join(OUT, 'veh')
 # исходники: (репозиторий, ревизия, [(путь в репозитории, куда положить в .cache/model_src/new)])
 SOURCES = [
     ('M3-org/retro3d-assets', None, [
-        ('Large_kits/Models pack psx/Models/models.dae', 'psxpack/models.dae'),
-        ('Large_kits/Models pack psx/Texture/Auto.jpg', 'psxpack/Auto.jpg'),
-        ('Large_kits/Models pack psx/Texture/Auto2.jpg', 'psxpack/Auto2.jpg'),
-        ('Vehicles/volvo.blend', 'm3/volvo.blend'),
-        ('Vehicles/Materials/volvo.jpg', 'm3/volvo.jpg'),
         ('Vehicles/bike_vintage (unfinished).blend', 'm3/bike_vintage.blend'),
         ('Vehicles/Materials/bike_vintage.png', 'm3/bike_vintage.png'),
     ]),
@@ -92,11 +87,39 @@ SOURCES = [
     ('morganholly/bike-bullet-delivery', '70f9927c760d6880ed9ba2957da3fbb428e5c22e', [
         ('enviroment/PSX-Waste/PSX-Waste/glb/%s.glb' % n, 'psx_waste/%s.glb' % n)
         for n in ('dumpster', 'barrel', 'trash-bag', 'cardboard-box', 'glass-bottle', 'crumpled-can')]),
-    # ROHHSA, Free PSX UI (https://rohhsa.itch.io/free-psx-ui, CC0): плашки интерфейса — tools/import_extra.py
-    ('Balwanek-ola/haven-2026', 'e58d9bfc33f2280d640d41aff795b7a13d87a147', [
-        ('FREEPSXUI/README.txt', 'rohhsa_ui/README.txt'),
-    ] + [('FREEPSXUI/fullres_720p/Skin%s-Cropped_Text-Block.png' % n, 'rohhsa_ui/Skin%s-Cropped_Text-Block.png' % n)
-         for n in ('01', '02', '05', '08')]),
+    # boggle, PSX Car — 2 Seater Coupe (https://boggle.itch.io/2-seater-coupe): кузов, колесо и десять окрасок
+    ('KopiOCoder/FormulaCyber', '7b1febc5d758141ffd9d7fbc0c6569cd690e806d', [
+        ('cars/japanese_2_seater_coupe/%s' % n, 'boggle_coupe/%s' % n)
+        for n in ('2_seater_coupe.glb', 'wheel.glb', '2_seater_coupe.obj', '2_seater_coupe.mtl', 'wheel.obj',
+                  'wheel.mtl')
+    ] + [('cars/japanese_2_seater_coupe/textures/%s.png' % n, 'boggle_coupe/textures/%s.png' % n)
+         for n in ('bright_yellow', 'crystal_white', 'laser_blue', 'marina_blue', 'merlot_red', 'noble_green',
+                   'shade_green', 'silver_tornado_silver', 'sunlight_yellow', 'sunrise_red')]),
+    # MoiDev, Suspicious Car — PSX Style Car (https://moidev.itch.io/a-suspicious-car-for-your-projects, CC0):
+    # Suspicious Car.obj (в копии назван sedan.obj) и шесть окрасок
+    ('muricristino/walking-simulator-paulista', 'f9cd9794f917f9cc17d63c275cf6c6cbe3aeba31', [
+        ('CREDITS.md', 'moidev_sus/CREDITS.md'),
+    ] + [('assets/cars/moidev/%s' % n, 'moidev_sus/%s' % n)
+         for n in ('sedan.obj', 'sedan.mtl', 'sedan_black.png', 'sedan_blue.png', 'sedan_brown.png',
+                   'sedan_persian_blue.png', 'sedan_red.png', 'sedan_white.png')]),
+    # designersoup, PS1 / Pixel Art style car (https://designersoup.itch.io/ps1-pixel-art-style-car):
+    # golfps1.fbx, сохранённый владельцем копии в OBJ, и его текстура
+    ('Soursop-Pop/Roadtrip', '3894f678acc9c03ccf6c3b20fe0e28ca5a6d9e29', [
+        ('Assets/Prefabs/car/red_golf.obj', 'designersoup_golf/red_golf.obj'),
+        ('Assets/Prefabs/car/red_golf.mtl', 'designersoup_golf/red_golf.mtl'),
+        ('Assets/Prefabs/car/pixel art golf final.png', 'designersoup_golf/pixel art golf final.png'),
+    ]),
+    # Bricchi Games, Retro Car With Interior (https://bricchi-games.itch.io/retro-car-with-interior, CC BY):
+    # набор Retro Car-1.0 целиком
+    ('Alekssandher/The-Gandmas-House', 'a76e2897d2f449255c8459fc6349004ac64dce8f', [
+        ('assets/Retro Car-1.0/Car.fbx', 'bricchi_car/Car.fbx'),
+        ('assets/Retro Car-1.0/Car Asset.blend', 'bricchi_car/Car Asset.blend'),
+        ('assets/Retro Car-1.0/Emissive Texture.png', 'bricchi_car/Emissive Texture.png'),
+        ('assets/Retro Car-1.0/Black Car Texture.png', 'bricchi_car/Black Car Texture.png'),
+        ('assets/Retro Car-1.0/Blue Texture/Blue Car Texture.png', 'bricchi_car/Blue Car Texture.png'),
+        ('assets/Retro Car-1.0/Red Texture/Red Car Texture.png', 'bricchi_car/Red Car Texture.png'),
+        ('assets/Retro Car-1.0/White Texture/White Car Texture.png', 'bricchi_car/White Car Texture.png'),
+    ]),
 ]
 
 
@@ -335,52 +358,76 @@ def uv_mask(parts, size):
 
 
 # ---------------------------------------------------------------------------
-# автомобили с фототекстурой
+# автомобили
 # ---------------------------------------------------------------------------
 GLASS = (46, 56, 66)        # стекло там, где у исходника был просто серый материал
 DARK_INSIDE = (30, 30, 32)
 
 # имя -> описание
-#   parts    — какие детали исходника составляют кузов; wheels — колёса (или None: искать в кузове)
+#   file     — файл модели; parts — какие его детали составляют кузов; wheels — колёса
+#   wheel_file, wheel_at — колесо лежит отдельным файлом: одно на все четыре места; места — (x, y) правого
+#              переднего и правого заднего в единицах исходника (после поворота носом к +Y)
+#   mirror   — в файле половина кузова: вторая получается отражением
+#   yup      — у исходника вверх смотрит Y (glTF, FBX, OBJ из Blender)
 #   turn     — как повернуть исходник, чтобы нос смотрел на +Y: 'x+' — нос исходника смотрит на +X, …
 #   width    — настоящая ширина кузова, м (по ней ставится масштаб)
-#   paint    — правило «что здесь краска» (по цвету точек текстуры, занятых кузовом):
-#                hue, sat, val — оттенок от и до, насыщенность от и до, яркость от (кузов своего цвета);
-#                white=(насыщенность до, яркость от) — ещё и белёсое (иней на капоте и крыше);
-#                tint=(насыщенность до, яркость от) — всё, кроме тёмного и ярко-цветного (белый кузов);
-#                keep=[(x0, y0, x1, y1), …] — прямоугольники текстуры 256x256, где краски нет (стёкла, фары)
+#   tex      — текстура; size — её размер в игре; pixel — нарисована по точкам (размер меняется без сглаживания)
+#   fixed    — текстура идёт как есть, кузов не перекрашивается
+#   variants — та же текстура в других окрасках: краска — это то, что от окраски к окраске меняется
+#   paint    — правило «что здесь краска» для единственной окраски (по цвету точек текстуры, занятых кузовом):
+#                hue, sat, val — оттенок от и до (через ноль тоже: 345..12), насыщенность от и до, яркость от;
+#                keep=[(x0, y0, x1, y1), …] — прямоугольники текстуры (в точках исходника), где краски нет
+#   cut      — прозрачные места текстуры вырезаются (колёсные арки, нарисованные на бортах)
 #   flat     — материалы без текстуры: имя -> цвет (None — грани убрать)
+#   glass    — материал стёкол: они идут отдельным узлом, игра делает их прозрачными (виден салон)
+#   steer    — деталь «рулевое колесо»: отдельный узел, поворачивается вместе с колёсами
+#   seats    — места в салоне: (x, y, z) таза сидящего в метрах от середины машины на земле; первое — водитель
 #   head/tail — высота фар и задних фонарей в долях высоты кузова, и разнос в долях полуширины
 CARS = {
-    'dacia': dict(
-        file=('psxpack', 'models.dae'), tex=('psxpack', 'Auto.jpg'),
-        parts=('Auto.002', 'Auto.001', 'Auto.003', 'Auto.004', 'Auto.005', 'Auto.006'),
-        wheels=('Cylinder.043', 'Cylinder.044', 'Cylinder.046', 'Cylinder.047'),
-        turn='x-', width=1.64, paint=dict(hue=(190.0, 240.0), sat=(0.16, 1.0), val=0.16),
-        flat={'Material_155': GLASS, 'Plastic_02': None, 'Leather': None, 'Material_180': None},
-        head=(0.50, 0.70), tail=(0.56, 0.72)),
-    'hiace': dict(
-        file=('psxpack', 'models.dae'), tex=('psxpack', 'Auto2.jpg'),
-        parts=('Auto', 'Puerta', 'Puerta.001', 'Puerta.002', 'Puerta.003'),
-        wheels=('Rueda', 'Rueda.001', 'Rueda.002', 'Rueda.003'),
-        turn='x-', width=1.70, paint=dict(tint=(0.34, 0.30), keep=[(13, 203, 30, 220), (99, 203, 115, 220)]),
-        flat={'Material_155': GLASS},
-        head=(0.36, 0.72), tail=(0.42, 0.80)),
     # такси MoiDev: текстура как есть (жёлтый кузов с «шашечками»), не перекрашивается
     'cab': dict(
         file=('moidev_taxi', 'scene.gltf'), tex=('moidev_taxi', 'textures', 'Taxi_baseColor.png'),
         parts=('Object_4', 'Object_6'), wheels=('Object_8', 'Object_10', 'Object_12', 'Object_14'),
-        yup=True, turn='y+', width=1.86, fixed=True, flat={},
+        yup=True, turn='y+', width=1.86, fixed=True, pixel=True, flat={},
         head=(0.47, 0.74), tail=(0.50, 0.80)),
-    'volvo': dict(
-        file=('m3', 'volvo.blend'), tex=('m3', 'volvo.jpg'),
-        parts=('Plane',), wheels=None, mirror=True,
-        turn='y-', width=1.71,
-        paint=dict(hue=(18.0, 62.0), sat=(0.10, 0.62), val=0.30, white=(0.16, 0.50),
-                   keep=[(13, 89, 63, 135), (81, 31, 127, 64), (73, 87, 137, 119), (96, 127, 113, 149), (27, 185, 45, 207),
-                         (147, 125, 219, 166)]),
-        flat={},
-        head=(0.50, 0.74), tail=(0.56, 0.74)),
+    # «подозрительный» седан MoiDev: шесть окрасок, арки колёс вырезаны прозрачностью текстуры
+    'sus': dict(
+        file=('moidev_sus', 'sedan.obj'), tex=('moidev_sus', 'sedan_white.png'),
+        variants=[('moidev_sus', 'sedan_%s.png' % c) for c in ('black', 'blue', 'brown', 'persian_blue', 'red')],
+        parts=('Body_Cube.001',),
+        wheels=('Wheel_FR_Cylinder', 'Wheels_RL_Cylinder.001', 'Wheels_FL_Cylinder.002', 'Wheels_RR_Cylinder.003'),
+        yup=True, turn='y+', width=1.74, pixel=True, cut=True, flat={},
+        head=(0.52, 0.74), tail=(0.56, 0.74)),
+    # хэтчбек designersoup: окраска одна (красная), краска находится по оттенку; зеркала — гладкий чёрный материал
+    'golf': dict(
+        file=('designersoup_golf', 'red_golf.obj'), tex=('designersoup_golf', 'pixel art golf final.png'),
+        parts=('baseShape',), wheels=('rRWheel', 'lFWheel.001', 'lFWheel', 'lRWheel'),
+        yup=True, turn='y+', width=1.79, size=512, pixel=True,
+        paint=dict(hue=(340.0, 14.0), sat=(0.45, 1.0), val=0.30,
+                   keep=[(366, 60, 386, 94), (366, 140, 386, 174)]),
+        flat={'Material.001': (22, 22, 24)},
+        head=(0.50, 0.70), tail=(0.62, 0.78)),
+    # двухместное купе boggle: в файле половина кузова, колесо — отдельным файлом; десять окрасок
+    'coupe': dict(
+        file=('boggle_coupe', '2_seater_coupe.glb'), tex=('boggle_coupe', 'textures', 'crystal_white.png'),
+        variants=[('boggle_coupe', 'textures', c + '.png') for c in (
+            'bright_yellow', 'laser_blue', 'marina_blue', 'merlot_red', 'noble_green', 'shade_green',
+            'silver_tornado_silver', 'sunlight_yellow', 'sunrise_red')],
+        parts=('2_seater_coupe',), mirror=True,
+        wheel_file=('boggle_coupe', 'wheel.glb'), wheel_at=((0.735, 1.294), (0.735, -1.135)),
+        yup=True, turn='y+', width=1.76, size=128, pixel=True, flat={},
+        head=(0.50, 0.66), tail=(0.62, 0.62)),
+    # машина героя — Bricchi Games: кузов с дверями, капотом и багажником, салон, рулевое колесо; четыре окраски
+    'retro': dict(
+        file=('bricchi_car', 'Car.fbx'), tex=('bricchi_car', 'White Car Texture.png'),
+        variants=[('bricchi_car', c + ' Car Texture.png') for c in ('Black', 'Blue', 'Red')],
+        parts=('Car_Base', 'car_hood', 'trunk', 'L_Door_Front', 'L_Door_Back', 'R_Door_Front', 'R_Door_Back',
+               'Car_Base.011'),
+        wheels=('L_Tire_front', 'R_Tire_Front', 'L_Tire_Back', 'R_Tire_Back'),
+        steer='Steering_wheel', glass='carwindows',
+        seats=((-0.43, 0.19, 0.60), (0.43, 0.10, 0.60), (-0.40, -0.52, 0.61), (0.40, -0.52, 0.61)),
+        yup=True, turn='y+', width=1.71, size=512, flat={},
+        head=(0.44, 0.76), tail=(0.47, 0.70)),
 }
 TEX_SIZE = 256
 
@@ -394,58 +441,93 @@ def _turn(parts, how):
         p.transform(m)
 
 
-def car_texture(name, d, body, wheels, flat_uv):
-    """Фототекстура -> два слоя, как у остальных машин: <имя>.png (RGBA: всё, что не красится; на месте
-    краски — прозрачно) и <имя>_shade.png (светотень краски).  Краска находится по цвету: у каждого кузова
-    он свой, а стёкла, шины, хром, ржавчина и грязь от него отличаются."""
+def _picture(path, size, pixel):
+    """Картинка нужного размера: (RGB, прозрачность или None)."""
     from PIL import Image
-    img = Image.open(src(*d['tex'])).convert('RGB')
+    im = Image.open(path)
+    alpha = im.getchannel('A') if 'A' in im.getbands() else None
+    im = im.convert('RGB')
+    how = Image.NEAREST if pixel else Image.LANCZOS
+    if im.size != (size, size):
+        im = im.resize((size, size), how)
+        if alpha is not None:
+            alpha = alpha.resize((size, size), how)
+    return im, alpha
+
+
+def _save(img, path):
+    img.info.clear()                                # без цветового профиля исходника
+    img.save(path, optimize=True)
+
+
+def car_texture(name, d, body, wheels, flat_uv):
+    """Текстура исходника -> слои, как у остальных машин: <имя>.png (RGBA: всё, что не красится; на месте
+    краски — прозрачно) и <имя>_shade.png (светотень краски).  Краска находится по окраскам набора (то, что
+    от окраски к окраске меняется), а если окраска одна — по цвету: у кузова он свой, а стёкла, шины, хром
+    от него отличаются.  Если у текстуры есть вырезы (cut), они уходят в <имя>_cut.png.  Возвращает долю
+    краски на кузове."""
+    from PIL import Image
+    size = d.get('size', TEX_SIZE)
+    pixel = bool(d.get('pixel'))
+    img, alpha = _picture(src(*d['tex']), size, pixel)
+    used = uv_mask(body, size)
+    if d.get('cut') and alpha is not None:
+        # вырез оставляем там, где он действительно попадает на грани кузова
+        hole = (np.asarray(alpha) < 128) & dilate(used, 1)
+        _save(Image.fromarray(np.where(hole, 0, 255).astype(np.uint8), 'L'), os.path.join(VEH, name + '_cut.png'))
     if d.get('fixed'):
-        # текстура идёт как есть: её рисовали точка в точку, и сглаживание при пересчёте размера её портит
-        if img.size != (TEX_SIZE, TEX_SIZE):
-            img = img.resize((TEX_SIZE, TEX_SIZE), Image.NEAREST)
-        img.save(os.path.join(VEH, name + '.png'), optimize=True)
+        # текстура идёт как есть
+        _save(img, os.path.join(VEH, name + '.png'))
         return 0.0
-    img = img.resize((TEX_SIZE, TEX_SIZE), Image.LANCZOS)
     a = np.asarray(img).copy()
     # гладкие материалы (стекло): закрашиваем квадратик в свободном углу, грани смотрят в него
+    q = max(2, size // 64)
     for (u, v), col in flat_uv:
-        x, y = int(u * TEX_SIZE), int((1.0 - v) * TEX_SIZE)
-        a[y - 4:y + 4, x - 4:x + 4] = col
-    h, s, v = hsv(a)
-    rule = d['paint']
-    m = np.zeros(h.shape, dtype=bool)
-    if 'hue' in rule:
-        h0, h1 = rule['hue']
-        m |= (h >= h0) & (h <= h1) & (s >= rule['sat'][0]) & (s <= rule['sat'][1]) & (v >= rule['val'])
-    if 'white' in rule:
-        m |= (s <= rule['white'][0]) & (v >= rule['white'][1])
-    if 'tint' in rule:
-        m |= (s <= rule['tint'][0]) & (v >= rule['tint'][1])
-    for (x0, y0, x1, y1) in rule.get('keep', ()):
-        m[y0:y1 + 1, x0:x1 + 1] = False
-    used = uv_mask(body, TEX_SIZE)
-    m &= dilate(used, 2)
-    m &= ~uv_mask(wheels, TEX_SIZE)
+        x, y = int(u * size), int((1.0 - v) * size)
+        a[y - q:y + q, x - q:x + q] = col
+    if d.get('variants'):
+        stack = np.stack([a] + [np.asarray(_picture(src(*v), size, pixel)[0]) for v in d['variants']]).astype(np.int16)
+        m = (stack.max(0) - stack.min(0)).max(2) > d.get('spread', 30)
+        clean = False
+    else:
+        h, s, v = hsv(a)
+        rule = d['paint']
+        m = np.zeros(h.shape, dtype=bool)
+        if 'hue' in rule:
+            h0, h1 = rule['hue']
+            hue = ((h >= h0) & (h <= h1)) if h0 <= h1 else ((h >= h0) | (h <= h1))
+            m |= hue & (s >= rule['sat'][0]) & (s <= rule['sat'][1]) & (v >= rule['val'])
+        if 'white' in rule:
+            m |= (s <= rule['white'][0]) & (v >= rule['white'][1])
+        if 'tint' in rule:
+            m |= (s <= rule['tint'][0]) & (v >= rule['tint'][1])
+        k = size / float(Image.open(src(*d['tex'])).size[0])
+        for (x0, y0, x1, y1) in rule.get('keep', ()):
+            m[int(y0 * k):int(y1 * k) + 1, int(x0 * k):int(x1 * k) + 1] = False
+        clean = not pixel
+        m &= dilate(used, 2)                        # по цвету краску ищем только там, куда смотрят грани кузова
+    m &= ~uv_mask(wheels, size)
     for (u, vv), col in flat_uv:
-        x, y = int(u * TEX_SIZE), int((1.0 - vv) * TEX_SIZE)
-        m[y - 5:y + 5, x - 5:x + 5] = False
-    # одиночные точки краски среди деталей и дырки в краске убираем
-    m = dilate(erode(m, 1), 1) | (m & erode(dilate(m, 2), 2) & dilate(erode(m, 1), 2))
+        x, y = int(u * size), int((1.0 - vv) * size)
+        m[y - q - 1:y + q + 1, x - q - 1:x + q + 1] = False
+    if clean:
+        # одиночные точки краски среди деталей и дырки в краске убираем
+        m = dilate(erode(m, 1), 1) | (m & erode(dilate(m, 2), 2) & dilate(erode(m, 1), 2))
     L = lum(a.astype(np.float64))
     ref = float(np.median(L[m])) if m.any() else 128.0
     shade = np.where(m, np.clip(L / ref * 127.5, 0, 255), 128.0)
-    rgba = np.zeros((TEX_SIZE, TEX_SIZE, 4), np.uint8)
+    rgba = np.zeros((size, size, 4), np.uint8)
     rgba[..., :3] = np.where(m[..., None], shade[..., None], a).astype(np.uint8)
     rgba[..., 3] = np.where(m, 0, 255)
-    Image.fromarray(rgba, 'RGBA').save(os.path.join(VEH, name + '.png'), optimize=True)
-    Image.fromarray(shade.astype(np.uint8), 'L').save(os.path.join(VEH, name + '_shade.png'), optimize=True)
+    _save(Image.fromarray(rgba, 'RGBA'), os.path.join(VEH, name + '.png'))
+    _save(Image.fromarray(shade.astype(np.uint8), 'L'), os.path.join(VEH, name + '_shade.png'))
     return float(m.sum()) / max(1.0, float(used.sum()))
 
 
 def free_spot(parts, size=TEX_SIZE, block=14):
     """Свободное место на текстуре (не занятое развёрткой) под квадратики гладких материалов."""
     used = dilate(uv_mask(parts, size), 2)
+    block = max(block, size // 18)
     spots = []
     for y in range(block, size - block, block):
         for x in range(block, size - block, block):
@@ -458,14 +540,31 @@ def convert_car(name, d):
     from panda3d.core import NodePath
     _panda()
     allp = named(ms.read(src(*d['file'])))
-    if d.get('yup'):                                # у glTF вверх смотрит Y, нос — на +Z
+    if d.get('yup'):                                # у glTF, FBX и OBJ вверх смотрит Y, нос — на +Z
         for p in allp.values():
             p.transform(YUP)
     body = [allp[n].copy() for n in d['parts']]
     wheels = [allp[n].copy() for n in d['wheels']] if d.get('wheels') else []
+    steer = allp[d['steer']].copy() if d.get('steer') else None
     if d.get('mirror'):
         body = body + [p.copy(p.name + '_m').transform(np.diag([-1.0, 1.0, 1.0])) for p in body]
-    _turn(body + wheels, d['turn'])
+    _turn(body + wheels + ([steer] if steer is not None else []), d['turn'])
+    if d.get('wheel_file'):
+        # колесо лежит отдельным файлом: ставим его на четыре места, шиной на землю
+        wp = named(ms.read(src(*d['wheel_file'])))
+        w0 = list(wp.values())[0]
+        if d.get('yup'):
+            w0.transform(YUP)
+        lo, hi = w0.bounds()
+        w0.verts = w0.verts - (lo + hi) * 0.5
+        r = float(hi[2] - lo[2]) * 0.5
+        for (wx, wy) in d['wheel_at']:
+            for sx in (1.0, -1.0):
+                w = w0.copy('wheel')
+                if sx < 0:
+                    w.transform(np.diag([-1.0, 1.0, 1.0]))
+                w.verts = w.verts + (wx * sx, wy, r)
+                wheels.append(w)
     if not wheels:
         # колёса — круглые куски у земли
         zmin = min(p.verts[:, 2].min() for p in body)
@@ -487,22 +586,29 @@ def convert_car(name, d):
     pts = np.concatenate([tri_points(p) for p in body])
     width = pts[:, 0].max() - pts[:, 0].min()
     k = d['width'] / width
-    cx = (pts[:, 0].max() + pts[:, 0].min()) * 0.5
+    # середина по ширине — между колёсами: кузов исходника бывает сдвинут (зеркала, открытая дверь)
+    wc = np.array([(tri_points(w).min(0) + tri_points(w).max(0)) * 0.5 for w in wheels])
+    cx = float(wc[:, 0].mean())
     cy = (pts[:, 1].max() + pts[:, 1].min()) * 0.5
     z0 = min(tri_points(w)[:, 2].min() for w in wheels)
-    for p in body + wheels:
+    for p in body + wheels + ([steer] if steer is not None else []):
         p.verts = (p.verts - (cx, cy, z0)) * k
     pts = np.concatenate([tri_points(p) for p in body])
     # гладкие материалы: их грани на картинку не опираются (развёртка у них от других текстур набора)
-    skin = [p.select([p.mats[m] not in d['flat'] for m in p.mat]) for p in body]
-    spots = free_spot(skin + wheels)
+    glass_mat = d.get('glass')
+    skin = [p.select([p.mats[m] not in d['flat'] and p.mats[m] != glass_mat for m in p.mat]) for p in body]
+    size = d.get('size', TEX_SIZE)
+    spots = free_spot(skin + wheels + ([steer] if steer is not None else []), size)
     flat_uv = []
     out = Out()
+    glass = Out()
     dropped = 0
     for p in body:
         for i in range(len(p.tris)):
             mat = p.mats[p.mat[i]]
-            if mat in d['flat']:
+            if mat == glass_mat:
+                glass.tri(p.verts[p.tris[i]], ((0.5, 0.5),) * 3)
+            elif mat in d['flat']:
                 col = d['flat'][mat]
                 if col is None:
                     dropped += 1
@@ -517,14 +623,38 @@ def convert_car(name, d):
                 out.tri(p.verts[p.tris[i]], (uv, uv, uv))
             else:
                 out.tri(p.verts[p.tris[i]], p.uvs[i])
-    share = car_texture(name, d, skin, wheels, flat_uv)
+    share = car_texture(name, d, skin + ([steer] if steer is not None else []), wheels, flat_uv)
     root = NodePath('car')
     b = root.attachNewNode('body')
-    b.attachNewNode(out.node('skin'))
+    sk = b.attachNewNode('skin')
+    sk.attachNewNode(out.node('shell'))
     info = dict(W=round(float(pts[:, 0].max() - pts[:, 0].min()), 3), L=round(float(pts[:, 1].max() - pts[:, 1].min()), 3),
                 H=round(float(pts[:, 2].max()), 3), tex=True, wheels=[])
     if d.get('fixed'):
         info['fixed'] = True
+    if d.get('cut') and os.path.isfile(os.path.join(VEH, name + '_cut.png')):
+        info['cut'] = True
+    if len(glass):
+        b.attachNewNode(glass.node('glass'))
+        info['glass'] = True
+    if steer is not None:
+        # рулевое колесо: узел стоит в середине обода, его ось Y смотрит вдоль рулевой колонки (на водителя)
+        sp = tri_points(steer)
+        c0 = sp.mean(0)
+        q = sp - c0
+        ev, evec = np.linalg.eigh(q.T.dot(q))
+        ax = evec[:, 0]                              # обод плоский: ось — направление наименьшего разброса
+        if ax[1] > 0:
+            ax = -ax                                 # колонка смотрит назад, на водителя
+        rad = float(np.linalg.norm(q - np.outer(q.dot(ax), ax), axis=1).max())
+        so = Out()
+        so.part(steer, xf=lambda v: v - c0)
+        sn = sk.attachNewNode(so.node('swheel'))
+        sn.setPos(float(c0[0]), float(c0[1]), float(c0[2]))
+        info['steer'] = dict(pos=[round(float(v), 3) for v in c0], axis=[round(float(v), 4) for v in ax],
+                             r=round(rad, 3))
+    if d.get('seats'):
+        info['seats'] = [[round(float(v), 3) for v in sxyz] for sxyz in d['seats']]
     ws = []
     for w in wheels:
         wp = tri_points(w)
@@ -543,8 +673,8 @@ def convert_car(name, d):
     info['tail'] = [[-hw * d['tail'][1], round(-hl + 0.03, 3), round(H * d['tail'][0], 3)],
                     [hw * d['tail'][1], round(-hl + 0.03, 3), round(H * d['tail'][0], 3)]]
     root.writeBamFile(os.path.join(VEH, name + '.bam'))
-    print('  %-7s Ш %.2f  Д %.2f  В %.2f  треугольников %d (убрано салона %d), колесо r %.2f, краски на кузове %d%%' % (
-        name, info['W'], info['L'], info['H'], len(out), dropped, info['wheels'][0]['r'], round(share * 100)))
+    print('  %-7s Ш %.2f  Д %.2f  В %.2f  треугольников %d (стёкол %d, убрано %d), колесо r %.2f, краски на кузове %d%%' % (
+        name, info['W'], info['L'], info['H'], len(out), len(glass), dropped, info['wheels'][0]['r'], round(share * 100)))
     return info
 
 

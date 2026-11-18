@@ -201,7 +201,8 @@ class Tester(object):
         if g.state != 'play' or w.respawn_kind is not None or w.interiors.trans is not None:
             return False
         if w.missions.intro is not None:
-            w.hud.subtitle(u'Тестер: сначала пропустите пролог клавишей Esc.', 3.0, clear=True)
+            w.hud.subtitle(u'Тестер: сначала пропустите пролог — Esc в сценке, а в погоне: пауза, «Пропустить пролог».',
+                           4.0, clear=True)
             return False
         g.state = 'pause'
         g.inp.capture_mouse(False)
@@ -229,9 +230,7 @@ class Tester(object):
                 it.action = self._safe(it.action)
             if it.change is not None:
                 it.change = self._safe(it.change)
-        m = Menu(self.game.ui, title, items, back=back, wide=True)
-        m.skin = ui.SKIN_PLATE          # серо-оливковая плашка: меню тестера с обычным не спутать
-        return m
+        return Menu(self.game.ui, title, items, back=back, wide=True)
 
     def _safe(self, fn):
         """Действие меню не должно закрывать игру: сбой записывается в crash.log и показывается в меню."""
