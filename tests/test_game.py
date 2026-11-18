@@ -43,6 +43,37 @@ def test_menu_and_new_game(game):
     assert len(w.vehicles) > 10 and len(w.peds) > 8
 
 
+def test_authors_page_credits_the_model_authors(game):
+    """Страница «Авторы» в главном меню.  Машина героя взята по лицензии CC BY: автор, работа, лицензия и
+    то, что изменено, должны быть названы там, где это увидит игрок, — а ещё в титрах и во всех описаниях."""
+    from game import app
+    game.to_main_menu()
+    menu = game.ui.current()
+    labels = [i.label for i in menu.items]
+    assert labels == ['Новая игра', 'Продолжить', 'Настройки', 'Управление', 'Авторы', 'Выход']
+    menu.sel = labels.index('Авторы')
+    harness.press(game, 'enter')
+    page = game.ui.current()
+    assert page.title == 'Авторы' and page.text == app.AUTHORS_TEXT
+    for need in ('Bricchi Games', 'Retro Car With Interior', 'bricchi-games.itch.io/retro-car-with-interior',
+                 'CC BY 4.0', 'creativecommons.org/licenses/by/4.0', 'Изменено',
+                 'MoiDev', 'designersoup', 'boggle', 'GGBot', 'Duhgless', 'Kenney', 'Quaternius', 'Elbolilloduro',
+                 'Mesh2Motion', 'Daniel Jurys', 'Craig Snedeker', 'Panda3D'):
+        assert need in page.text, need
+    # текст помещается в поле без переносов и не уходит под кнопку «Назад»
+    lines = page.text.split('\n')
+    assert max(len(line) for line in lines) <= 62 and len(lines) <= 22
+    harness.press(game, 'escape')
+    assert game.ui.current() is menu
+    assert 'Bricchi Games' in app.CREDITS_TEXT and 'CC BY 4.0' in app.CREDITS_TEXT
+    assert 'ROHHSA' not in app.CREDITS_TEXT + app.AUTHORS_TEXT            # плашек Free PSX UI в игре больше нет
+    for rel in ('README.md', os.path.join('assets', 'models', 'CREDITS.md'), os.path.join('tools', 'make_release.py')):
+        with open(os.path.join(harness.ROOT, rel), encoding='utf-8') as f:
+            text = f.read()
+        assert 'Bricchi Games' in text and 'Retro Car With Interior' in text, rel
+        assert 'bricchi-games.itch.io/retro-car-with-interior' in text and 'creativecommons.org/licenses/by/4.0' in text, rel
+
+
 def test_walk_and_collide(game, world):
     pl = world.player
     harness.quiet(world, peds=True)
