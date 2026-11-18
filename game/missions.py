@@ -106,6 +106,16 @@ class Run(object):
             if b in self.blips:
                 self.blips.remove(b)
 
+    def at(self, place, key='road'):
+        """Местная система отсчёта (city.Frame) у сюжетного места или у точки мира (x, y).
+
+        Улицы города изогнуты, поэтому «семь метров вдоль улицы» отсчитывается не по осям мира, а по
+        чертежу квартала:  F = m.at('vano');  m.car('sedan', *F.at(-7.0, 0.0, 0.0))."""
+        c = self.w.city
+        if isinstance(place, str):
+            place = c.landmarks[place][key]
+        return c.frame(place[0], place[1])
+
     def marker(self, x, y, r=3.5, color=YELLOW):
         mk = Marker(self.w, x, y, r, color)
         self.markers.append(mk)
@@ -393,17 +403,17 @@ class Run(object):
         pl = w.player
         lmk = w.city.landmarks[contact]
         dx, dy = lmk['door']
-        npc = self.npc(dx, dy + 1.0, -math.pi / 2, contact_look(contact))
+        F = w.city.frame(dx, dy)                 # дверь смотрит «на юг» чертежа; улицы изогнуты
+        npc = self.npc(*F.at(0.0, 1.0, -math.pi / 2), look=contact_look(contact))
         npc.idle_clip = 'talk'
         ms.clear_area(dx, dy, 3.0, peds=True, keep=npc)
         pl.freeze = True
         p = pl.ped
         p.idle_clip = 'listen'
-        p.x, p.y = dx, dy - 0.9
-        p.yaw = math.pi / 2
+        p.x, p.y, p.yaw = F.at(0.0, -0.9, math.pi / 2)
         p.speed = 0.0
         p.sync()
-        w.cam.override = (dx + 2.6, dy - 3.6, 1.9, dx - 0.3, dy + 0.4, 1.45)
+        w.cam.override = F.cam(2.6, -3.6, 1.9, -0.3, 0.4, 1.45)
         w.hud.show(False)
         w.hud.mission_title('')              # заголовок не должен висеть поверх сценки
         ms.letterbox(True)
@@ -424,8 +434,8 @@ class Run(object):
         w.hud.clear_subtitles()
         w.cam.override = None
         w.cam.pitch = -0.2
-        w.cam.face(p.x, p.y, -math.pi / 2)
-        p.yaw = -math.pi / 2
+        w.cam.face(p.x, p.y, F.h(-math.pi / 2))
+        p.yaw = F.h(-math.pi / 2)
         p.idle_clip = None
         pl.freeze = False
         w.hud.show(True)
@@ -447,12 +457,12 @@ def m_v1(m):
         'Проверим. Мой механик Гога застрял в Порту — тачка сдохла.',
         'Бери мою «Волну» и привези его сюда. И не поцарапай!'])
     rx, ry = c.landmarks['vano']['road']
-    car = m.car('sedan', rx - 7.0, ry, 0.0, paint=1)
+    car = m.car('sedan', *m.at('vano').at(-7.0, 0.0, 0.0), paint=1)
     m.watch(car, 'Машина Вано уничтожена.')
     m.help('F — сесть в машину. W/S — газ и тормоз, A/D — руль, пробел — ручной тормоз.', 9.0)
     yield from m.enter(car, 'Садись в «Волну» Вано.')
     px, py = c.landmarks['port']['road']
-    goga = m.npc(px + 4.0, py + 3.3, -math.pi / 2,
+    goga = m.npc(*m.at('port').at(4.0, 3.3, -math.pi / 2), look=
                  make_look(skin=SKINS[3], hair=(0.05, 0.05, 0.05), shirt=(0.2, 0.3, 0.5), pants=(0.2, 0.3, 0.5),
                            torso='vest', hat='cap', hat_color=(0.2, 0.3, 0.5), beard=True))
     m.watch(goga, 'Гога погиб.')
@@ -476,8 +486,9 @@ def m_v2(m):
         'Её будут искать, так что сперва перекрась — и ко мне в гараж.',
         'Каждая вмятина — минус из твоей доли.'])
     spots = [s for s in c.parking if s.get('zone') == 'R' and s.get('block', -1) >= 0 and not s.get('kind')]
-    spots.sort(key=lambda s: (s['x'] - 150.0) ** 2 + (s['y'] - 250.0) ** 2)
-    s = spots[0] if spots else dict(x=150.0, y=250.0, yaw=0.0)
+    hx, hy = c.to_world(150.0, 250.0)                # двор в Сосновке (точка чертежа)
+    spots.sort(key=lambda s: (s['x'] - hx) ** 2 + (s['y'] - hy) ** 2)
+    s = spots[0] if spots else dict(x=hx, y=hy, yaw=c.rot_at(hx, hy))
     car = m.car('sports', s['x'], s['y'], s['yaw'], paint=0)
     m.watch(car, '«Комета» уничтожена.')
     yield from m.enter(car, 'Угони красную «Комету» в Сосновке.', tex='blip_dest')
@@ -550,7 +561,7 @@ def m_v4(m):
         'Ставлю три штуки. Тачку даю свою, лучшую.',
         'Время пойдёт, как только тронешься. Не подведи «Комету».'])
     rx, ry = c.landmarks['vano']['road']
-    car = m.car('sports', rx - 7.0, ry, 0.0, paint=6)
+    car = m.car('sports', *m.at('vano').at(-7.0, 0.0, 0.0), paint=6)
     m.watch(car, 'Машина разбита.')
     yield from m.enter(car, 'Садись в «Комету».')
     # маршрут по перекрёсткам проспектов
@@ -666,10 +677,10 @@ def m_r4(m):
         '«Красные» ничего не забыли. Будут гнаться — не останавливайся.',
         'Довезёшь меня целой — озолочу.'])
     rx, ry = c.landmarks['rosa']['road']
-    car = m.car('suv', rx - 7.0, ry, 0.0, paint=3)
+    car = m.car('suv', *m.at('rosa').at(-7.0, 0.0, 0.0), paint=3)
     car.health = car.max_health = 1900.0
     door = c.landmarks['rosa']['door']
-    rosa = m.npc(door[0] + 1.5, door[1], -math.pi / 2, contact_look('rosa'), hp=160.0)
+    rosa = m.npc(*m.at('rosa', 'door').at(1.5, 0.0, -math.pi / 2), look=contact_look('rosa'), hp=160.0)
     m.watch(car, 'Машина уничтожена.')
     m.watch(rosa, 'Роза погибла.')
     yield from m.enter(car, 'Садись в машину Розы.')
@@ -696,7 +707,7 @@ def m_z1(m):
         'Макс: Кто первый нашёл — тот и молодец?',
         'Соображаешь. «Трудяга» у ворот. Привези все три. И без хвоста.'])
     rx, ry = c.landmarks['zakhar']['road']
-    car = m.car('pickup', rx - 7.0, ry, 0.0, paint=2)
+    car = m.car('pickup', *m.at('zakhar').at(-7.0, 0.0, 0.0), paint=2)
     m.watch(car, '«Трудяга» Захара уничтожена.')
     yield from m.enter(car, 'Садись в «Трудягу» Захара.')
     m.help('Ящики лежат в стороне от дорог. Подъезжай поближе и выходи из машины: грузить придётся руками.', 8.0)
@@ -704,7 +715,7 @@ def m_z1(m):
               (1161.0, 258.0, 'Второй ящик — в траве у дороги за аэродромом.'),
               (686.0, 40.0, 'Третий ящик — на берегу пролива у Нефтегавани.'))
     for i, (x, y, text) in enumerate(places):
-        x, y = m.ms.free_spot(x, y)
+        x, y = m.ms.free_spot(*c.to_world(x, y))         # места заданы по чертежу города
         pk = m.ms.add_pickup('crate', x, y)
         m.pickups.append(pk)
         b = m.blip(x, y, tex='blip_pickup')
@@ -743,18 +754,20 @@ def m_z2(m):
         'Бутылки бьются, а покупатель нервный. Каждый удар — минус из твоей доли.',
         'Макс: Куда везти?',
         'На аэродром, к самолёту. И оглядывайся: на мой товар есть охотники.'])
-    vx, vy = 478.0, 30.0
+    vx, vy = c.to_world(478.0, 30.0)                 # причал: точки заданы по чертежу города
     for x, y in ((470.0, 30.0), (471.0, 16.0), (490.0, 40.0)):       # свободное место между контейнерами
+        x, y = c.to_world(x, y)
         if not w.static.overlap_circle(x, y, 3.8, F_CAR):
             vx, vy = x, y
             break
-    van = m.car('van', vx, vy, math.pi / 2, paint=5)
+    van = m.car('van', vx, vy, math.pi / 2 + c.rot_at(vx, vy), paint=5)
     van.health = van.max_health = 1800.0
     m.watch(van, 'Фургон с грузом уничтожен.')
     yield from m.enter(van, 'Забери фургон Захара на причале у Портового моста (на острове).', tex='blip_dest')
     lm = c.landmarks['airfield']
-    ax, ay = lm['apron'][0] - 11.0, lm['apron'][1] + 14.0
-    pilot = m.npc(ax + 8.6, ay - 2.0, math.pi,
+    FA = m.at(lm['apron'])
+    ax, ay = FA(-11.0, 14.0)
+    pilot = m.npc(*FA.at(-2.4, 12.0, math.pi), look=
                   make_look(skin=SKINS[1], hair=(0.3, 0.24, 0.16), shirt=(0.42, 0.34, 0.2), pants=(0.2, 0.2, 0.22),
                             torso='jacket', hat='cap', hat_color=(0.3, 0.26, 0.18), model='m_shirt_h3'))
     chase = m.ms.start_chasers(m, ['beater', 'pickup', 'muscle'], 'greens', 2, 14.0)
@@ -790,7 +803,7 @@ def m_z3(m):
         'Навести его. Только учти: почует — рванёт к трассе. Уйдёт — сдаст нас всех.'])
     pl.give_weapon(W_UZI, 150)
     pl.select(W_UZI)
-    road, (hx, hy), yaw = m.ms.roadside(947.0, -8.0, 4.6)
+    road, (hx, hy), yaw = m.ms.roadside(*c.to_world(947.0, -8.0), off=4.6)
     car = m.car('muscle', road[0] + math.sin(yaw) * 2.1, road[1] - math.cos(yaw) * 2.1, yaw, paint=0)
     guards = []
     for i, (a, wpn) in enumerate(((0.4, W_PISTOL), (1.9, W_BAT), (3.3, W_UZI), (4.9, W_PISTOL))):
@@ -828,7 +841,7 @@ def m_z3(m):
         m.obj('Сиплый прыгнул в машину! Уничтожь её, пока он не ушёл по трассе.')
         m.help('Тарань, стреляй, перегораживай дорогу — лишь бы «Бизон» не доехал до Заречья.', 8.0)
         w.audio.play_at('door', car.x, car.y, 0.9)
-        goal = c.nodes.get((10, 11)) or c.nearest_node(452.0, 823.0)
+        goal = c.nodes.get((10, 11)) or c.nearest_node(*c.to_world(452.0, 823.0))
         gx, gy = goal.x, goal.y
 
         def tick(dt):
@@ -861,12 +874,14 @@ def m_g1(m):
         'Услугу. У участка на острове стоит изъятая «Комета», в багажнике — чужой товар.',
         'Пригони её сюда до описи. Погоню отзову, когда доедешь. Не раньше.'])
     sx, sy = c.landmarks['police']['road']
-    x, y = sx + 13.0, sy + 2.9
+    F = m.at('police')
+    x, y = F(13.0, 2.9)
     for dx in (13.0, 20.0, -20.0, 27.0, -27.0):
-        if not w.static.overlap_circle(sx + dx, sy + 2.9, 2.2, F_CAR):
-            x = sx + dx
+        qx, qy = F(dx, 2.9)
+        if not w.static.overlap_circle(qx, qy, 2.2, F_CAR):
+            x, y = qx, qy
             break
-    car = m.car('sports', x, y, 0.0, paint=0)
+    car = m.car('sports', x, y, F.h(0.0), paint=0)
     m.watch(car, '«Комета» уничтожена.')
     yield from m.enter(car, 'Угони изъятую «Комету» от полицейского участка на острове.', tex='blip_dest')
     pol.locked = 3
@@ -896,7 +911,7 @@ def m_g2(m):
         'Макс: А если кто-то не захочет платить?',
         'Тогда объясни ему, что спокойствие — вещь хрупкая.'])
     rx, ry = c.landmarks['grom']['road']
-    car = m.car('police', rx - 7.0, ry, 0.0)
+    car = m.car('police', *m.at('grom').at(-7.0, 0.0, 0.0))
     m.watch(car, 'Служебная машина Грома уничтожена.')
     yield from m.enter(car, 'Садись в служебную машину Грома.')
     # три лавки на торговых улицах Заречья: середины сторон кварталов
@@ -904,7 +919,7 @@ def m_g2(m):
     r = random.Random(11)
     m.set_timer(240.0, 'Заведения закрылись. Гром остался без выручки.')
     for i, (x, y, who) in enumerate(stops):
-        road, side, yaw = m.ms.roadside(x, y, 4.6)
+        road, side, yaw = m.ms.roadside(*c.to_world(x, y), off=4.6)      # лавки заданы по чертежу города
         look = random_look(r, 'O')
         look.female = i == 1
         owner = m.npc(side[0], side[1], yaw + math.pi / 2, look, hp=140.0)
@@ -964,7 +979,7 @@ def m_g3(m):
         'Старик платит мне десять лет. Сядет — заговорит. Мне это ни к чему.',
         'СОБР уже выехал. Бери «Комету». Две с половиной минуты — и чтобы духу его там не было.'])
     rx, ry = c.landmarks['grom']['road']
-    car = m.car('sports', rx - 7.0, ry, 0.0, paint=0)
+    car = m.car('sports', *m.at('grom').at(-7.0, 0.0, 0.0), paint=0)
     yield from m.enter(car, 'Садись в «Комету».')
     zl = c.landmarks['zakhar']
     zx, zy = zl['road']
@@ -978,8 +993,9 @@ def m_g3(m):
     def arrived():
         # старик выходит к воротам, когда игрок уже рядом
         if old[0] is None and math.hypot(pl.pos()[0] - zx, pl.pos()[1] - zy) < 90.0:
-            x, y = m.ms.free_spot(zl['door'][0] + 1.2, zl['door'][1] - 0.6)
-            old[0] = m.npc(x, y, -math.pi / 2, contact_look('zakhar'), hp=220.0)
+            FZ = m.at(zl['door'])
+            x, y = m.ms.free_spot(*FZ(1.2, -0.6))
+            old[0] = m.npc(x, y, FZ.h(-math.pi / 2), contact_look('zakhar'), hp=220.0)
             m.watch(old[0], 'Захар погиб.')
         return pl.vehicle is not None and mk.player_inside(False) and pl.speed() < 2.5
     yield arrived
@@ -993,13 +1009,14 @@ def m_g3(m):
     pol.set_level(4)
     w.audio.play('siren', 0.6)
     lm = c.landmarks['airfield']
-    ax, ay = lm['apron'][0] - 11.0, lm['apron'][1] + 14.0
+    FA = m.at(lm['apron'])
+    ax, ay = FA(-11.0, 14.0)
     yield from m.goto(ax, ay, 6.5, 'СОБР на хвосте! Вези Захара на аэродром, к самолёту.',
                       extra=lambda: zakhar.vehicle is not None and zakhar.vehicle is pl.vehicle)
     pol.locked = None
     pol.clear()
     m.unwatch(zakhar)
-    m.unboard(zakhar, (lm['apron'][0] - 11.0, lm['apron'][1] + 4.0))
+    m.unboard(zakhar, FA(-11.0, 4.0))
     m.say('Захар: Не забуду, парень. Сарай и лодки — твои, пока не вернусь.')
     yield 3.0
 
@@ -1014,8 +1031,8 @@ def m_p1(m):
     w.player.give_weapon(W_PISTOL, 68)
     rn = w.roadnet
     goal = c.nearest_node(*c.landmarks['police']['road'])
-    start = c.nodes.get((1, 7)) or c.nearest_node(-380.0, 300.0)
-    lane, s, d = rn.nearest_lane(start.x + 30.0, start.y, 80.0)
+    start = c.nodes.get((1, 7)) or c.nearest_node(*c.to_world(-380.0, 300.0))
+    lane, s, d = rn.nearest_lane(*c.off(start.x, start.y, 30.0, 0.0), maxd=80.0)
     m.ms.clear_area(*lane.pos(s)[:2], r=14.0)
     car = w.traffic.spawn_on_lane('sedan', lane, s, paint=3, persona=1.12)
     car.keep = True
@@ -1055,14 +1072,15 @@ def m_p2(m):
         'Пригоните грузовик на мой склад в промзоне. Груз должен уцелеть.'])
     w.player.give_weapon(W_SHOTGUN, 24)
     yx, yy = c.landmarks['port']['yard']
-    truck = m.car('army', yx, yy, 0.0)
+    FY = m.at('port', 'yard')
+    truck = m.car('army', yx, yy, FY.h(0.0))
     m.watch(truck, 'Грузовик уничтожен.')
     guards = []
     look = lambda: make_look(skin=random.choice(SKINS), shirt=(0.12, 0.14, 0.2), pants=(0.1, 0.1, 0.14),
                              torso='armor', hat='cap', hat_color=(0.1, 0.1, 0.14))
     for i, (ox, oy, wpn) in enumerate(((6, 4, W_PISTOL), (-6, 4, W_UZI), (7, -4, W_SHOTGUN), (-7, -4, W_PISTOL),
                                        (0, -7, W_UZI))):
-        guards.append(m.enemy(yx + ox, yy + oy, 0.0, look(), wpn, 120.0, 0.4, 30.0))
+        guards.append(m.enemy(*FY.at(ox, oy, 0.0), look=look(), weapon=wpn, hp=120.0, accuracy=0.4, radius=30.0))
     for g in guards:
         m.blip(obj=g, tex='blip_enemy', scale=0.8)
     yield from m.enter(truck, 'Угони армейский грузовик из порта. Охрана вооружена!', tex='blip_dest')
@@ -1097,23 +1115,26 @@ def m_p3(m):
     m.vehicles.append(car)
     m.watch(car, 'Патрульная машина уничтожена.')
     door = c.landmarks['police']['door']
-    px, py = m.ms.free_spot(door[0] - 9.0, door[1])
-    mole = m.npc(px, py, -math.pi / 2, cop_look(), hp=150.0)
+    FD = m.at('police', 'door')
+    px, py = m.ms.free_spot(*FD(-9.0, 0.0))
+    mole = m.npc(px, py, FD.h(-math.pi / 2), cop_look(), hp=150.0)
     m.watch(mole, 'Информатор погиб.')
-    yield from m.goto(sx - 9.0, sy, 5.0, 'Подбери информатора у полицейского участка.', vehicle=car)
+    gx, gy = m.at('police')(-9.0, 0.0)
+    yield from m.goto(gx, gy, 5.0, 'Подбери информатора у полицейского участка.', vehicle=car)
     yield from m.board(mole, car)
     w.police.locked = 3
     w.police.set_level(3)
     m.say('Информатор: Гони! Они уже всё поняли!')
-    pier = c.special['pier']
-    tx, ty = (pier['x0'] + pier['x1']) * 0.5, pier['y1'] - 8.0
-    yield from m.goto(tx, ty + 14.0, 6.0, 'Вези информатора к старому пирсу на Набережной.',
+    pier = c.special['pier']                         # пирс задан прямоугольником на чертеже города
+    pu = (pier['x0'] + pier['x1']) * 0.5
+    tx, ty = c.to_world(pu, pier['y1'] + 6.0)
+    yield from m.goto(tx, ty, 6.0, 'Вези информатора к старому пирсу на Набережной.',
                       extra=lambda: mole.vehicle is not None and mole.vehicle is pl.vehicle)
     w.police.locked = None
     w.police.clear()
     m.unwatch(mole)
     m.unwatch(car)
-    m.unboard(mole, (tx, pier['y0'] + 6.0))
+    m.unboard(mole, c.to_world(pu, pier['y0'] + 6.0))
     m.say('Информатор: Передай Профу — я в долгу не останусь.')
     yield 2.5
 
@@ -1155,7 +1176,7 @@ def m_p4(m):
     m.ticks.remove(tick)
     m.stop_timer()
     rx, ry = c.landmarks['bank']['road']
-    van = m.car('van', rx, ry, 0.0, paint=3)
+    van = m.car('van', rx, ry, m.at('bank').h(0.0), paint=3)
     van.health = van.max_health = 2600.0
     m.watch(van, 'Фургон с деньгами уничтожен.')
     m.say('Проф (по рации): Деньги в фургоне! Увозите их, живо!')
@@ -1365,7 +1386,7 @@ class Missions(object):
         self.static_blips.append(hud.add_blip('blip_save', sx, sy, edge=True, scale=1.1))
         if 'garage' in lm['safehouse']:
             gx, gy = lm['safehouse']['garage']
-            self.static_blips.append(hud.add_blip('blip_garage', gx, gy - 6.0, edge=False, rng=260.0))
+            self.static_blips.append(hud.add_blip('blip_garage', *c.off(gx, gy, 0.0, -6.0), edge=False, rng=260.0))
         for name in ('spray', 'spray2'):
             if name in lm:
                 x, y = lm[name]['bay']
@@ -1993,15 +2014,15 @@ class Missions(object):
 
     def _safehouse_bonus(self, tiers):
         w = self.w
-        sx, sy = w.city.landmarks['safehouse']['door']
+        F = w.city.frame(*w.city.landmarks['safehouse']['door'])       # вдоль тротуара у дома
         for tier in tiers:
             if tier == 1:
-                self.pickups.append(Pickup(w, 'weapon', sx - 2.5, sy, W_UZI, 90, respawn=300.0))
+                self.pickups.append(Pickup(w, 'weapon', *F(-2.5, 0.0), wid=W_UZI, amount=90, respawn=300.0))
             elif tier == 2:
-                self.pickups.append(Pickup(w, 'weapon', sx - 4.0, sy, W_SHOTGUN, 16, respawn=300.0))
+                self.pickups.append(Pickup(w, 'weapon', *F(-4.0, 0.0), wid=W_SHOTGUN, amount=16, respawn=300.0))
             elif tier == 3:
-                self.pickups.append(Pickup(w, 'weapon', sx - 7.0, sy, W_AK, 90, respawn=300.0))
-                self.pickups.append(Pickup(w, 'weapon', sx - 8.5, sy, W_ROCKET, 5, respawn=300.0))
+                self.pickups.append(Pickup(w, 'weapon', *F(-7.0, 0.0), wid=W_AK, amount=90, respawn=300.0))
+                self.pickups.append(Pickup(w, 'weapon', *F(-8.5, 0.0), wid=W_ROCKET, amount=5, respawn=300.0))
 
     # ------------------------------------------------------------------
     def _services(self, dt, px, py, on_foot):
@@ -2016,8 +2037,7 @@ class Missions(object):
             lm = c.landmarks.get(name)
             if lm is None:
                 continue
-            x0, y0, x1, y1 = lm['bay_rect']
-            inside = v is not None and x0 <= px <= x1 and y0 <= py <= y1
+            inside = v is not None and c.in_rect(lm['bay_rect'], px, py)
             if not inside:
                 self.spray_cd[name] = False
                 continue

@@ -455,21 +455,17 @@ class ChaseDriver(object):
         bscore = 1e9
         bs = 0.0
         for l in rn.lanes_near(v.x, v.y, 0.0, 30.0):
-            dx, dy = l.x1 - l.x0, l.y1 - l.y0
-            t = ((v.x - l.x0) * dx + (v.y - l.y0) * dy) / (l.length * l.length)
-            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
-            px, py = l.x0 + dx * t, l.y0 + dy * t
-            d = math.hypot(v.x - px, v.y - py)
+            s, d = l.project(v.x, v.y)                 # полоса — кривая: ближайшая точка на ней и курс в этой точке
             if d > 30.0:
                 continue
             path = rn.route(l.node, goal)
             score = d * 0.5 + len(path) * 10.0
-            if abs(angle_diff(math.atan2(dy, dx), v.yaw)) > 1.9:
+            if abs(angle_diff(l.pos(s)[2], v.yaw)) > 1.9:
                 score += 14.0
             if score < bscore:
                 bscore = score
                 best = l
-                bs = t * l.length
+                bs = s
         if best is None:
             best, bs, d = rn.nearest_lane(v.x, v.y, 200.0)
         v.link = best

@@ -248,6 +248,8 @@ class ShipDoor(object):
         self.rect = (yx0, yy0, yx1, yy1)
         self.dz = dz
         self.root = world.fx.root.attachNewNode('shipdoor')
+        # контейнер задан на чертеже города; сам корабль стоит так, как лёг причал (город изогнут)
+        self.rot = math.degrees(world.city.warp.rot(yx0, (yy0 + yy1) * 0.5)) if world.city.live else 0.0
         hw = (yy1 - yy0) * 0.5
         for side in (-1, 1):
             mb = MeshBuilder()
@@ -257,8 +259,11 @@ class ShipDoor(object):
             mb.box(None, -0.10, (y_a + y_b) * 0.5 - 0.05, 0.9, -0.06, (y_a + y_b) * 0.5 + 0.05, 2.0, (0.2, 0.2, 0.22, 1))
             leaf = mb.build('leaf', world.assets.apply_state)
             leaf.reparentTo(self.root)
-            leaf.setPos(yx0, yy0 if side < 0 else yy1, dz)
+            lx, ly = world.city.to_world(yx0, yy0 if side < 0 else yy1) if world.city.live else \
+                (yx0, yy0 if side < 0 else yy1)
+            leaf.setPos(lx, ly, dz)
             self.leaves.append((leaf, side))
+        self._pose()
         self._block(True)
 
     def _block(self, on):
@@ -281,7 +286,7 @@ class ShipDoor(object):
 
     def _pose(self):
         for leaf, side in self.leaves:
-            leaf.setH(side * 105.0 * self.k)
+            leaf.setH(self.rot + side * 105.0 * self.k)
 
     def update(self, dt):
         if not self.ok:
@@ -326,8 +331,8 @@ def m_s1(m):
         w.hud.mission_title(m.spec['title'])
         if pl.vehicle is None:
             m.help('До дома далеко. Подойди к любой машине и нажми F — хозяин возражать будет, но недолго.', 9.0)
-        dx, dy = home['road']
-        yield from m.goto(dx, dy + 3.2, 5.5, 'Доберись до дома: %s.' % home_addr, tex='blip_save', stopped=False)
+        dx, dy = m.at('safehouse')(0.0, 3.2)
+        yield from m.goto(dx, dy, 5.5, 'Доберись до дома: %s.' % home_addr, tex='blip_save', stopped=False)
         ms.ckpt['s1'] = 1
         m.help('Это твой дом. Жёлтая стрелка у двери — вход, синий маркер у кровати сохраняет игру. '
                'В гараже справа стоит твоя «Ласточка»; туда же можно загнать ещё две машины — они останутся твоими.',
@@ -339,7 +344,7 @@ def m_s1(m):
         w.hud.mission_title(m.spec['title'])
     # без оружия против двоих делать нечего: у двери дома лежит пистолет
     if not any(k in pl.ammo for k in (W_PISTOL, W_UZI, W_SILENCED)):
-        gx, gy = home['door'][0] + 2.2, home['door'][1] + 1.2
+        gx, gy = m.at('safehouse', 'door')(2.2, 1.2)
         pk = ms.add_pickup('weapon', gx, gy, W_PISTOL, 34)
         m.pickups.append(pk)
         b = m.blip(gx, gy, tex='blip_pickup', scale=0.9)
@@ -347,18 +352,20 @@ def m_s1(m):
         yield lambda: pk.removed or W_PISTOL in pl.ammo
         m.unblip(b)
     # порт: первый (южный) причал
-    pier = c.special['piers'][0]
-    sx, sy = pier['x0'] + 26.0, (pier['y0'] + pier['y1']) * 0.5
+    pier = c.special['piers'][0]                       # причал задан прямоугольником на чертеже города
+    FP = c.plan_frame(pier['x0'] + 26.0, (pier['y0'] + pier['y1']) * 0.5)
+    sx, sy = FP()
     ms.clear_area(sx, sy, 16.0, peds=True)
-    bruce = m.npc(sx, sy, math.pi, person_look('bruce'), hp=400.0)
+    bruce = m.npc(sx, sy, FP.h(math.pi), person_look('bruce'), hp=400.0)
     bruce.play('kneel', True)
     m.watch(bruce, 'Брюс погиб.')
     thugs = []
     for (ox, oy, wpn, yaw) in ((1.6, 1.3, W_PISTOL, math.pi + 0.6), (1.4, -1.5, W_BAT, math.pi - 0.6)):
-        e = m.enemy(sx + ox, sy + oy, yaw, gang_look('purple'), wpn, 85.0, 0.26, 22.0, gang='purple')
+        e = m.enemy(*FP.at(ox, oy, yaw), look=gang_look('purple'), weapon=wpn, hp=85.0, accuracy=0.26, radius=22.0,
+                    gang='purple')
         e.guard_radius = 26.0
         thugs.append(e)
-    ax, ay = pier['x0'] + 6.0, sy
+    ax, ay = FP(-20.0, 0.0)
     yield from m.goto(ax, ay, 7.0, 'Гони в порт, на первый причал!', stopped=False)
     yield from m.kill_all(thugs, 'Разберись с бандитами.', 'Бандитов')
     # брат свободен
@@ -478,7 +485,13 @@ def ship_guards(m):
         (x1 - 19.5, cy + 3.0, math.pi, W_UZI, None),                             # у надстройки
     ]
     guards = []
+    P = w.city.to_world                                # посты расписаны по чертежу корабля
+    rot = w.city.warp.rot(x0, cy)
     for (x, y, yaw, wpn, route) in posts:
+        x, y = P(x, y)
+        yaw += rot
+        if route is not None:
+            route = [P(rx, ry) for (rx, ry) in route]
         e = m.enemy(x, y, yaw, gang_look('mafia'), wpn, 90.0, 0.30, 24.0, gang=SHIP_GANG)
         e.yaw = yaw
         e.sight_cos = math.cos(math.radians(60.0))
@@ -543,7 +556,8 @@ def m_s2(m):
         yield from phone_call(m, 'bruce', [('Брюс', 'Братан, приезжай сюда: %s. Познакомлю с боссом.' % addr)])
         w.hud.mission_title(m.spec['title'])
         room = w.interiors.rooms['boss']
-        yield from m.goto(room.out[0], room.out[1] - 0.9, 1.6, 'Езжай в казино: %s.' % addr, on_foot=True,
+        gx, gy = c.off(room.out[0], room.out[1], 0.0, -0.9)
+        yield from m.goto(gx, gy, 1.6, 'Езжай в казино: %s.' % addr, on_foot=True,
                           tex='blip_boss')
         yield from boss_scene(m, bruce_look, [
             ('Брюс', 'Босс, это мой брат Макс.'),
@@ -559,7 +573,8 @@ def m_s2(m):
         yield from phone_call(m, 'bruce', [('Брюс', 'Братан, я у казино. Корабль сам себя не обчистит.')], ring=1.8)
         w.hud.mission_title(m.spec['title'])
         room = w.interiors.rooms['boss']
-        yield from m.goto(room.out[0], room.out[1] - 2.2, 4.0, 'Забери Брюса у казино: %s.' % addr, tex='blip_boss',
+        gx, gy = c.off(room.out[0], room.out[1], 0.0, -2.2)
+        yield from m.goto(gx, gy, 4.0, 'Забери Брюса у казино: %s.' % addr, tex='blip_boss',
                           stopped=True)
     # Брюс идёт с нами
     px, py = pl.pos()
@@ -574,12 +589,15 @@ def m_s2(m):
            'Часовые смотрят перед собой — заходи со спины.', 11.0)
     # сухогруз
     door.set_open(False, instant=True)
+    P = c.to_world                                     # корабль расписан по чертежу города
     cx, cy_, cyaw = sh['yellow_car']
+    cyaw = c.warp.dir(cx, cy_, cyaw)
+    cx, cy_ = P(cx, cy_)
     car = m.car('sports', cx, cy_, cyaw, paint=0, clear=0.0)
     car.locked = True
     m.watch(car, 'Машина уничтожена. Босс вас закопает.')
     guards = ship_guards(m)
-    fx, fy = sh['stairs_foot']
+    fx, fy = P(*sh['stairs_foot'])
     while True:
         yield from m.goto(fx, fy, 6.0, 'Отправляйтесь с Брюсом в порт, к сухогрузу.', stopped=False, tex='blip_ship')
         if buddy.near(40.0):
@@ -589,10 +607,12 @@ def m_s2(m):
         yield lambda: buddy.near(12.0)
         m.unblip(b)
     lx0, ly0, lx1, ly1 = sh['landing']
-    yield from m.goto((lx0 + lx1) * 0.5, sh['y0'] + 1.6, 2.2, 'Поднимитесь на корабль по трапу.', on_foot=True)
+    gx, gy = P((lx0 + lx1) * 0.5, sh['y0'] + 1.6)
+    yield from m.goto(gx, gy, 2.2, 'Поднимитесь на корабль по трапу.', on_foot=True)
     yield from m.kill_all(guards, 'Уберите охрану.', 'Охрана')
     dx, dy = sh['yellow_door']
-    yield from m.goto(dx - 1.5, dy, 1.5, 'Открой жёлтый контейнер ключом босса.', on_foot=True)
+    dx, dy = P(dx - 1.5, dy)
+    yield from m.goto(dx, dy, 1.5, 'Открой жёлтый контейнер ключом босса.', on_foot=True)
     door.set_open(True)
     w.audio.play('garage', 0.8)
     car.locked = False

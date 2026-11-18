@@ -825,9 +825,11 @@ class Game(object):
         self.audio.pause_all(True)
         w.hud.stash(True)
         x0, y0, x1, y1 = w.city.landmarks[name]['bay_rect']
+        F = w.city.plan_frame((x0 + x1) * 0.5, y0)       # середина ворот бокса; ворота смотрят «на юг» чертежа
+        nose_out = F.h(-math.pi / 2)
         # машину разворачивают носом к воротам: так её видно снаружи, и выезжать потом удобно
-        v.x, v.y = (x0 + x1) * 0.5, y0 + (y1 - y0) * 0.48
-        v.yaw = -math.pi / 2
+        v.x, v.y = F(0.0, (y1 - y0) * 0.48)
+        v.yaw = nose_out
         v.vx = v.vy = v.speed = v.omega = 0.0
         v.sync()
         hz = v.z + 0.7
@@ -837,12 +839,12 @@ class Game(object):
             dx, dy = v.x - cx, v.y - cy
             d = math.hypot(dx, dy) or 1.0
             return (cx, cy, cz, v.x - dy / d * shift, v.y + dx / d * shift, hz)
-        cam = view(v.x - 2.6, y0 - 3.4, v.z + 1.9)
+        cam = view(*F(-2.6, -3.4), cz=v.z + 1.9)
         FRONT = ('xenon', 'bumper', 'roof', 'neon', 'rims', 'susp', 'armor', 'engine', 'turbo', 'horn')
 
         def look(kind):
             # камера всегда снаружи, у ворот; чтобы показать корму, машину разворачивают носом внутрь
-            v.yaw = -math.pi / 2 if kind == 'front' else math.pi / 2
+            v.yaw = nose_out if kind == 'front' else nose_out + math.pi
             v.sync()
             w.cam.override = cam
             w.cam.update(0.0, 0, 0)
@@ -851,7 +853,7 @@ class Game(object):
 
         def close():
             self.ui.close_all()
-            v.yaw = -math.pi / 2                      # отдают машину носом к воротам
+            v.yaw = nose_out                          # отдают машину носом к воротам
             v.sync()
             w.cam.override = None
             w.cam.yaw = v.yaw

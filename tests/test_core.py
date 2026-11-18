@@ -22,6 +22,7 @@ def test_city_is_deterministic():
 
 def test_landmarks_present_and_reachable():
     c = City()
+    c.go_live()                                      # как в игре: точки и вопросы — в мире, на изогнутых улицах
     for name in ('safehouse', 'vano', 'rosa', 'prof', 'spray', 'spray2', 'hospital', 'police', 'bank', 'taxi',
                  'guns', 'guns2', 'port', 'gas'):
         lm = c.landmarks[name]
@@ -64,19 +65,26 @@ def test_road_network_connected():
 def test_lanes_drive_on_the_right():
     c = City()
     rn = RoadNet(c)
+    c.go_live()
     for l in rn.lanes:
-        x, y, yaw = l.pos(l.length * 0.5)
-        seg = c.segs[l.seg]
-        # правее осевой по ходу движения
-        if l.dir == 'e':
-            assert y < seg['c']
-        elif l.dir == 'w':
-            assert y > seg['c']
-        elif l.dir == 'n':
-            assert x > seg['c']
-        else:
-            assert x < seg['c']
-        assert c.on_road(x, y)
+        for k in (0.03, 0.5, 0.97):
+            x, y, yaw = l.pos(l.length * k)
+            assert c.on_road(x, y)
+            u, v = c.to_plan(x, y)                   # на чертеже улица идёт по оси: полоса правее осевой по ходу
+            seg = c.segs[l.seg]
+            if l.dir == 'e':
+                assert v < seg['c']
+            elif l.dir == 'w':
+                assert v > seg['c']
+            elif l.dir == 'n':
+                assert u > seg['c']
+            else:
+                assert u < seg['c']
+        # полоса — плавная кривая: курс вдоль неё не скачет, длина честная
+        x0, y0, a0 = l.pos(0.0)
+        x1, y1, a1 = l.pos(1.0)
+        assert abs(math.hypot(x1 - x0, y1 - y0) - 1.0) < 0.02
+        assert abs(mathutil.angle_diff(math.atan2(y1 - y0, x1 - x0), a0)) < 0.05
 
 
 def test_signals_never_green_for_both_axes():

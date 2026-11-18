@@ -235,13 +235,14 @@ class Frame(object):
     """
     __slots__ = ('city', 'u', 'v', 'rot')
 
-    def __init__(self, city, x, y):
+    def __init__(self, city, x, y, plan=False):
+        """(x, y) — точка мира; plan=True — точка чертежа."""
         self.city = city
-        if city.live:
-            self.u, self.v = city.warp.inv_exact(x, y)
-            self.rot = city.warp.rot(self.u, self.v)
-        else:
+        if not city.live:
             self.u, self.v, self.rot = x, y, 0.0
+        else:
+            self.u, self.v = (x, y) if plan else city.warp.inv_exact(x, y)
+            self.rot = city.warp.rot(self.u, self.v)
 
     def __call__(self, du=0.0, dv=0.0):
         if not self.city.live:
@@ -255,6 +256,19 @@ class Frame(object):
         """Точка и курс разом: (x, y, yaw)."""
         x, y = self(du, dv)
         return x, y, yaw + self.rot
+
+    def cam(self, du, dv, z, tu, tv, tz):
+        """Камера сценки: откуда и куда смотреть — шестёрка для cam.override."""
+        x, y = self(du, dv)
+        tx, ty = self(tu, tv)
+        return (x, y, z, tx, ty, tz)
+
+    def local(self, x, y):
+        """Точка мира -> сдвиг от начала отсчёта по чертежу (du, dv)."""
+        if not self.city.live:
+            return x - self.u, y - self.v
+        u, v = self.city.warp.inv(x, y)
+        return u - self.u, v - self.v
 
 
 class RoadNode(object):
@@ -431,6 +445,10 @@ class City(object):
     def frame(self, x, y):
         """Местная система отсчёта у точки мира (см. Frame)."""
         return Frame(self, x, y)
+
+    def plan_frame(self, u, v):
+        """То же у точки чертежа (угол прямоугольника, середина ворот)."""
+        return Frame(self, u, v, True)
 
     def in_rect(self, rect, x, y, margin=0.0):
         """Лежит ли точка мира в прямоугольнике чертежа (x0, y0, x1, y1[, ...])."""

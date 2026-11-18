@@ -145,6 +145,25 @@ class Warp(object):
             y += (my - y) * w
         return x, y
 
+    def rigid_at(self, u, v):
+        """Номер жёсткой области, в середине которой лежит точка чертежа (-1 — не лежит).
+        Там чертёж только сдвинут и повёрнут: прямое остаётся прямым."""
+        k = -1
+        for r in self.rigid:
+            k += 1
+            if u < r[13] or u > r[15] or v < r[14] or v > r[16]:
+                continue
+            px, py = u - r[0], v - r[1]
+            t = (px * r[2] + py * r[3]) / r[4]
+            if t < 0.0:
+                t = 0.0
+            elif t > 1.0:
+                t = 1.0
+            qx, qy = px - r[2] * t, py - r[3] * t
+            if qx * qx + qy * qy < r[5] * r[5]:
+                return k
+        return -1
+
     def fwd_memo(self, u, v):
         """То же, с памятью: при сборке сеток одна и та же точка встречается много раз."""
         key = (u, v)

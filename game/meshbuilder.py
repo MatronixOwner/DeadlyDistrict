@@ -50,6 +50,7 @@ WHITE = (1.0, 1.0, 1.0, 1.0)
 
 class MeshBuilder(object):
     CELL = 5.0               # при изгибе длинные грани режутся по общей решётке с таким шагом, м
+    LOCAL_MIN = 4.0          # в сетке здания режутся только грани длиннее этого
 
     def __init__(self, warp=None):
         """warp — изгиб города (game/warp.py): координаты задаются по чертежу, в сетку попадают
@@ -63,6 +64,8 @@ class MeshBuilder(object):
         self.built = {}          # key -> GeomNode (после build)
         self.warp = warp
         self._rots = {}
+        self._loc = None         # местная сетка здания (begin_local)
+        self.nosplit = False     # True — длинные грани не резать (то, что лежит в жёсткой области, и мелочь)
 
     def mark(self):
         """Запомнить текущее число вершин в каждой группе."""
@@ -108,18 +111,89 @@ class MeshBuilder(object):
             p0 = (tx + (p0[0] * c - p0[1] * s) * sc, ty + (p0[0] * s + p0[1] * c) * sc, tz + p0[2] * sc)
             p1 = (tx + (p1[0] * c - p1[1] * s) * sc, ty + (p1[0] * s + p1[1] * c) * sc, tz + p1[2] * sc)
             p2 = (tx + (p2[0] * c - p2[1] * s) * sc, ty + (p2[0] * s + p2[1] * c) * sc, tz + p2[2] * sc)
+        elif self._loc is not None:
+            # здание: своя крупная сетка, внутри клетки — прямые стены (см. begin_local)
+            loc = self._loc
+            ox, oy, du, dv, nu, nv, cells = loc
+            ax, ay = p0[0], p0[1]
+            bx, by = p1[0], p1[1]
+            cx, cy = p2[0], p2[1]
+            if nu == 1 and nv == 1:
+                q = cells[0]                         # (ox, oy, ax, ay, bx, by, cx, cy, cos, sin)
+                ku, kv = 1.0 / du, 1.0 / dv
+                if normals is not None:
+                    c, s = q[8], q[9]
+                    normals = tuple((n[0] * c - n[1] * s, n[0] * s + n[1] * c, n[2]) for n in normals)
+                fx, fy = (ax - ox) * ku, (ay - oy) * kv
+                p0 = (q[0] + q[2] * fx + q[4] * fy + q[6] * fx * fy, q[1] + q[3] * fx + q[5] * fy + q[7] * fx * fy,
+                      p0[2])
+                fx, fy = (bx - ox) * ku, (by - oy) * kv
+                p1 = (q[0] + q[2] * fx + q[4] * fy + q[6] * fx * fy, q[1] + q[3] * fx + q[5] * fy + q[7] * fx * fy,
+                      p1[2])
+                fx, fy = (cx - ox) * ku, (cy - oy) * kv
+                p2 = (q[0] + q[2] * fx + q[4] * fy + q[6] * fx * fy, q[1] + q[3] * fx + q[5] * fy + q[7] * fx * fy,
+                      p2[2])
+            else:
+                if self.CELL < 1e8:
+                    # длинная грань через границу клеток — разрезать по границе (короткие просто
+                    # переносятся по вершинам: каждая вершина — по своей клетке, щелей не бывает)
+                    if nu > 1:
+                        lo = (ax if ax < bx else bx) if (ax if ax < bx else bx) < cx else cx
+                        hi = (ax if ax > bx else bx) if (ax if ax > bx else bx) > cx else cx
+                        if hi - lo > self.LOCAL_MIN:
+                            k = int(math.floor((lo - ox) / du + 1e-7)) + 1
+                            if 1 <= k < nu and ox + k * du < hi - 1e-6:
+                                self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
+                                return
+                    if nv > 1:
+                        lo = (ay if ay < by else by) if (ay if ay < by else by) < cy else cy
+                        hi = (ay if ay > by else by) if (ay if ay > by else by) > cy else cy
+                        if hi - lo > self.LOCAL_MIN:
+                            k = int(math.floor((lo - oy) / dv + 1e-7)) + 1
+                            if 1 <= k < nv and oy + k * dv < hi - 1e-6:
+                                self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
+                                return
+                out = []
+                ns = [] if normals is not None else None
+                for (k, (x, y)) in enumerate(((ax, ay), (bx, by), (cx, cy))):
+                    fx, fy = (x - ox) / du, (y - oy) / dv
+                    i, j = int(fx), int(fy)
+                    if i < 0 or fx < 0.0:
+                        i = 0
+                    elif i >= nu:
+                        i = nu - 1
+                    if j < 0 or fy < 0.0:
+                        j = 0
+                    elif j >= nv:
+                        j = nv - 1
+                    fx -= i
+                    fy -= j
+                    q = cells[j * nu + i]
+                    out.append((q[0] + q[2] * fx + q[4] * fy + q[6] * fx * fy,
+                                q[1] + q[3] * fx + q[5] * fy + q[7] * fx * fy))
+                    if ns is not None:
+                        n = normals[k]
+                        ns.append((n[0] * q[8] - n[1] * q[9], n[0] * q[9] + n[1] * q[8], n[2]))
+                if ns is not None:
+                    normals = ns
+                p0 = (out[0][0], out[0][1], p0[2])
+                p1 = (out[1][0], out[1][1], p1[2])
+                p2 = (out[2][0], out[2][1], p2[2])
         elif self.warp is not None:
             wp = self.warp
             ax, ay = p0[0], p0[1]
             bx, by = p1[0], p1[1]
             cx, cy = p2[0], p2[1]
             L = self.CELL
-            if ((ax if ax > bx else bx) if (ax if ax > bx else bx) > cx else cx) - \
-                    ((ax if ax < bx else bx) if (ax if ax < bx else bx) < cx else cx) > L or \
-                    ((ay if ay > by else by) if (ay if ay > by else by) > cy else cy) - \
-                    ((ay if ay < by else by) if (ay if ay < by else by) < cy else cy) > L:
-                self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
-                return
+            if not self.nosplit and (
+                    ((ax if ax > bx else bx) if (ax if ax > bx else bx) > cx else cx) -
+                    ((ax if ax < bx else bx) if (ax if ax < bx else bx) < cx else cx) > L or
+                    ((ay if ay > by else by) if (ay if ay > by else by) > cy else cy) -
+                    ((ay if ay < by else by) if (ay if ay < by else by) < cy else cy) > L):
+                k = wp.rigid_at(ax, ay)
+                if k < 0 or wp.rigid_at(bx, by) != k or wp.rigid_at(cx, cy) != k:
+                    self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
+                    return
             f = wp.fwd_memo
             if normals is not None:
                 normals = (self._rot_n(normals[0], ax, ay), self._rot_n(normals[1], bx, by),
@@ -159,6 +233,40 @@ class MeshBuilder(object):
     # ------------------------------------------------------------------
     # изгиб: поворот нормалей и разрезание длинных граней
     # ------------------------------------------------------------------
+    def begin_local(self, x0, y0, x1, y1, cell=14.0):
+        """Дальше строится одно здание с пятном (x0, y0, x1, y1) на чертеже.
+
+        Дом не гнётся по каждой вершине: его пятно делится на клетки не длиннее cell, углы клеток
+        ставятся точно по изгибу, а внутри клетки всё переносится билинейно.  Прямые вдоль стен остаются
+        прямыми, поэтому карнизы, балконы и ряды окон лежат на стене как влитые; длинный дом вдоль
+        кривой улицы получается слегка гранёным.  Резать приходится только то, что пересекает границу
+        клетки."""
+        wp = self.warp
+        if wp is None or self._xf is not None:
+            return
+        if x1 - x0 < 0.5:                                      # тонкая стена: пятно шириной в полметра
+            x0, x1 = (x0 + x1) * 0.5 - 0.25, (x0 + x1) * 0.5 + 0.25
+        if y1 - y0 < 0.5:
+            y0, y1 = (y0 + y1) * 0.5 - 0.25, (y0 + y1) * 0.5 + 0.25
+        nu = max(1, int(math.ceil((x1 - x0) / cell - 1e-6)))
+        nv = max(1, int(math.ceil((y1 - y0) / cell - 1e-6)))
+        du, dv = (x1 - x0) / float(nu), (y1 - y0) / float(nv)
+        f = wp.fwd
+        pts = [[f(x0 + i * du, y0 + j * dv) for i in range(nu + 1)] for j in range(nv + 1)]
+        cells = []
+        for j in range(nv):
+            for i in range(nu):
+                p00, p10, p01, p11 = pts[j][i], pts[j][i + 1], pts[j + 1][i], pts[j + 1][i + 1]
+                ax, ay = p10[0] - p00[0], p10[1] - p00[1]
+                bx, by = p01[0] - p00[0], p01[1] - p00[1]
+                ang = math.atan2(ay - bx, ax + by)             # поворот клетки (как у ближайшего вращения)
+                cells.append((p00[0], p00[1], ax, ay, bx, by, p11[0] - p10[0] - bx, p11[1] - p10[1] - by,
+                              math.cos(ang), math.sin(ang)))
+        self._loc = (x0, y0, du, dv, nu, nv, cells)
+
+    def end_local(self):
+        self._loc = None
+
     def _rot_n(self, n, x, y):
         """Нормаль, повёрнутая так же, как повёрнут чертёж в этой точке (поворот берётся по клетке 8 м)."""
         key = (x // 8.0, y // 8.0)
@@ -193,6 +301,7 @@ class MeshBuilder(object):
             v1 = (p1[0], p1[1], p1[2], uv1[0], uv1[1]) + col1 + tuple(normals[1])
             v2 = (p2[0], p2[1], p2[2], uv2[0], uv2[1]) + col2 + tuple(normals[2])
         L = self.CELL
+        loc = self._loc
         todo = [(v0, v1, v2)]
         done = []
         cut = self._cut
@@ -202,12 +311,25 @@ class MeshBuilder(object):
                 a, b, c = t[0][axis], t[1][axis], t[2][axis]
                 lo = min(a, b, c)
                 hi = max(a, b, c)
-                if hi - lo <= L:
-                    continue
-                line = round((lo + hi) * 0.5 / L) * L          # линия решётки поближе к середине
-                if not lo < line < hi:
-                    line = (math.floor(lo / L) + 1.0) * L
+                if loc is None:
+                    if hi - lo <= L:
+                        continue
+                    line = round((lo + hi) * 0.5 / L) * L          # линия решётки поближе к середине
                     if not lo < line < hi:
+                        line = (math.floor(lo / L) + 1.0) * L
+                        if not lo < line < hi:
+                            continue
+                else:
+                    n = loc[4 + axis]
+                    if n <= 1 or hi - lo <= self.LOCAL_MIN:
+                        continue
+                    o, d = loc[axis], loc[2 + axis]
+                    k0 = max(1, int(math.floor((lo - o) / d + 1e-7)) + 1)
+                    k1 = min(n - 1, int(math.ceil((hi - o) / d - 1e-7)) - 1)
+                    if k1 < k0:
+                        continue
+                    line = o + ((k0 + k1) // 2) * d
+                    if not lo + 1e-6 < line < hi - 1e-6:
                         continue
                 side = [(-1 if v[axis] < line else (1 if v[axis] > line else 0)) for v in t]
                 on = side.count(0)
@@ -215,10 +337,12 @@ class MeshBuilder(object):
                     # линия проходит через вершину: два куска
                     i = side.index(0)
                     A, B, C = t[i], t[(i + 1) % 3], t[(i + 2) % 3]
+                    if side[(i + 1) % 3] == side[(i + 2) % 3]:
+                        continue
                     P = cut(B, C, axis, line)
                     todo.append((A, B, P))
                     todo.append((A, P, C))
-                else:
+                elif on == 0:
                     # одна вершина по одну сторону, две по другую: треугольник и четырёхугольник
                     i = 0 if side[0] != side[1] and side[0] != side[2] else (1 if side[1] != side[0] else 2)
                     A, B, C = t[i], t[(i + 1) % 3], t[(i + 2) % 3]
@@ -227,6 +351,8 @@ class MeshBuilder(object):
                     todo.append((A, P, Q))
                     todo.append((P, B, C))
                     todo.append((P, C, Q))
+                else:
+                    continue
                 break
             else:
                 done.append(t)
@@ -271,6 +397,33 @@ class MeshBuilder(object):
     # ------------------------------------------------------------------
     def wall(self, key, ax, ay, bx, by, z0, z1, uv=(0.0, 0.0, 1.0, 1.0), color=WHITE):
         """Вертикальная стена от A к B, лицом вправо от направления A->B."""
+        L = self.CELL
+        if self.warp is not None and self._xf is None and self._loc is None and not self.nosplit and \
+                (abs(bx - ax) > L or abs(by - ay) > L) and (ax == bx or ay == by) and \
+                not self._rigid_rect(ax, ay, bx, by):
+            # изгиб: длинная стена вдоль оси — кусками по общей решётке
+            u0, v0, u1, v1 = uv
+            if ay == by:
+                pts = self._lattice(min(ax, bx), max(ax, bx))
+                if bx < ax:
+                    pts.reverse()
+                ts = [(q - ax) / (bx - ax) for q in pts]
+                pts = [(q, ay) for q in pts]
+            else:
+                pts = self._lattice(min(ay, by), max(ay, by))
+                if by < ay:
+                    pts.reverse()
+                ts = [(q - ay) / (by - ay) for q in pts]
+                pts = [(ax, q) for q in pts]
+            self.CELL = 1e9
+            try:
+                for i in range(len(pts) - 1):
+                    (px, py), (qx, qy) = pts[i], pts[i + 1]
+                    self.quad(key, (px, py, z0), (qx, qy, z0), (qx, qy, z1), (px, py, z1),
+                              (u0 + (u1 - u0) * ts[i], v0, u0 + (u1 - u0) * ts[i + 1], v1), color)
+            finally:
+                self.CELL = L
+            return
         self.quad(key, (ax, ay, z0), (bx, by, z0), (bx, by, z1), (ax, ay, z1), uv, color)
 
     def flat(self, key, x0, y0, x1, y1, z, uv=None, color=WHITE, tile=None, rot=0):
@@ -288,7 +441,50 @@ class MeshBuilder(object):
         if rot:
             rot %= 4
             uvs = uvs[rot:] + uvs[:rot]
+        L = self.CELL
+        if self.warp is not None and self._xf is None and self._loc is None and not self.nosplit and \
+                (x1 - x0 > L or y1 - y0 > L) and not self._rigid_rect(x0, y0, x1, y1):
+            # изгиб: большой прямоугольник сразу кладём плитками по общей решётке
+            xs = self._lattice(x0, x1)
+            ys = self._lattice(y0, y1)
+            kx, ky = 1.0 / (x1 - x0), 1.0 / (y1 - y0)
+            (a0, b0), (a1, b1), (a2, b2), (a3, b3) = uvs
+
+            def uv_at(x, y):
+                fx, fy = (x - x0) * kx, (y - y0) * ky
+                gx, gy = 1.0 - fx, 1.0 - fy
+                return (a0 * gx * gy + a1 * fx * gy + a2 * fx * fy + a3 * gx * fy,
+                        b0 * gx * gy + b1 * fx * gy + b2 * fx * fy + b3 * gx * fy)
+            self.CELL = 1e9
+            try:
+                for j in range(len(ys) - 1):
+                    ya, yb = ys[j], ys[j + 1]
+                    for i in range(len(xs) - 1):
+                        xa, xb = xs[i], xs[i + 1]
+                        self.quad(key, (xa, ya, z), (xb, ya, z), (xb, yb, z), (xa, yb, z),
+                                  uvs=(uv_at(xa, ya), uv_at(xb, ya), uv_at(xb, yb), uv_at(xa, yb)), color=color)
+            finally:
+                self.CELL = L
+            return
         self.quad(key, (x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z), uvs=uvs, color=color)
+
+    def _rigid_rect(self, x0, y0, x1, y1):
+        """Весь прямоугольник — в одной жёсткой области изгиба: резать его незачем."""
+        wp = self.warp
+        k = wp.rigid_at(x0, y0)
+        return k >= 0 and wp.rigid_at(x1, y1) == k and wp.rigid_at(x0, y1) == k and wp.rigid_at(x1, y0) == k
+
+    def _lattice(self, a, b):
+        """Точки от a до b: концы и все линии общей решётки между ними."""
+        L = self.CELL
+        out = [a]
+        k = math.floor(a / L) + 1.0
+        while k * L < b - 1e-9:
+            if k * L > a + 1e-9:
+                out.append(k * L)
+            k += 1.0
+        out.append(b)
+        return out
 
     def box(self, key, x0, y0, z0, x1, y1, z1, color=WHITE, faces='xXyYzZ', uv_m=None,
             top_key=None, top_color=None, shade=True):

@@ -33,6 +33,9 @@ class Garage(object):
         self.inside = False
         if not self.ok:
             return
+        # rect — прямоугольник гаража на чертеже города (ворота на его южной стороне); всё остальное —
+        # в мире: улицы изогнуты, и гараж стоит под тем углом, под каким лёг его квартал
+        city = world.city
         self.rect = info['rect']
         self.slots = info['slots']
         self.yaw = info['yaw']
@@ -40,13 +43,18 @@ class Garage(object):
         self.h = info['h']
         self.front = info['front']
         x0, y0, x1, y1 = self.rect
-        self.cx, self.cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+        self.cx, self.cy = city.to_world((x0 + x1) * 0.5, (y0 + y1) * 0.5)
+        self.gate = self.out(1.0)                  # точка перед воротами: по ней они открываются
         # ворота: секционное полотно, уходит под крышу
+        ax, ay = city.to_world(x0, y0)
+        bx, by = city.to_world(x1, y0)
         mb = MeshBuilder()
-        mb.box('corrugated', 0.0, -0.05, -(self.h - 0.12), x1 - x0, 0.05, 0.0, (0.86, 0.86, 0.84, 1), uv_m=2.0)
+        mb.box('corrugated', 0.0, -0.05, -(self.h - 0.12), math.hypot(bx - ax, by - ay), 0.05, 0.0,
+               (0.86, 0.86, 0.84, 1), uv_m=2.0)
         self.door = mb.build('garage_door', world.assets.apply_state)
         self.door.reparentTo(world.fx.root)
-        self.door.setPos(x0, y0, self.z + self.h - 0.02)
+        self.door.setPos(ax, ay, self.z + self.h - 0.02)
+        self.door.setH(math.degrees(math.atan2(by - ay, bx - ax)))
         self._pose()
 
     # ------------------------------------------------------------------
@@ -55,10 +63,15 @@ class Garage(object):
             self.door.setSz(max(0.04, 1.0 - 0.96 * self.k))
 
     def contains(self, x, y, margin=0.0):
+        """Точка мира внутри гаража (margin — отступ от стен внутрь)."""
         if not self.ok:
             return False
+        return self.w.city.in_rect(self.rect, x, y, -margin)
+
+    def out(self, d, side=0.0):
+        """Точка мира в d метрах перед воротами по оси въезда (d < 0 — внутри), side — вбок."""
         x0, y0, x1, y1 = self.rect
-        return x0 + margin <= x <= x1 - margin and y0 + margin <= y <= y1 - margin
+        return self.w.city.to_world((x0 + x1) * 0.5 + side, y0 - d)
 
     def capacity(self):
         return len(self.slots) if self.ok else 0
@@ -83,11 +96,11 @@ class Garage(object):
         pl = w.player
         px, py = pl.pos()
         # ворота
-        d = math.hypot(px - self.cx, py - (self.rect[1] - 1.0))
+        d = math.hypot(px - self.gate[0], py - self.gate[1])
         want = 1.0 if (d < OPEN_AT or self.contains(px, py)) and w.interiors.current is None else 0.0
         if self.k != want:
             if abs(self.k - want) > 0.98:
-                w.audio.play_at('garage', self.cx, self.rect[1], 0.7)
+                w.audio.play_at('garage', self.gate[0], self.gate[1], 0.7)
             self.k += SPEED * dt if want > self.k else -SPEED * dt
             self.k = max(0.0, min(1.0, self.k))
             self._pose()
@@ -234,8 +247,7 @@ class HeroCar(object):
                 break
         inside = spot is not None
         if not inside:
-            x0, y0, x1, y1 = g.rect
-            spot = ((x0 + x1) * 0.5, y0 - 4.2)
+            spot = g.out(4.2)
             for c in list(w.vehicles):          # площадка должна быть свободна
                 if not c.keep and (c.x - spot[0]) ** 2 + (c.y - spot[1]) ** 2 < 4.5 ** 2:
                     w.remove_vehicle(c)

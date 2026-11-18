@@ -497,37 +497,44 @@ class Tester(object):
                 gx, gy = sp['garage']['front']
                 gyaw = sp['garage']['yaw']
                 out.append(('Гараж у дома Макса', (gx, gy, gyaw), (gx, gy, gyaw, False)))
+        def P(u, v, yaw=None):
+            """Точка (и курс) с чертежа города — в мир: причалы, корабль, мосты заданы по чертежу."""
+            x, y = c.to_world(u, v)
+            return (x, y, None if yaw is None else c.warp.dir(u, v, yaw))
+
         air = lms.get('airfield')
         if air is not None and 'apron' in air:
             ax, ay = air['apron']
-            out.append(('Аэродром: перрон', (ax, ay, 0.0), (ax, ay, 0.0, False)))
+            ayaw = c.rot_at(ax, ay)
+            out.append(('Аэродром: перрон', (ax, ay, ayaw), (ax, ay, ayaw, False)))
         piers = sp.get('piers') or []
         if piers:
             p = piers[0]
-            px, py = p['x0'] + 6.0, (p['y0'] + p['y1']) * 0.5
-            out.append(('Порт: первый причал', (px, py, 0.0), (px, py, 0.0, False)))
+            q = P(p['x0'] + 6.0, (p['y0'] + p['y1']) * 0.5, 0.0)
+            out.append(('Порт: первый причал', q, q + (False,)))
         ship = sp.get('ship')
         if ship is not None:
             sx, sy = ship['stairs_foot']
             rx, ry = ship['ramp_foot']
-            out.append(('Сухогруз: трап', (sx, sy, math.pi / 2), (rx, ry, 0.0, False)))
+            out.append(('Сухогруз: трап', P(sx, sy, math.pi / 2), P(rx, ry, 0.0) + (False,)))
         pier = sp.get('pier')
         if pier is not None:
             px, py = (pier['x0'] + pier['x1']) * 0.5, pier['y1'] - 3.0
-            out.append(('Пляж: причал', (px, py, -math.pi / 2), (px, py + 30.0, None, True)))
+            out.append(('Пляж: причал', P(px, py, -math.pi / 2), P(px, py + 30.0) + (True,)))
         pond = sp.get('pond')
         if pond is not None:
             px, py = pond['x'] + pond['rx'] + 5.0, pond['y']
-            out.append(('Парк: пруд', (px, py, math.pi), (px, py, None, True)))
+            out.append(('Парк: пруд', P(px, py, math.pi), P(px, py) + (True,)))
         for i, seg in enumerate(c.bridges):
             m = (seg['a'] + seg['b']) * 0.5
             x, y = (m, seg['c']) if seg['kind'] == 'h' else (seg['c'], m)
-            name = c.zone_name(x, y) or c.street_name(x, y) or ''
-            if 'мост' not in name.lower():
-                name = ('Мост: %s' % name) if name else ('Мост %d' % (i + 1))
             off = seg['width'] * 0.5 - 1.5                     # пешком — у края настила, не посреди дороги
             fx, fy = (x, y - off) if seg['kind'] == 'h' else (x + off, y)
-            out.append((name, (fx, fy, None), (x, y, None, True)))
+            wx, wy = c.to_world(x, y)
+            name = c.zone_name(wx, wy) or c.street_name(wx, wy) or ''
+            if 'мост' not in name.lower():
+                name = ('Мост: %s' % name) if name else ('Мост %d' % (i + 1))
+            out.append((name, P(fx, fy), (wx, wy, None, True)))
         return out
 
     def go(self, title, foot, car):

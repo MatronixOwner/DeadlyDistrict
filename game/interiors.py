@@ -85,6 +85,7 @@ class Room(object):
         self.out = None             # точка у двери снаружи (на улице)
         self.out_pos = None         # где герой оказывается, выйдя
         self.wall_y = 0.0
+        self.door_plan = (0.0, 0.0)  # дверь на чертеже города: (x, y стены)
         self.arrow = None
         self.arrow_in = None
 
@@ -1050,12 +1051,16 @@ class Interiors(object):
     def _build(self):
         w = self.w
         c = w.city
-        dmb = MeshBuilder()
+        # двери ставятся по чертежу города (на южной стене дома) и гнутся вместе с ним — той же сеткой,
+        # что и стены своего дома; точки, которыми пользуется игра (out, out_pos), — уже в мире
+        dmb = MeshBuilder(c.warp if c.live else None)
+        P = c.to_world if c.live else (lambda u, v: (u, v))
         k = 0
         for (name, fn, lmk) in ROOMS:
             lm = c.landmarks.get(lmk)
             if lm is None or lm.get('facing', 's') != 's':
                 continue
+            lm = lm.get('plan', lm)
             room = Room(name, k)
             k += 1
             room.landmark = lmk
@@ -1072,12 +1077,15 @@ class Interiors(object):
                 n = max(1, int((x1 - x0) // 14))
                 ex = x0 + (x1 - x0) / n if n > 1 else (x0 + x1) * 0.5 + 4.6
             room.wall_y = y0
-            room.out = (ex, y0 - 0.6)
-            room.out_pos = (ex, y0 - 1.5, -math.pi / 2)
-            gz = c.ground_z(ex, y0 - 0.6)
+            room.door_plan = (ex, y0)
+            room.out = P(ex, y0 - 0.6)
+            room.out_pos = P(ex, y0 - 1.5) + (c.warp.dir(ex, y0, -math.pi / 2) if c.live else -math.pi / 2,)
+            gz = c.ground_z_l(ex, y0 - 0.6)
             tex = DOOR_TEX.get(name, 'int_door')
             bay = c.entry_bay(lmk) if lm.get('yard') is None else None
             bld = c.landmark_building(lmk)
+            if bld is not None:
+                dmb.begin_local(bld.x0, bld.y0, bld.x1, bld.y1)
             if bay is not None:
                 self._entrance(dmb, bay[2], bay[1], bld, ex, y0, gz, tex)
             else:
@@ -1086,6 +1094,7 @@ class Interiors(object):
                     # дверь в глухой стене склада: навес над ней
                     dmb.box(None, ex - 1.0, y0 - 0.8, gz + 2.42, ex + 1.0, y0, gz + 2.5, (0.2, 0.22, 0.26, 1.0), 'xXyZz')
             dmb.box('concrete', ex - 0.9, y0 - 0.5, gz - 0.1, ex + 0.9, y0, gz + 0.04, (0.7, 0.7, 0.7, 1.0), 'xXyZ', 1.0)
+            dmb.end_local()
             self.rooms[name] = room
             self.order.append(room)
         self.doors_np = dmb.build('doors', w.assets.apply_state)
@@ -1356,7 +1365,9 @@ class Interiors(object):
                     continue
                 if abs(r.out[0] - p.x) < 90.0 and abs(r.out[1] - p.y) < 90.0 and not self.cinema:
                     a.update(dt)
-                    if on_foot and not pl.freeze and abs(p.x - r.out[0]) < 0.8 and -1.3 < p.y - r.wall_y < 0.3:
+                    du, dv = self.w.city.to_plan(p.x, p.y) if self.w.city.live else (p.x, p.y)
+                    du, dv = du - r.door_plan[0], dv - r.door_plan[1]
+                    if on_foot and not pl.freeze and abs(du) < 0.8 and -1.3 < dv < 0.3:
                         why = self.locked_reason()
                         if why is None:
                             self._begin('enter', r)

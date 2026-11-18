@@ -14,6 +14,7 @@ from .collision import (F_CAR, F_PED, F_SIGHT, F_BULLET, F_BREAK, F_CAM, F_SOLID
 from .terrain import FLAT as TERRAIN_FLAT
 
 W4 = (1.0, 1.0, 1.0, 1.0)
+ROAD_UNDER = 0.25               # на столько полотно дороги заходит под бордюр (город изогнут: см. _road_quad)
 SHOULDER = 2.2                  # обочина трассы: ширина, высота, цвет
 SHOULDER_Z = -0.04
 SHOULDER_C = (0.80, 0.78, 0.74, 1.0)
@@ -338,17 +339,42 @@ class CityMesh(object):
     # дороги
     # ------------------------------------------------------------------
     def _road_quad(self, mb, key, cx, cy, dx, dy, half_w, t0, t1, v0, v1, flip=False, z=0.0):
-        """Кусок дороги вдоль направления (dx, dy) от t0 до t1 (от точки cx, cy)."""
+        """Кусок дороги вдоль направления (dx, dy) от t0 до t1 (от точки cx, cy).
+
+        Улицы изогнуты, поэтому полотно кладётся короткими полосами во всю ширину: швы — по общей решётке,
+        там же, где режутся тротуар и бордюр.  Поперёк полоса не режется (ровному полотну это не нужно),
+        зато она на ладонь шире проезжей части и уходит под бордюр: щели у бордюра быть не может."""
         rx, ry = dy, -dx            # вправо от направления
-        a = (cx + dx * t0 - rx * half_w, cy + dy * t0 - ry * half_w, z)     # лево-начало
-        b = (cx + dx * t0 + rx * half_w, cy + dy * t0 + ry * half_w, z)     # право-начало
-        c = (cx + dx * t1 + rx * half_w, cy + dy * t1 + ry * half_w, z)
-        d = (cx + dx * t1 - rx * half_w, cy + dy * t1 - ry * half_w, z)
-        if not flip:
-            uvs = ((0, v0), (1, v0), (1, v1), (0, v1))
+        hw = half_w + (ROAD_UNDER if mb.warp is not None else 0.0)
+        if mb.warp is not None and mb._xf is None and (dx == 0.0 or dy == 0.0) and not mb._rigid_rect(
+                cx + dx * t0 - rx * half_w, cy + dy * t0 - ry * half_w, cx + dx * t1 + rx * half_w,
+                cy + dy * t1 + ry * half_w):
+            base = cx if dy == 0.0 else cy
+            sgn = dx if dy == 0.0 else dy
+            lo, hi = base + sgn * t0, base + sgn * t1
+            ts = [(q - base) / sgn for q in mb._lattice(min(lo, hi), max(lo, hi))]
+            if sgn < 0.0:
+                ts.reverse()
         else:
-            uvs = ((1, v1), (0, v1), (0, v0), (1, v0))
-        mb.quad(key, a, b, c, d, uvs=uvs)
+            ts = [t0, t1]
+        hold = mb.nosplit
+        mb.nosplit = True
+        try:
+            for i in range(len(ts) - 1):
+                ta, tb = ts[i], ts[i + 1]
+                va = v0 + (v1 - v0) * (ta - t0) / (t1 - t0)
+                vb = v0 + (v1 - v0) * (tb - t0) / (t1 - t0)
+                a = (cx + dx * ta - rx * hw, cy + dy * ta - ry * hw, z)     # лево-начало
+                b = (cx + dx * ta + rx * hw, cy + dy * ta + ry * hw, z)     # право-начало
+                c = (cx + dx * tb + rx * hw, cy + dy * tb + ry * hw, z)
+                d = (cx + dx * tb - rx * hw, cy + dy * tb - ry * hw, z)
+                if not flip:
+                    uvs = ((0, va), (1, va), (1, vb), (0, vb))
+                else:
+                    uvs = ((1, v1 + v0 - va), (0, v1 + v0 - va), (0, v1 + v0 - vb), (1, v1 + v0 - vb))
+                mb.quad(key, a, b, c, d, uvs=uvs)
+        finally:
+            mb.nosplit = hold
 
     def _roads(self):
         c = self.city
@@ -408,7 +434,12 @@ class CityMesh(object):
                     tex = 'road4' if ROAD_X_AVE[n.i] else 'road2'
                     self._road_quad(mb, tex, n.x, n.y - n.hh, 0.0, 1.0, n.hw, 0.0, 2 * n.hh, 0.0, n.hh / 4.0)
                 continue
-            mb.flat('asphalt', n.x - n.hw, n.y - n.hh, n.x + n.hw, n.y + n.hh, 0.0, tile=(8.0, 8.0))
+            # перекрёсток — одним куском, на ладонь шире и на волос ниже дорог: заходит под их концы и под бордюр
+            u = ROAD_UNDER if mb.warp is not None else 0.0
+            hold, mb.nosplit = mb.nosplit, True
+            mb.flat('asphalt', n.x - n.hw - u, n.y - n.hh - u, n.x + n.hw + u, n.y + n.hh + u,
+                    -0.006 if u else 0.0, tile=(8.0, 8.0))
+            mb.nosplit = hold
 
     # ------------------------------------------------------------------
     # земля
@@ -557,6 +588,13 @@ class CityMesh(object):
         """Тень под уличным предметом: по его очертанию, у деревьев — по кроне."""
         if kind in NO_SHADE:
             return
+        hold, mb.nosplit = mb.nosplit, True          # пятно маленькое и мягкое: резать его по решётке незачем
+        try:
+            self._prop_shade_(mb, kind, p, x, y, yaw, col)
+        finally:
+            mb.nosplit = hold
+
+    def _prop_shade_(self, mb, kind, p, x, y, yaw, col):
         if kind == 'tree':
             r = 3.0 * p.get('size', 1.0)
             self._blob(mb, x, y, r, r, 0.0, 1.0, 2)
@@ -634,6 +672,9 @@ class CityMesh(object):
             mb = self._mb(b.block)
             night = self._night(b.block)
             rnd = random.Random(int(b.x0 * 7 + b.y0 * 13) & 0xffff)
+            # дом строится в своей сетке: стены прямые от угла до угла (или гранёные, если дом длинный)
+            mb.begin_local(b.x0, b.y0, b.x1, b.y1)
+            night.begin_local(b.x0, b.y0, b.x1, b.y1)
             top = fac.build(b, mb, night, rnd)
             self._wall_shade(mb, b, by_block[b.block])
             canopy = fac.canopy.get(id(b), ())
@@ -642,6 +683,8 @@ class CityMesh(object):
                 z, w, h, dep = sign_place(b, s, canopy)
                 self._sign(mb, night, b.x0, b.y0, b.x1, b.y1, s['side'], s['off'], z, w, h, s['tex'], depth=dep,
                            stand=dep > 1.0)
+            mb.end_local()
+            night.end_local()
             # столкновения: прямоугольник участка, как и раньше
             self.static.add_box(b.x0, b.y0, b.x1, b.y1, 0.0, top + 0.1, F_WALL, ('bld', b))
 
@@ -692,14 +735,16 @@ class CityMesh(object):
     # ------------------------------------------------------------------
     def _boxes(self):
         for bx in self.city.boxes:
+            mb = self._mb(bx['block'])
+            mb.begin_local(bx['x0'], bx['y0'], bx['x1'], bx['y1'])      # коробка остаётся коробкой
             if bx['tex'] == 'container':
-                self._container(self._mb(bx['block']), bx)
+                self._container(mb, bx)
             elif bx['faces']:
-                mb = self._mb(bx['block'])
                 col = _c4(bx['color'])
                 mb.box(bx['tex'], bx['x0'], bx['y0'], bx['z0'], bx['x1'], bx['y1'], bx['z1'], col,
                        faces=bx['faces'], uv_m=bx['uv_m'], top_key=bx.get('top_tex'),
                        top_color=_c4(bx['top_color']) if bx.get('top_color') else None)
+            mb.end_local()
             if bx['solid']:
                 h = bx.get('stack_h')
                 z1 = bx['z0'] + h if h else bx['z1']
@@ -743,6 +788,7 @@ class CityMesh(object):
                 continue
             kind = w['kind']
             col = _c4(w['color'])
+            mb.begin_local(x0, y0, x1, y1, 10.0)          # забор: прямыми пролётами по десять метров
             if kind == 'fence':
                 key = (w['tex'], 'a')
                 n = L / 1.0
@@ -784,6 +830,7 @@ class CityMesh(object):
                 flags = F_SOLID | F_CAM
                 if h > 1.7:
                     flags |= F_SIGHT
+            mb.end_local()
             self.static.add_box(bx0, by0, bx1, by1, 0.0, z0 + h, flags, ('wall', w))
 
     # ------------------------------------------------------------------
