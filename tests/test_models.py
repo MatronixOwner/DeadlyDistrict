@@ -1102,36 +1102,209 @@ def test_balconies_span_door_and_window_and_signs_stay_below(world):
 
 
 def test_new_cars_are_real_models_and_take_paint(game, world):
-    """Три машины с фототекстурой: модель, колёса, краска.  Перекраска меняет кузов и не трогает стёкла."""
+    """Четыре готовые машины с itch.io: седан MoiDev («Тень», на нём же ездит ФБР), хэтчбек designersoup
+    («Зажигалка»), купе boggle («Катана») и машина героя Bricchi Games («Ласточка»).  У каждой своя модель
+    в настоящий размер, четыре колеса и маска краски: перекраска меняет кузов и не трогает стёкла, фары и шины.
+    Трёх машин с фототекстурой («Кирпич», маршрутка и «Ржавчина» на отдельных моделях) в игре больше нет."""
     from panda3d.core import PNMImage
     w = world
     m = w.models
-    for kind, model in (('brick', 'volvo'), ('minibus', 'hiace'), ('beater', 'dacia'), ('fbi', 'volvo')):
-        assert VEHICLE_MODELS[kind][0] == model
+    cars = (('shade', 'sus', 'Тень'), ('gti', 'golf', 'Зажигалка'), ('coupe', 'coupe', 'Катана'),
+            ('retro', 'retro', 'Ласточка'))
+    for kind, model, title in cars + (('fbi', 'sus', None),):
+        spec = SPECS[kind]
+        assert VEHICLE_MODELS[kind][0] == model and (title is None or spec.title == title)
         info = m.meta['vehicles'][model]
-        assert len(info['wheels']) == 4 and not info.get('fixed') and 500 < info['L'] * 100 / 1 < 520 or info['L'] > 3.5
+        assert len(info['wheels']) == 4 and info.get('tex') and not info.get('fixed')
+        # габариты игры сняты с модели: её не растягивают
+        assert abs(info['L'] - spec.L) < 0.05 and abs(info['W'] - spec.W) < 0.05 and abs(info['H'] - spec.H) < 0.03
         for f in (model + '.bam', model + '.png', model + '_shade.png'):
             assert os.path.isfile(os.path.join(m.dir, 'veh', f)), f
-    spec = SPECS['brick']
-    red = m.vehicle_texture('brick', spec, (0.80, 0.10, 0.09))
-    blue = m.vehicle_texture('brick', spec, (0.12, 0.26, 0.62))
-    a, b = PNMImage(), PNMImage()
-    red.store(a)
-    blue.store(b)
-    detail = PNMImage()
-    assert detail.read(os.path.join(m.dir, 'veh', 'volvo.png'))
-    painted = same = diff = 0
-    for y in range(0, 256, 4):
-        for x in range(0, 256, 4):
-            pa, pb = a.getXel(x, y), b.getXel(x, y)
-            d = abs(pa[0] - pb[0]) + abs(pa[1] - pb[1]) + abs(pa[2] - pb[2])
-            if detail.getAlpha(x, y) < 0.5:
-                painted += 1
-                diff += d > 0.15
-                assert pa[0] > pa[2] and pb[2] > pb[0], (x, y)             # красный красен, синий синь
-            else:
-                same += d < 0.02
-    assert painted > 400 and diff > painted * 0.9 and same > 1000
+    assert SPECS['coupe'].seats == 2 and len(SPECS['shade'].paints) == 6 and len(SPECS['coupe'].paints) == 10
+    # колёсные арки седана нарисованы на бортах: их вырезает отдельная картинка
+    assert m.meta['vehicles']['sus'].get('cut') and os.path.isfile(os.path.join(m.dir, 'veh', 'sus_cut.png'))
+    # убранные машины и их модели
+    assert 'brick' not in SPECS and 'brick' not in VEHICLE_MODELS
+    assert not {'volvo', 'hiace', 'dacia'} & set(m.meta['vehicles'])
+    assert not [f for f in os.listdir(os.path.join(m.dir, 'veh')) if f.startswith(('volvo', 'hiace', 'dacia'))]
+    assert VEHICLE_MODELS['minibus'][0] == 'stepvan' and VEHICLE_MODELS['beater'][0] == 'wagon'
+    assert len(m.meta['vehicles']) == 15
+    # краска
+    for kind, model, title in cars:
+        spec = SPECS[kind]
+        red = m.vehicle_texture(kind, spec, (0.80, 0.10, 0.09))
+        blue = m.vehicle_texture(kind, spec, (0.12, 0.26, 0.62))
+        a, b = PNMImage(), PNMImage()
+        red.store(a)
+        blue.store(b)
+        detail = PNMImage()
+        assert detail.read(os.path.join(m.dir, 'veh', model + '.png')) and detail.hasAlpha()
+        size = detail.getXSize()
+        assert size == detail.getYSize() and size in (128, 256, 512) and a.getXSize() == size
+        step = size // 64
+        painted = same = 0
+        for y in range(0, size, step):
+            for x in range(0, size, step):
+                pa, pb = a.getXel(x, y), b.getXel(x, y)
+                d = abs(pa[0] - pb[0]) + abs(pa[1] - pb[1]) + abs(pa[2] - pb[2])
+                if detail.getAlpha(x, y) < 0.5:
+                    painted += 1
+                    assert pa[0] > pa[2] and pb[2] > pb[0], (kind, x, y)   # красный красен, синий синь
+                else:
+                    same += 1
+                    assert d < 0.02, (kind, x, y)                          # некрашеное не меняется
+        assert painted > 600 and same > 400, (kind, painted, same)
+    assert not {k for k, model, title in cars} & m.failed
+
+
+def test_hero_car_cabin_seats_people_behind_glass(game, world):
+    """У «Ласточки» есть салон: водитель и пассажиры сидят на своих местах и видны сквозь тёмные стёкла;
+    пятому места нет — он едет невидимкой, как в любой другой машине.  Вышел — снова обычного роста."""
+    from panda3d.core import TransparencyAttrib, ColorAttrib
+    from game import story
+    from game.models import GLASS_TINT
+    from game.vehicle import CABIN_SCALE
+    w = world
+    pl = w.player
+    x, y = w.city.landmarks['airfield']['apron']
+    pl.teleport(x - 3.0, y)
+    v = w.spawn_vehicle('retro', x, y, math.pi / 2, 0)
+    info = w.models.meta['vehicles']['retro']
+    assert v.cabin is not None and len(v.cabin['seats']) == 4 and info.get('glass') and len(info['seats']) == 4
+    # стёкла — отдельная часть кузова: без текстуры, тёмные, полупрозрачные
+    glass = []
+    for gp in v.body.findAllMatches('**/+GeomNode'):
+        gn = gp.node()
+        for i in range(gn.getNumGeoms()):
+            st = gn.getGeomState(i)
+            ta, ca = st.getAttrib(TransparencyAttrib), st.getAttrib(ColorAttrib)
+            if ta is not None and ta.getMode() == TransparencyAttrib.MAlpha:
+                glass.append((gn.getGeom(i).getPrimitive(0).getNumPrimitives(), ca.getColor()))
+    assert len(glass) == 1 and glass[0][0] >= 40
+    assert all(abs(glass[0][1][k] - GLASS_TINT[k]) < 0.01 for k in range(4)) and 0.3 < GLASS_TINT[3] < 0.8
+    # водитель и трое пассажиров
+    pl.enter_vehicle(v, silent=True)
+    crew = []
+    for i in range(4):
+        q = w.spawn_ped(x + 4.0 + i, y, 0.0, story.person_look('bruce'), 'mission')
+        q.keep = True
+        w.put_in_vehicle(q, v)
+        crew.append(q)
+    harness.run(game, 0.3)
+    who = v.cabin['who']
+    assert who[pl.ped] == 0 and [who.get(q) for q in crew] == [1, 2, 3, None]
+    assert crew[3].node.isHidden() and crew[3].vehicle is v                   # пятый — невидимка
+    hw = SPECS['retro'].W * 0.5
+    for p in [pl.ped] + crew[:3]:
+        sx, sy, sz = v.cabin['seats'][who[p]]
+        assert not p.node.isHidden() and p.node.getParent() == v.tilt and p.shadow.isHidden()
+        assert abs(p.node.getScale()[0] - CABIN_SCALE) < 1e-4
+        pv = p.vis.pelvis_pos(v.tilt)
+        assert abs(pv.x - sx) < 0.02 and abs(pv.y - sy) < 0.02 and abs(pv.z - sz) < 0.02, (who[p], tuple(pv))
+        assert p.vis.cur == 'mix'
+        # целиком в салоне: голова под крышей, плечи между бортами
+        a = p.vis.actor
+        head = a.exposeJoint(None, 'modelRoot', 'head')
+        a.update(force=True)
+        hp = head.getPos(v.tilt)
+        assert sz + 0.35 < hp.z < SPECS['retro'].H - 0.08 and abs(hp.x) < hw - 0.25, (who[p], tuple(hp))
+    # водитель слева, спереди; задние — позади передних
+    seats = v.cabin['seats']
+    assert seats[0][0] < 0 < seats[1][0] and seats[0][1] > seats[2][1] and seats[1][1] > seats[3][1]
+    # пассажир вышел: место свободно, он снова обычного роста и стоит на улице
+    q = crew[1]
+    w.take_out(q)
+    assert q not in who and q.vehicle is None and abs(q.node.getScale()[0] - 1.0) < 1e-4
+    assert q.node.getParent() != v.tilt and not q.shadow.isHidden() and not q.node.isHidden()
+    w.put_in_vehicle(crew[3], v)                                               # …и его занимает тот, кто ждал
+    assert who[crew[3]] == 2 and not crew[3].node.isHidden()
+    # герой вышел: то же самое
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.3)
+    assert pl.ped not in who and abs(pl.ped.node.getScale()[0] - 1.0) < 1e-4 and not pl.ped.node.isHidden()
+    assert pl.ped.node.getParent() != v.tilt and not pl.ped.shadow.isHidden()
+    # в машине без салона героя по-прежнему не видно
+    other = w.spawn_vehicle('shade', x, y + 8.0, math.pi / 2, 0)
+    assert other.cabin is None and other.swheel is None
+    pl.enter_vehicle(other, silent=True)
+    harness.run(game, 0.2)
+    assert pl.ped.node.isHidden()
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.2)
+    assert not pl.ped.node.isHidden()
+    for q in crew:
+        if q.vehicle is not None:
+            w.take_out(q)
+        q.keep = False
+        w.remove_ped(q)
+
+
+def test_hero_car_steering_wheel_turns_under_the_hands(game, world):
+    """Рулевое колесо «Ласточки» — отдельная деталь: оно поворачивается вместе с колёсами (в 2,4 раза сильнее),
+    а ладони водителя лежат на ободе и идут за ним.  У сгоревшей машины ни руля, ни стёкол, ни седоков."""
+    from panda3d.core import TransparencyAttrib
+    from game.vehicle import STEER_TURNS
+    w = world
+    pl = w.player
+    x, y = w.city.landmarks['airfield']['apron']
+    pl.teleport(x - 3.0, y)
+    v = w.spawn_vehicle('retro', x, y, math.pi / 2, 1)
+    st = w.models.meta['vehicles']['retro']['steer']
+    assert v.swheel is not None and v.swheel.getParent() == v.tilt and 0.10 < st['r'] < 0.25
+    pos = v.swheel.getPos()
+    assert pos.x < -0.2 and pos.y > 0.3 and 0.6 < pos.z < 1.1                   # перед водителем, слева
+    ax = v._swheel_ax
+    assert abs(ax.length() - 1.0) < 0.01 and ax.y < -0.7 and ax.z > 0.2         # колонка наклонена к водителю
+    pts, tris = _node_mesh(v.swheel)
+    assert len(tris) >= 20
+    # обод — вокруг начала координат узла: его можно крутить на месте
+    r = max(math.sqrt(p[0] ** 2 + p[1] ** 2 + p[2] ** 2) for p in pts)
+    assert abs(r - st['r']) < 0.03
+    pl.enter_vehicle(v, silent=True)
+    harness.run(game, 0.3)
+    a = pl.ped.vis.actor
+    hands = [a.exposeJoint(None, 'modelRoot', n) for n in ('hand_l', 'hand_r')]
+
+    def on_rim(tol=0.075):
+        """Запястья — у точек «без четверти три» на ободе (ладонь лежит на ободе, запястье чуть ближе к водителю)."""
+        a.update(force=True)
+        grip = st['r'] * 0.92
+        for h, side in zip(hands, (-1.0, 1.0)):
+            p = h.getPos(v.swheel)
+            d = math.sqrt((p.x - side * grip) ** 2 + p.y ** 2 + p.z ** 2)
+            assert d < tol, (side, tuple(p), d)
+    assert abs(v._swheel_deg) < 0.5
+    on_rim()                                                                  # и на прямой, без единого поворота
+    quat0 = v.swheel.getQuat()
+    for steer in (0.5, -0.5, 0.2):
+        v.steer = steer
+        for _ in range(3):
+            v._update_visual(DT)
+        deg = -math.degrees(steer) * STEER_TURNS
+        assert abs(v._swheel_deg - deg) < 0.6, (steer, v._swheel_deg)
+        assert not v.swheel.getQuat().almostEqual(quat0, 0.01)
+        assert v.swheel.getPos().almostEqual(pos, 1e-4)                       # крутится на месте
+        on_rim()
+    # колёса в ту же сторону, руль — сильнее
+    assert abs(v.wheels[0][0].getH() - math.degrees(0.2)) < 0.5
+    # перекраска: руль собирается заново и остаётся повёрнутым, руки на нём
+    v.set_paint(3)
+    assert v.swheel is not None and abs(v._swheel_deg + math.degrees(0.2) * STEER_TURNS) < 0.6
+    v.steer = 0.21
+    for _ in range(3):
+        v._update_visual(DT)
+    on_rim(0.09)
+    # взрыв: героя выбрасывает, у остова нет ни руля, ни стёкол
+    pl.invincible = True
+    v.explode(False)
+    harness.run(game, 0.3)
+    assert v.dead and v.swheel is None
+    for gp in v.body.findAllMatches('**/+GeomNode'):
+        gn = gp.node()
+        for i in range(gn.getNumGeoms()):
+            ta = gn.getGeomState(i).getAttrib(TransparencyAttrib)
+            assert ta is None or ta.getMode() == TransparencyAttrib.MNone
+    assert not v.seat_ped(pl.ped) or pl.vehicle is not v
 
 
 def test_cruiser_and_bicycles_are_models(game, world):
@@ -1399,7 +1572,7 @@ def test_gun_in_the_hands_points_where_the_ped_looks(game, world):
 
 
 # ---------------------------------------------------------------------------
-# наборы с itch.io: такси MoiDev, чоппер Duhgless, мусор PSX Waste, плашки Free PSX UI
+# наборы с itch.io: такси MoiDev, чоппер Duhgless, мусор PSX Waste; интерфейс — снова плоский
 # ---------------------------------------------------------------------------
 def test_taxi_is_the_yellow_cab_model(game, world):
     """Такси — модель MoiDev со своей раскраской: жёлтый кузов, шашечки и фонарь на крыше нарисованы в текстуре,
@@ -1563,58 +1736,53 @@ def test_soft_shadows_under_props_and_along_walls(game, world):
     assert {'litter', 'roadpost'} <= set(CM.NO_SHADE)
 
 
-def test_ui_panels_keep_their_edges(game, world):
-    """Плашки интерфейса — текстуры набора Free PSX UI; края плашки не растягиваются вместе с ней."""
-    from panda3d.core import NodePath
+def test_interface_is_flat_again(game, world):
+    """Интерфейс — прежний, плоский: плашка меню, рамка мини-карты и полоса больших сообщений залиты одним
+    цветом.  Текстурных плашек набора Free PSX UI в игре больше нет — ни в коде, ни среди файлов."""
     from game import ui
+    from game.missions import REDC
     w = world
-    kit = w.hud.kit
-    for skin in (ui.SKIN_PANEL, ui.SKIN_BAND, ui.SKIN_PLATE, ui.SKIN_ALERT):
-        t = w.assets.tex(skin, clamp=True, smooth=True)
-        assert (t.getXSize(), t.getYSize()) == (512, 128), skin
-    assert not w.assets.missing
-    root = NodePath('t')
-    for turn in (False, True):
-        for (x0, x1, z0, z1) in ((0.0, 2.0, 0.0, 0.5), (-1.0, 0.2, -1.5, 1.5), (0.0, 0.06, 0.0, 0.04)):
-            p = kit.panel(root, x0, x1, z0, z1, ui.SKIN_PANEL, 0.9, edge=0.05, turn=turn)
-            mn, mx = p.getTightBounds()
-            assert abs(mn.x - x0) < 1e-5 and abs(mx.x - x1) < 1e-5 and abs(mn.z - z0) < 1e-5 and abs(mx.z - z1) < 1e-5
-            pts, tris = _node_mesh(p)
-            xs = sorted(set(round(q[0], 5) for q in pts))
-            zs = sorted(set(round(q[2], 5) for q in pts))
-            if x1 - x0 > 0.5:
-                assert len(xs) == 4 and len(zs) == 4 and len(tris) == 18     # девять частей
-                # края одной толщины, какой бы ни была плашка
-                long_edge = (zs[1] - zs[0]) if turn else (xs[1] - xs[0])
-                assert abs(long_edge - 0.05) < 1e-5
-            else:
-                assert 2 <= len(xs) <= 4 and 2 <= len(zs) <= 4               # крошечной плашке края ужимаются
-            assert abs(p.getColor()[3] - 0.9) < 1e-3
-            p.setAlphaScale(0.5)                                         # плавное исчезновение не мешает цвету
-            assert abs(p.getColor()[3] - 0.9) < 1e-3
-    # меню: плашка под столбцом, при смене ширины собирается заново
+    assert not [n for n in dir(ui) if n.startswith('SKIN')] and not hasattr(ui.Kit, 'panel')
+    assert not hasattr(game.ui, '_panel_w')
+    tex_dir = os.path.join(harness.ROOT, 'assets', 'tex')
+    assert not [f for f in os.listdir(tex_dir) if f.startswith(('ui_panel', 'ui_band', 'ui_plate', 'ui_alert'))]
+    assert not [k for k in w.assets.missing]
+
+    def flat(np_, alpha):
+        """Одноцветная карточка: без текстуры, цвет — INK с заданной прозрачностью."""
+        assert np_.getTexture() is None and not np_.findAllTextures().getNumTextures()
+        c = np_.getColor()
+        assert abs(c[0] - ui.INK[0]) < 0.01 and abs(c[1] - ui.INK[1]) < 0.01 and abs(c[2] - ui.INK[2]) < 0.01
+        assert abs(c[3] - alpha) < 0.01
+        pts, tris = _node_mesh(np_)
+        assert len(tris) == 2                                                 # один прямоугольник, а не девять частей
+    # меню паузы: экран просто затемнён, плашки под пунктами нет
+    from game.menu import Menu, Item
     harness.press(game, 'escape')
     harness.run(game, 0.2)
-    menu = game.ui
-    assert menu.stack and not menu.panel.isHidden() and menu.panel.getNumChildren() == 1
-    w0, skin = menu._panel_w
-    assert skin == ui.SKIN_PANEL
-    mn, mx = menu.panel.getTightBounds(menu.left)
-    assert abs(mx.x - w0) < 1e-4
+    ms = game.ui
+    assert game.state == 'pause' and ms.stack and ms.panel.isHidden() and not ms.dim.isHidden()
+    assert ms.dim.getTexture() is None and ms.dim.getColor()[3] > 0.4
+    # меню, за которым игру должно быть видно (ателье, меню тестера): под пунктами — одноцветная плашка
+    light = Menu(ms, 'Проба', [Item('Назад', ms.close)])
+    light.dim = 0.10
+    ms.open(light)
+    harness.run(game, 0.2)
+    assert ms.stack[-1] is light and not ms.panel.isHidden()
+    flat(ms.panel, 0.78)
+    ms.close()
     harness.press(game, 'escape')
     harness.run(game, 0.2)
-    # полоса большого сообщения и рамка мини-карты — тоже плашки с текстурой
-    assert any(ch.getTexture() is not None and ch.getTexture().getName().startswith('ui_panel')
-               for ch in w.hud.radar.getChildren() if ch.getName() == 'panel')
-    w.hud.big(u'ПРОВЕРКА', sub=u'строка')
+    assert game.state == 'play'
+    # рамка мини-карты
+    cards = [ch for ch in w.hud.radar.getChildren() if ch.getName() == 'card']
+    assert cards
+    flat(cards[0], 0.78)
+    # полоса большого сообщения; цвет букв — тот, что задан сообщением (а не «светлые на красной плашке»)
+    w.hud.big(u'ПОТРАЧЕНО', REDC, 5.0)
     harness.run(game, 0.2)
     assert not w.hud.band.isHidden()
-    assert w.hud.band.getTexture().getName().startswith('ui_band')
-    # красное сообщение — на красной полосе и светлыми буквами
-    from game.missions import REDC
-    w.hud.big(u'ПОТРАЧЕНО', REDC, 5.0)
-    assert w.hud.band.getTexture().getName().startswith('ui_alert')
+    flat(w.hud.band, 0.62)
     fg = w.hud.big_text.textNode.getTextColor()
-    assert abs(fg[0] - ui.PAPER[0]) < 0.01 and abs(fg[1] - ui.PAPER[1]) < 0.01
-    w.hud.big(u'ГОТОВО')
-    assert w.hud.band.getTexture().getName().startswith('ui_band')
+    assert abs(fg[0] - REDC[0]) < 0.01 and abs(fg[1] - REDC[1]) < 0.01 and abs(fg[2] - REDC[2]) < 0.01
+    w.hud.big_t = 0.0

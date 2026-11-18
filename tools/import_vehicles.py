@@ -425,7 +425,7 @@ CARS = {
                'Car_Base.011'),
         wheels=('L_Tire_front', 'R_Tire_Front', 'L_Tire_Back', 'R_Tire_Back'),
         steer='Steering_wheel', glass='carwindows',
-        seats=((-0.43, 0.19, 0.60), (0.43, 0.10, 0.60), (-0.40, -0.52, 0.61), (0.40, -0.52, 0.61)),
+        seats=((-0.43, 0.225, 0.547), (0.43, 0.147, 0.556), (-0.40, -0.473, 0.566), (0.40, -0.473, 0.566)),
         yup=True, turn='y+', width=1.71, size=512, flat={},
         head=(0.44, 0.76), tail=(0.47, 0.70)),
 }

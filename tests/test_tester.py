@@ -622,7 +622,7 @@ def test_teleport_into_every_room_and_back(tg):
 def test_spawn_every_vehicle(tg):
     w, t, pl = start(tg)
     harness.quiet(w)
-    assert len(SPECS) == 44
+    assert len(SPECS) == 47
     for kind in SPECS:
         assert t.open(), kind
         t.spawn(kind)

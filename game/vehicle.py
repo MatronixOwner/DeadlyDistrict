@@ -952,8 +952,8 @@ class Vehicle(object):
             who[ped] = idx
         if getattr(ped, '_ride_parent', None) is None:
             ped._ride_parent = ped.node.getParent()
+        ped.node.setScale(CABIN_SCALE)                  # до посадки: таз и ладони считаются уже для этого роста
         self._pose_rider(vis, ped.node, cab['seats'][idx], 'car' if idx == 0 else 'seat', bars=(idx == 0))
-        ped.node.setScale(CABIN_SCALE)
         ped.shadow.hide()
         ped.node.show()
         return True
