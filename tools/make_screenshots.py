@@ -41,6 +41,14 @@ def main():
         for _ in range(3):
             g.base.graphicsEngine.renderFrame()
             harness.run(g, 1.0 / 30.0, keys=keys)
+        # звёзды розыска мигают, когда уровень только что вырос: снимаем в тот кадр, где они горят
+        pol = w.police
+        for _ in range(8):
+            if not (g.state == 'play' and pol.level > 0 and (pol.cool_t > 2.0 or pol.flash > 0.0)
+                    and int(w.hud.t * 5) % 2 == 0):
+                break
+            g.base.graphicsEngine.renderFrame()
+            harness.run(g, 1.0 / 30.0, keys=keys)
         png = os.path.join(TMP, name + '.png')
         harness.shot(g, png)
         Image.open(png).convert('RGB').save(os.path.join(DOCS, name + '.jpg'), quality=88)
