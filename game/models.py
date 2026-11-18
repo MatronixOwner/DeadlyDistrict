@@ -35,14 +35,12 @@ VEHICLE_MODELS = {
     'bus': ('bus', {}),
     'truck': ('stepvan', {'overlay': {2: 'stepvan_mail'}}),
     'enforcer': ('stepvan', {'siren': True}),
-    'fbi': ('volvo', {}),
+    'fbi': ('caprice', {}),
     'army': ('stepvan', {}),
-    'beater': ('dacia', {}),
     'lowrider': ('vintage', {}),
     # новые машины на тех же кузовах: модель растягивается под свои габариты (см. vehicle_info)
     'limo': ('caprice', {'wheel_k': 0.86}),
     'racer': ('sleek', {}),
-    'minibus': ('hiace', {}),
     'firetruck': ('stepvan', {'siren': True, 'wheel_k': 1.1}),
     'cashvan': ('stepvan', {}),
     'icecream': ('stepvan', {}),
@@ -50,7 +48,11 @@ VEHICLE_MODELS = {
     'jeep': ('minivan', {'wheel_k': 1.3}),
     'pizza': ('hatch', {}),
     'tuner': ('hatch', {}),
-    'brick': ('volvo', {}),
+    # машины из ассетов с itch.io (свои модели)
+    'coupe': ('coupe', {}),
+    'golf': ('golf', {}),
+    'phantom': ('phantom', {'wheel_k': 1.30}),
+    'classic': ('classic', {'wheel_k': 1.15}),
 }
 
 WRECK = (0.20, 0.18, 0.16)

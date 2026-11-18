@@ -622,7 +622,7 @@ def test_teleport_into_every_room_and_back(tg):
 def test_spawn_every_vehicle(tg):
     w, t, pl = start(tg)
     harness.quiet(w)
-    assert len(SPECS) == 44
+    assert len(SPECS) == 45
     for kind in SPECS:
         assert t.open(), kind
         t.spawn(kind)
@@ -634,7 +634,8 @@ def test_spawn_every_vehicle(tg):
         assert v.health == v.max_health and not v.dead, kind
         assert sane(tg), kind
     # каждая новая машина заменяет прежнюю, поставленную из меню: улица ими не забивается
-    street = [o for o in w.vehicles if not o.removed and getattr(o, 'room', None) is None]
+    street = [o for o in w.vehicles if not o.removed and getattr(o, 'room', None) is None
+              and not getattr(o, 'garage', False)]                          # «Классик» Макса стоит в гараже и не в счёт
     assert street == [pl.vehicle]
     # машина, из которой герой вышел, остаётся; новая встаёт рядом, не в неё
     v1 = pl.vehicle

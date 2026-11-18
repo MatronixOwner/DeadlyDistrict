@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Мусор для улиц и плашки интерфейса из бесплатных наборов с itch.io.
+"""Мусор для улиц из бесплатного набора с itch.io.
 
   * PSX Waste (Daniel Jurys, CC0, https://daniel-jurys.itch.io/psx-waste) — мусорный контейнер, бочка, мешок
     с мусором, картонная коробка, бутылка и мятая банка.  Модели маленькие (12–92 треугольника), поэтому
     в игру они попадают не файлами .bam, а списком треугольников в assets/models/props.json: город собирает
     уличные предметы в общие сетки кварталов (game/props.py), и модели ложатся туда же;
-  * Free PSX UI (ROHHSA, CC0, https://rohhsa.itch.io/free-psx-ui) — плашки без надписей (Text-Block) нескольких
-    расцветок: фон меню, рамка мини-карты, полоса больших сообщений, экран загрузки;
   * ржавый остов машины для пустырей — модель assets/models/veh/wreck.bam (набор PSX Style Cars, GGBot, CC0,
     её собирает tools/import_psx.py): раньше остов на пустыре был сложен из четырёх коробок.
 
     python tools/import_vehicles.py fetch     # исходники в .cache/model_src/new (нужен gh)
     python tools/import_extra.py              # всё
-    python tools/import_extra.py props | ui
+    python tools/import_extra.py props
     python tools/import_extra.py --sheet out.png
 
 Игре исходники не нужны.
@@ -42,11 +40,6 @@ PROPS = {
     'bottle': ('glass-bottle', (0.95, 0.95, 0.95)),         # 0,285 м
     'can': ('crumpled-can', (0.55, 0.55, 0.55)),            # сплющенная банка 0,17 × 0,12 м
 }
-
-# расцветки плашек: имя текстуры -> номер набора
-SKINS = {'ui_panel': '05', 'ui_band': '01', 'ui_plate': '02', 'ui_alert': '08'}
-UI_SIZE = (512, 128)
-
 
 def bleed(a):
     """RGBA -> RGB: прозрачные точки получают цвет ближайших непрозрачных."""
@@ -151,24 +144,10 @@ def props():
     print('  %s  %d байт' % (os.path.relpath(OUT, ROOT), os.path.getsize(OUT)))
 
 
-def ui():
-    for name, skin in SKINS.items():
-        im = Image.open(os.path.join(SRC, 'rohhsa_ui', 'Skin%s-Cropped_Text-Block.png' % skin)).convert('RGB')
-        box = im.getbbox()                                              # ниже плашки — чёрное поле
-        assert box[0] == 0 and box[1] == 0 and box[2] == im.size[0], (name, box)
-        im = im.crop(box).resize(UI_SIZE, Image.LANCZOS)
-        im.info.clear()                                                 # без цветового профиля исходника
-        im.save(os.path.join(TEX, name + '.png'), optimize=True)
-        print('  %-9s набор %s  %dx%d' % (name, skin, im.size[0], im.size[1]))
-
-
 def sheet(path):
-    names = sorted(SKINS)
-    W = Image.new('RGB', (UI_SIZE[0] * 2 + 30, (UI_SIZE[1] + 10) * 2 + 10 + 256), (60, 20, 60))
-    for i, n in enumerate(names):
-        W.paste(Image.open(os.path.join(TEX, n + '.png')), (10 + (i % 2) * (UI_SIZE[0] + 10), 10 + (i // 2) * (UI_SIZE[1] + 10)))
+    W = Image.new('RGB', (160 * len(PROPS) + 130, 300), (60, 20, 60))
     for i, n in enumerate(sorted(PROPS)):
-        W.paste(Image.open(os.path.join(TEX, 'px_%s.png' % n)).resize((160, 160), Image.NEAREST), (10 + i * 170, 300))
+        W.paste(Image.open(os.path.join(TEX, 'px_%s.png' % n)).resize((160, 160), Image.NEAREST), (10 + i * 170, 60))
     W.save(path)
 
 
@@ -179,5 +158,3 @@ if __name__ == '__main__':
     else:
         if not args or 'props' in args:
             props()
-        if not args or 'ui' in args:
-            ui()

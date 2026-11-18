@@ -230,7 +230,6 @@ class Tester(object):
             if it.change is not None:
                 it.change = self._safe(it.change)
         m = Menu(self.game.ui, title, items, back=back, wide=True)
-        m.skin = ui.SKIN_PLATE          # серо-оливковая плашка: меню тестера с обычным не спутать
         return m
 
     def _safe(self, fn):

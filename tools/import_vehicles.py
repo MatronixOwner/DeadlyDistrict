@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Импорт готовых моделей транспорта, которых нет в основном наборе машин: ещё четыре автомобиля в стиле PS1,
+"""Импорт готовых моделей транспорта, которых нет в основном наборе машин: семь автомобилей в стиле PS1,
 два мотоцикла, два велосипеда, карт и детали тюнинга.
 
 Нужен только тому, кто пересобирает модели: игра читает готовые файлы из assets/models/veh.
@@ -10,9 +10,14 @@
     python tools/import_vehicles.py cars cab      # только одна машина (так же: bikes chop)
 
 Откуда что берётся (лицензии и авторы — в assets/models/CREDITS.md):
-  * «Волга» (седан), фургон-маршрутка — «Pack of low poly psx style models» (Elbolilloduro), из сборника
-    M3-org/retro3d-assets (Large_kits/Models pack psx);
-  * «Кирпич» (седан Volvo 240) и городской велосипед — тот же сборник, папка Vehicles;
+  * «Ястреб» (купе) — «PSX Car — 2 Seater Coupe» (boggle): копия .obj в репозитории KopiOCoder/FormulaCyber;
+  * «Гольф» (хэтчбек VW Golf Mk2 GTI) — «PS1 / Pixel Art style car» (designersoup, CC0): копия в репозитории
+    Soursop-Pop/Roadtrip;
+  * «Призрак» (ретро-седан) — MoiDev, «Suspicious Car — PSX Style Car» (CC0): копия папки «Suspicious Car 01»
+    в репозитории luisfillipedias/OHOMEMDEMETAS;
+  * «Классик» (седан 80-х, машина главного героя) — Bricchi Games, «Retro Car With Interior» (CC BY 4.0):
+    копия с маской покраски в репозитории matapao/drifting01; .fbx конвертируется в .glb через
+    npx fbx2gltf (нужен Node.js);
   * такси — Yellow Taxi/Cab, PS1 Car (MoiDev); копия со Sketchfab из репозитория Langorithm/3d-models;
   * чоппер — Another PSX Style Low-poly Bike (Duhgless, CC0); копия с текстурами 256 точек из
     репозитория webbertakken/citymap;
@@ -51,13 +56,37 @@ VEH = os.path.join(OUT, 'veh')
 # исходники: (репозиторий, ревизия, [(путь в репозитории, куда положить в .cache/model_src/new)])
 SOURCES = [
     ('M3-org/retro3d-assets', None, [
-        ('Large_kits/Models pack psx/Models/models.dae', 'psxpack/models.dae'),
-        ('Large_kits/Models pack psx/Texture/Auto.jpg', 'psxpack/Auto.jpg'),
-        ('Large_kits/Models pack psx/Texture/Auto2.jpg', 'psxpack/Auto2.jpg'),
-        ('Vehicles/volvo.blend', 'm3/volvo.blend'),
-        ('Vehicles/Materials/volvo.jpg', 'm3/volvo.jpg'),
         ('Vehicles/bike_vintage (unfinished).blend', 'm3/bike_vintage.blend'),
         ('Vehicles/Materials/bike_vintage.png', 'm3/bike_vintage.png'),
+    ]),
+    # boggle, PSX Car — 2 Seater Coupe (https://boggle.itch.io/2-seater-coupe): копия .obj в репозитории
+    # KopiOCoder/FormulaCyber (там же лежат .glb и варианты окраски; игра перекрашивает кузов сама)
+    ('KopiOCoder/FormulaCyber', 'main', [
+        ('cars/japanese_2_seater_coupe/2_seater_coupe.obj', 'boggle_coupe/2_seater_coupe.obj'),
+        ('cars/japanese_2_seater_coupe/wheel.obj', 'boggle_coupe/wheel.obj'),
+        ('cars/japanese_2_seater_coupe/textures/crystal_white.png', 'boggle_coupe/textures/crystal_white.png'),
+    ]),
+    # designersoup, PS1 / Pixel Art style car — VW Golf Mk2 GTI (CC0),
+    # (https://designersoup.itch.io/ps1-pixel-art-style-car): копия в репозитории Soursop-Pop/Roadtrip
+    ('Soursop-Pop/Roadtrip', 'main', [
+        ('Assets/Prefabs/car/red_golf.obj', 'designersoup_golf/red_golf.obj'),
+        ('Assets/Prefabs/car/red_golf.mtl', 'designersoup_golf/red_golf.mtl'),
+        ('Assets/Prefabs/car/pixel art golf final.png', 'designersoup_golf/pixel_art_golf_final.png'),
+    ]),
+    # MoiDev, Suspicious Car — PSX Style Car (https://moidev.itch.io/a-suspicious-car-for-your-projects, CC0):
+    # копия полной папки («Suspicious Car 01», шесть окрасок и Color Mask) в репозитории luisfillipedias/OHOMEMDEMETAS
+    ('luisfillipedias/OHOMEMDEMETAS', 'main', [
+        ('assets/models/car/psx/Suspicious Car 01/Suspicious Car.obj', 'moidev_suspicious/Suspicious Car.obj'),
+        ('assets/models/car/psx/Suspicious Car 01/Texture Black.png', 'moidev_suspicious/Texture Black.png'),
+        ('assets/models/car/psx/Suspicious Car 01/Color Mask.png', 'moidev_suspicious/Color Mask.png'),
+    ]),
+    # Bricchi Games, Retro Car With Interior (https://bricchi-games.itch.io/retro-car-with-interior, CC BY 4.0):
+    # «машину главного героя» автор перепаковал с маской покраски; копия лежит в репозитории matapao/drifting01
+    ('matapao/drifting01', 'main', [
+        ('src/assets/car/retro-car.fbx', 'bricchi_retro/retro-car.fbx'),
+        ('src/assets/car/car-paint-base.jpg', 'bricchi_retro/car-paint-base.jpg'),
+        ('src/assets/car/car-paint-mask.png', 'bricchi_retro/car-paint-mask.png'),
+        ('src/assets/car/car-emissive.png', 'bricchi_retro/car-emissive.png'),
     ]),
     ('KenneyNL/Starter-Kit-Racing', None, [
         ('models/vehicle-motorcycle.glb', 'kenney_racing/vehicle-motorcycle.glb'),
@@ -92,11 +121,6 @@ SOURCES = [
     ('morganholly/bike-bullet-delivery', '70f9927c760d6880ed9ba2957da3fbb428e5c22e', [
         ('enviroment/PSX-Waste/PSX-Waste/glb/%s.glb' % n, 'psx_waste/%s.glb' % n)
         for n in ('dumpster', 'barrel', 'trash-bag', 'cardboard-box', 'glass-bottle', 'crumpled-can')]),
-    # ROHHSA, Free PSX UI (https://rohhsa.itch.io/free-psx-ui, CC0): плашки интерфейса — tools/import_extra.py
-    ('Balwanek-ola/haven-2026', 'e58d9bfc33f2280d640d41aff795b7a13d87a147', [
-        ('FREEPSXUI/README.txt', 'rohhsa_ui/README.txt'),
-    ] + [('FREEPSXUI/fullres_720p/Skin%s-Cropped_Text-Block.png' % n, 'rohhsa_ui/Skin%s-Cropped_Text-Block.png' % n)
-         for n in ('01', '02', '05', '08')]),
 ]
 
 
@@ -352,35 +376,45 @@ DARK_INSIDE = (30, 30, 32)
 #   flat     — материалы без текстуры: имя -> цвет (None — грани убрать)
 #   head/tail — высота фар и задних фонарей в долях высоты кузова, и разнос в долях полуширины
 CARS = {
-    'dacia': dict(
-        file=('psxpack', 'models.dae'), tex=('psxpack', 'Auto.jpg'),
-        parts=('Auto.002', 'Auto.001', 'Auto.003', 'Auto.004', 'Auto.005', 'Auto.006'),
-        wheels=('Cylinder.043', 'Cylinder.044', 'Cylinder.046', 'Cylinder.047'),
-        turn='x-', width=1.64, paint=dict(hue=(190.0, 240.0), sat=(0.16, 1.0), val=0.16),
-        flat={'Material_155': GLASS, 'Plastic_02': None, 'Leather': None, 'Material_180': None},
-        head=(0.50, 0.70), tail=(0.56, 0.72)),
-    'hiace': dict(
-        file=('psxpack', 'models.dae'), tex=('psxpack', 'Auto2.jpg'),
-        parts=('Auto', 'Puerta', 'Puerta.001', 'Puerta.002', 'Puerta.003'),
-        wheels=('Rueda', 'Rueda.001', 'Rueda.002', 'Rueda.003'),
-        turn='x-', width=1.70, paint=dict(tint=(0.34, 0.30), keep=[(13, 203, 30, 220), (99, 203, 115, 220)]),
-        flat={'Material_155': GLASS},
-        head=(0.36, 0.72), tail=(0.42, 0.80)),
+    # купе боggle: белёсая текстура 128 точек, кузов красится (правило «белёсое»)
+    'coupe': dict(
+        file=('boggle_coupe', '2_seater_coupe.obj'), tex=('boggle_coupe', 'textures', 'crystal_white.png'),
+        parts=('2_seater_coupe',), wheels=('_wheel0', '_wheel1', '_wheel2', '_wheel3'),
+        wheel_file=('boggle_coupe', 'wheel.obj'),
+        wheel_hubs_raw=((0.63, 0.473, 1.22), (-0.63, 0.473, 1.22), (0.63, 0.473, -1.20), (-0.63, 0.473, -1.20)),
+        yup=True, turn='y+', width=1.72,
+        paint=dict(tint=(0.30, 0.62)),
+        flat={},
+        head=(0.55, 0.70), tail=(0.60, 0.72)),
+    # Volkswagen Golf Mk2 GTI, красная «заводская» окраска (фиксированная, стёкла не трогаем)
+    'golf': dict(
+        file=('designersoup_golf', 'red_golf.obj'), tex=('designersoup_golf', 'pixel_art_golf_final.png'),
+        parts=('baseShape',), wheels=('lRWheel', 'rRWheel', 'lFWheel', 'lFWheel.001'),
+        yup=True, turn='y+', width=1.80, fixed=True, flat={},
+        head=(0.42, 0.72), tail=(0.46, 0.70)),
+    # «Подозрительная машина»: body красится по Color Mask (красный — кузов, чёрный — стёкла и хром)
+    'phantom': dict(
+        file=('moidev_suspicious', 'Suspicious Car.obj'), tex=('moidev_suspicious', 'Texture Black.png'),
+        parts=('Body_Cube.001',),
+        wheels=('Wheel_FR_Cylinder', 'Wheels_RL_Cylinder.001', 'Wheels_FL_Cylinder.002', 'Wheels_RR_Cylinder.003'),
+        mask_file=('moidev_suspicious', 'Color Mask.png'), mask_min=0.05,
+        yup=True, turn='y+', width=1.82, flat={},
+        head=(0.44, 0.70), tail=(0.48, 0.72)),
+    # «Классик»: машина главного героя (bricchi-games): маска покраски из перепаковки автора
+    'classic': dict(
+        file=('bricchi_retro', 'retro-car.glb'), tex=('bricchi_retro', 'car-paint-base.jpg'),
+        parts=('Car_Base', 'car_hood', 'trunk', 'R_Door_Front', 'R_Door_Back', 'L_Door_Front', 'L_Door_Back',
+               'Car_Base.011'),
+        wheels=('R_Tire_Front', 'L_Tire_front', 'R_Tire_Back', 'L_Tire_Back'),
+        mask_file=('bricchi_retro', 'car-paint-mask.png'), mask_min=0.30,
+        yup=True, turn='y+', width=1.80, flat={},
+        head=(0.50, 0.70), tail=(0.55, 0.72)),
     # такси MoiDev: текстура как есть (жёлтый кузов с «шашечками»), не перекрашивается
     'cab': dict(
         file=('moidev_taxi', 'scene.gltf'), tex=('moidev_taxi', 'textures', 'Taxi_baseColor.png'),
         parts=('Object_4', 'Object_6'), wheels=('Object_8', 'Object_10', 'Object_12', 'Object_14'),
         yup=True, turn='y+', width=1.86, fixed=True, flat={},
         head=(0.47, 0.74), tail=(0.50, 0.80)),
-    'volvo': dict(
-        file=('m3', 'volvo.blend'), tex=('m3', 'volvo.jpg'),
-        parts=('Plane',), wheels=None, mirror=True,
-        turn='y-', width=1.71,
-        paint=dict(hue=(18.0, 62.0), sat=(0.10, 0.62), val=0.30, white=(0.16, 0.50),
-                   keep=[(13, 89, 63, 135), (81, 31, 127, 64), (73, 87, 137, 119), (96, 127, 113, 149), (27, 185, 45, 207),
-                         (147, 125, 219, 166)]),
-        flat={},
-        head=(0.50, 0.74), tail=(0.56, 0.74)),
 }
 TEX_SIZE = 256
 
@@ -397,7 +431,8 @@ def _turn(parts, how):
 def car_texture(name, d, body, wheels, flat_uv):
     """Фототекстура -> два слоя, как у остальных машин: <имя>.png (RGBA: всё, что не красится; на месте
     краски — прозрачно) и <имя>_shade.png (светотень краски).  Краска находится по цвету: у каждого кузова
-    он свой, а стёкла, шины, хром, ржавчина и грязь от него отличаются."""
+    он свой, а стёкла, шины, хром, ржавчина и грязь от него отличаются.  Для машин с готовой маской
+    (mask_file, белый/яркий = кузов) правило по цвету не нужно: маска старше любого эвристического правила."""
     from PIL import Image
     img = Image.open(src(*d['tex'])).convert('RGB')
     if d.get('fixed'):
@@ -412,21 +447,28 @@ def car_texture(name, d, body, wheels, flat_uv):
     for (u, v), col in flat_uv:
         x, y = int(u * TEX_SIZE), int((1.0 - v) * TEX_SIZE)
         a[y - 4:y + 4, x - 4:x + 4] = col
-    h, s, v = hsv(a)
-    rule = d['paint']
-    m = np.zeros(h.shape, dtype=bool)
-    if 'hue' in rule:
-        h0, h1 = rule['hue']
-        m |= (h >= h0) & (h <= h1) & (s >= rule['sat'][0]) & (s <= rule['sat'][1]) & (v >= rule['val'])
-    if 'white' in rule:
-        m |= (s <= rule['white'][0]) & (v >= rule['white'][1])
-    if 'tint' in rule:
-        m |= (s <= rule['tint'][0]) & (v >= rule['tint'][1])
-    for (x0, y0, x1, y1) in rule.get('keep', ()):
-        m[y0:y1 + 1, x0:x1 + 1] = False
     used = uv_mask(body, TEX_SIZE)
-    m &= dilate(used, 2)
-    m &= ~uv_mask(wheels, TEX_SIZE)
+    if d.get('mask_file'):
+        # готовая маска покраски: яркое = кузов, чёрное = стёкла/хром/шины
+        mimg = Image.open(src(*d['mask_file'])).convert('L').resize((TEX_SIZE, TEX_SIZE), Image.LANCZOS)
+        m = np.asarray(mimg).astype(np.float64) > float(d.get('mask_min', 0.5)) * 255.0
+        m &= dilate(used, 2)
+        m &= ~uv_mask(wheels, TEX_SIZE)
+    else:
+        h, s, v = hsv(a)
+        rule = d['paint']
+        m = np.zeros(h.shape, dtype=bool)
+        if 'hue' in rule:
+            h0, h1 = rule['hue']
+            m |= (h >= h0) & (h <= h1) & (s >= rule['sat'][0]) & (s <= rule['sat'][1]) & (v >= rule['val'])
+        if 'white' in rule:
+            m |= (s <= rule['white'][0]) & (v >= rule['white'][1])
+        if 'tint' in rule:
+            m |= (s <= rule['tint'][0]) & (v >= rule['tint'][1])
+        for (x0, y0, x1, y1) in rule.get('keep', ()):
+            m[y0:y1 + 1, x0:x1 + 1] = False
+        m &= dilate(used, 2)
+        m &= ~uv_mask(wheels, TEX_SIZE)
     for (u, vv), col in flat_uv:
         x, y = int(u * TEX_SIZE), int((1.0 - vv) * TEX_SIZE)
         m[y - 5:y + 5, x - 5:x + 5] = False
@@ -440,7 +482,7 @@ def car_texture(name, d, body, wheels, flat_uv):
     rgba[..., 3] = np.where(m, 0, 255)
     Image.fromarray(rgba, 'RGBA').save(os.path.join(VEH, name + '.png'), optimize=True)
     Image.fromarray(shade.astype(np.uint8), 'L').save(os.path.join(VEH, name + '_shade.png'), optimize=True)
-    return float(m.sum()) / max(1.0, float(used.sum()))
+    return float(m.sum()) / max(1.0, float(np.asarray(used, dtype=bool).sum()))
 
 
 def free_spot(parts, size=TEX_SIZE, block=14):
@@ -454,10 +496,37 @@ def free_spot(parts, size=TEX_SIZE, block=14):
     return spots
 
 
+def _fbx_to_glb(fbx):
+    """FBX -> GLB рядом с исходником (нужен Node.js с npm)."""
+    glb = fbx[:-4] + '.glb'
+    if os.path.isfile(glb):
+        return
+    import platform
+    npm_dir = os.path.join(SRC, 'npm')
+    plat = {'Linux': 'Linux', 'Darwin': 'Darwin', 'Windows': 'Windows_NT'}[platform.system()]
+    exe = os.path.join(npm_dir, 'node_modules', 'fbx2gltf', 'bin', plat, 'FBX2glTF')
+    if not os.path.isfile(exe):
+        subprocess.check_call(['npm', 'install', '--prefix', npm_dir, 'fbx2gltf@0.9.7-p1'])
+    subprocess.check_call([exe, fbx, '--binary', '--output', glb])
+
+
 def convert_car(name, d):
     from panda3d.core import NodePath
     _panda()
-    allp = named(ms.read(src(*d['file'])))
+    src_file = src(*d['file'])
+    if d['file'][-1].endswith('.glb') and not os.path.isfile(src_file):
+        fbx = src_file[:-4] + '.fbx'                  # автор выложил только .FBX: конвертируем
+        if os.path.isfile(fbx):
+            _fbx_to_glb(fbx)
+    allp = named(ms.read(src_file))
+    if d.get('wheel_file'):
+        # колесо одно на все четыре: ставим его копии в системе координат исходника
+        one = named(ms.read(src(*d['wheel_file'])))
+        base_wheel = list(one.values())[0]
+        for k, (hx, hy, hz) in enumerate(d['wheel_hubs_raw']):
+            q = base_wheel.copy('_wheel%d' % k)
+            q.verts = q.verts + np.array([hx, hy, hz], dtype=np.float64)
+            allp['_wheel%d' % k] = q
     if d.get('yup'):                                # у glTF вверх смотрит Y, нос — на +Z
         for p in allp.values():
             p.transform(YUP)

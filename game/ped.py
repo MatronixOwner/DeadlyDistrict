@@ -530,7 +530,7 @@ class Ped(object):
         elif st == 'down':
             self.speed = 0.0
             self.timer -= dt
-            if self.timer <= 0.0 and not self.air:
+            if self.timer <= 0.0 and not self.air and not (self.is_player and self.world.player.crawl):
                 self._get_up()
         elif st == 'dead':
             self.speed = 0.0

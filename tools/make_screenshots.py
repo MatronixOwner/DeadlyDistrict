@@ -115,11 +115,11 @@ def main():
         if os.path.isfile(f):
             os.remove(f)
 
-    # пролог: автобус привёз Макса на конечную
+    # пролог: Гангон, полночь, ювелирный «Авангард» (часы перед ограблением)
     g.new_game()
     ms = w.missions
     t = 0.0
-    while ms.intro is not None and t < 26.2:
+    while ms.intro is not None and t < 2.1:
         g.step(1.0 / 30.0)
         t += 1.0 / 30.0
     snap('prologue')
@@ -370,8 +370,8 @@ def main():
     yaw = -0.25
     fx, fy = math.cos(yaw), math.sin(yaw)
     cx, cy = bx + 6.0, by
-    for kind, paint, f, l in (('brick', 1, 0.0, 0.0), ('minibus', 0, 0.3, 3.6), ('beater', 1, -0.2, -3.5),
-                              ('brick', 5, -5.6, 2.0), ('minibus', 2, -6.0, -2.2)):
+    for kind, paint, f, l in (('coupe', 1, 0.0, -5.1), ('classic', 0, 0.0, -2.55), ('phantom', 5, 0.0, 0.0),
+                              ('golf', 0, 0.0, 2.55), ('classic', 2, 0.0, 5.1)):
         v = w.spawn_vehicle(kind, cx + fx * f - fy * l, cy + fy * f + fx * l, yaw, paint=paint)
         v.keep = True
         row.append(v)

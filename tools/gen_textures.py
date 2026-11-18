@@ -849,6 +849,7 @@ SIGNS = [
     ('sign_airfield', 'АЭРОДРОМ', (236, 236, 232), (30, 70, 140), 'RussoOne.ttf'),
     ('sign_boats', 'ЛОДКИ · МОТОРЫ', (28, 60, 96), (240, 226, 170), 'OswaldBold.ttf'),
     ('sign_tea', 'ЧАЙНАЯ', (150, 60, 30), (250, 230, 180), 'RussoOne.ttf'),
+    ('sign_jewel', 'ЮВЕЛИРНЫЙ', (10, 10, 14), (240, 210, 110), 'RussoOne.ttf'),
 ]
 
 
@@ -1611,6 +1612,76 @@ def contact_sheet(path):
     sheet.save(path)
 
 
+def gen_jewel():
+    """Фасад ювелирного магазина «Авангард» — декорации пролога («Гангон, полночь»).  Стоит только во сне,
+    поэтому живёт в коде заставки, а не в городе.  Тёмно-синий камень, золотая витрина, янтарная подсветка."""
+    W, H = 1024, 512
+    img = Image.new('RGB', (W, H), (16, 17, 23))
+    d = ImageDraw.Draw(img, 'RGBA')
+    r = rng(404)
+    # камень: вертикальные «жилки» и зерно
+    for _ in range(130):
+        x = r.randint(0, W)
+        tone = r.randint(-9, 12)
+        d.line([(x, 0), (x + r.randint(-14, 14), H)], fill=(16 + tone, 17 + tone, 23 + tone + 2), width=r.randint(1, 3))
+    for _ in range(2600):
+        x, y = r.randint(0, W), r.randint(0, H)
+        v = r.randint(-16, 22)
+        d.point((x, y), fill=(24 + v, 25 + v, 32 + v))
+    GOLD = (240, 210, 110)
+    GOLD_DIM = (148, 122, 52)
+    # --- дверь слева: тёмная, золотая рама, ручка
+    d.rectangle([30, 84, 268, 472], fill=(6, 6, 9))
+    d.rectangle([38, 92, 260, 464], outline=GOLD_DIM, width=6)
+    d.rectangle([46, 100, 252, 456], fill=(28, 24, 20))
+    d.rectangle([58, 112, 240, 300], fill=(52, 40, 16))              # тёмное стекло с янтарным отливом
+    for yy in range(116, 300, 5):
+        a = int(38 * max(0.0, 1.0 - (yy - 116) / 210.0)) + 12
+        d.line([(58, yy), (240, yy)], fill=(88, 64, 26, a))
+    d.rectangle([58, 320, 240, 456], fill=(24, 21, 19))
+    d.ellipse([216, 300, 232, 316], fill=GOLD)                       # ручка-клёпка
+    d.rectangle([0, 456, 300, 478], fill=(30, 30, 36))               # ступень
+    # --- витрина справа: золотая рама и янтарная подсветка
+    vx0, vy0, vx1, vy1 = 300, 84, 1006, 424
+    d.rectangle([vx0, vy0, vx1, vy1], fill=(12, 11, 9))
+    d.rectangle([vx0 + 10, vy0 + 10, vx1 - 10, vy1 - 10], fill=GOLD_DIM)
+    d.rectangle([vx0 + 24, vy0 + 24, vx1 - 24, vy1 - 24], fill=(40, 24, 8))
+    # янтарное свечение изнутри (радиальный градиент кольцами)
+    cx, cy = (vx0 + vx1) // 2, (vy0 + vy1) // 2 + 20
+    for k in range(26, 0, -1):
+        t = k / 26.0
+        col = (int(48 + 200 * (1.0 - t) ** 1.6), int(28 + 150 * (1.0 - t) ** 1.6), int(10 + 60 * (1.0 - t) ** 1.7))
+        d.ellipse([cx - int(330 * t), cy - int(150 * t), cx + int(330 * t), cy + int(150 * t)], fill=col)
+    # бархатная подложка под украшения
+    d.rectangle([vx0 + 46, vy1 - 96, vx1 - 46, vy1 - 40], fill=(74, 16, 22))
+    d.rectangle([vx1 // 2 - 1, vy0 + 24, vx1 // 2 + 1, vy1 - 24], fill=(30, 18, 6))   # стойка посередине
+    # манекены-бюсты: два чёрных силуэта с ожерельями
+    for bx in (430, 800):
+        d.ellipse([bx - 52, 246, bx + 52, 342], fill=(18, 15, 14))   # плечи
+        d.ellipse([bx - 24, 168, bx + 24, 262], fill=(18, 15, 14))   # голова
+        d.arc([bx - 46, 236, bx + 46, 306], start=15, end=165, fill=GOLD, width=5)    # ожерелье
+        d.arc([bx - 46, 244, bx + 46, 314], start=25, end=155, fill=(255, 238, 160), width=2)
+    # россыпь украшений в витрине
+    for _ in range(64):
+        x = r.randint(vx0 + 50, vx1 - 50)
+        y = r.randint(vy1 - 90, vy1 - 46)
+        d.ellipse([x - 3, y - 2, x + 3, y + 2], fill=GOLD if r.random() < 0.6 else (255, 244, 190))
+    # блики на стекле: две диагональные полосы
+    d.polygon([(vx0 + 60, vy1), (vx0 + 200, vy0), (vx0 + 268, vy0), (vx0 + 128, vy1)], fill=(255, 255, 255, 26))
+    d.polygon([(vx0 + 420, vy1), (vx0 + 560, vy0), (vx0 + 596, vy0), (vx0 + 456, vy1)], fill=(255, 255, 255, 18))
+    # золотой цоколь под витриной
+    d.rectangle([vx0, vy1, vx1, vy1 + 26], fill=(64, 50, 18))
+    d.line([(vx0, vy1), (vx1, vy1)], fill=GOLD, width=3)
+    # название магазина на камне над витриной
+    f = font('RussoOne.ttf', 46)
+    text = 'А В А Н Г А Р Д'
+    tb = d.textbbox((0, 0), text, font=f)
+    tx = vx0 + (vx1 - vx0 - (tb[2] - tb[0])) // 2 - tb[0]
+    d.text((tx + 2, 22), text, font=f, fill=(70, 54, 18))
+    d.text((tx, 20), text, font=f, fill=GOLD)
+    save(img, 'gf_jewel')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--sheet', default=None)
@@ -1620,6 +1691,7 @@ def main():
     gen_facades()
     gen_groundfloors()
     gen_signs()
+    gen_jewel()
     gen_fx()
     gen_peds()
     gen_ui()

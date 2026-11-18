@@ -86,8 +86,8 @@ def quiet(w, peds=False):
     """Убрать с улиц случайный транспорт (и прохожих), чтобы проверки были воспроизводимыми."""
     w.traffic.enabled = False
     for v in list(w.vehicles):
-        if not v.is_player and getattr(v, 'room', None) is None:      # машины в интерьерах остаются
-            w.remove_vehicle(v)
+        if not v.is_player and not getattr(v, 'garage', False) and getattr(v, 'room', None) is None:
+            w.remove_vehicle(v)            # машины из гаража («Классик» Макса) и машины в интерьерах остаются
     if peds:
         w.crowd.enabled = False
         for p in list(w.peds):

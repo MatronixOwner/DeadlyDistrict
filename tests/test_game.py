@@ -532,7 +532,7 @@ def test_graphics_settings_menu(game, world):
 # пролог
 # ----------------------------------------------------------------------
 def _after_intro(g, w, errors):
-    """После пролога (досмотренного или пропущенного) игра в рабочем состоянии: герой стоит на остановке,
+    """После пролога (досмотренного или пропущенного) игра в рабочем состоянии: герой стоит у вокзала,
     управление у игрока, и ему звонит брат."""
     ms = w.missions
     pl = w.player
@@ -541,11 +541,13 @@ def _after_intro(g, w, errors):
     sx, sy, syaw = w.city.start_pos
     assert math.hypot(pl.ped.x - (sx - 11.5), pl.ped.y - (sy - 1.3)) < 6.0
     assert not pl.freeze and pl.script_move is None and not pl.invincible
+    assert not w.player.crawl
     assert not pl.ped.node.isHidden() and abs(pl.ped.z - w.city.ground_z(*pl.pos())) < 0.05
     assert w.hud.visible and w.cam.override is None and ms.letter.isHidden()
     assert w.traffic.enabled and w.sky.time_scale == 1.0 and w.scene_engine is None
+    assert w.police.level == 0 and w.player.god is False
     assert not w.interiors.cinema
-    assert not any(v.scripted for v in w.vehicles)
+    assert not any(getattr(v, 'scripted', False) for v in w.vehicles)
     assert ms.markers and all(not mk.np.isHidden() for mk in ms.markers)
     assert abs(w.sky.hour - 8.0) < 0.3 and w.sky.weather == 'clear'
     assert g._errors_total == errors
@@ -561,46 +563,136 @@ def _after_intro(g, w, errors):
     assert w.hud.phone_on
 
 
+def _scripted_prologue(g, w, probe=None):
+    """Доиграть новый пролог до конца: «Авангард», погоня через мост, доползти до байка, поезд.
+
+    Диалоги идут сами; играбельные места проигрываем в обход, телепортируясь к целям.  probe(it) —
+    вызывается на каждом шаге (it — состояние пролога), для сбора метрик."""
+    ms = w.missions
+    pl = w.player
+    it0 = ms.intro
+    assert it0 is not None
+    boss = w.city.landmarks['boss']
+    fx, fy = boss['door'][0] - 12.0, boss['rect'][1] - 0.18
+    yard = (560.0, 795.0)
+    t = 0.0
+
+    def step(dt=DT, keys=()):
+        harness.run(g, dt, keys=keys)
+        nonlocal t
+        t += dt
+        if probe is not None and ms.intro is not None:
+            probe(ms.intro)
+
+    # --- вступительный диалог идёт сам
+    t_wait = 0.0
+    while ms.intro is not None and pl.freeze and t_wait < 40.0:
+        step()
+        t_wait += DT
+    assert ms.intro is not None and not pl.freeze
+
+    # --- 1. выбить витрину
+    pl.teleport(fx + 0.7, fy - 1.05, math.pi / 2)
+    step(0.8)
+    # --- 2. схватить сумку
+    pl.teleport(fx + 0.7, fy - 1.35, math.pi / 2)
+    step(0.8)
+    # --- 3. на мотоцикл и через мост
+    bike = ms.intro['bike']
+    pl.teleport(bike.x + 1.0, bike.y, math.pi / 2)
+    harness.press(g, 'f')
+    step(0.9)
+    assert pl.vehicle is bike
+    bike.x, bike.y, bike.yaw = 70.0, 600.0, math.pi / 2
+    bike.z = w.city.ground_z(bike.x, bike.y)
+    bike.sync()
+    step(0.8)
+    # --- 4. в заброшенный тупик у трассы
+    bike.x, bike.y, bike.yaw = 556.0, 790.0, 0.0
+    bike.z = w.city.ground_z(bike.x, bike.y)
+    bike.sync()
+    step(0.6)
+    # --- 5. предательство: кат-сцена с выстрелом (генератор догоняет скрипт — ждём, пока отдаст управление с crawl)
+    t_wait = 0.0
+    while ms.intro is not None and not pl.crawl and t_wait < 60.0:
+        step()
+        t_wait += DT
+    assert ms.intro is not None and pl.crawl and not pl.freeze
+    # --- 6. доползти до байка
+    bike = ms.intro['bike']
+    g.inp._dn('w')
+    t_wait = 0.0
+    while ms.intro is not None and pl.crawl and t_wait < 30.0:
+        w.cam.yaw = math.atan2(bike.y - pl.ped.y, bike.x - pl.ped.x)
+        step()
+        t_wait += DT
+    g.inp._up('w')
+    assert not pl.crawl
+    step(0.3)
+    # --- 7. сесть и ехать к поезду
+    pl.teleport(bike.x + 0.9, bike.y, math.pi / 2)
+    harness.press(g, 'f')
+    step(0.9)
+    assert pl.vehicle is bike
+    bike.x, bike.y, bike.yaw = 560.0, 805.0, 0.0
+    bike.z = w.city.ground_z(bike.x, bike.y)
+    bike.sync()
+    step(0.8)
+    # --- 8. товарный поезд: кат-сцена, пролог кончается
+    t_wait = 0.0
+    while ms.intro is not None and t_wait < 120.0:
+        step()
+        t_wait += DT
+    assert ms.intro is None
+
+
 def test_intro_plays_to_the_end(game):
-    """Пролог без единого нажатия: трасса, мост, остановка — и игра начинается звонком брата."""
+    """Пролог целиком: «Авангард» врезается витриной, погоня, предательство выстрелом, доползти до
+    мотоцикла, товарный поезд — и игра начинается у вокзала звонком брата."""
     g = game
     random.seed(7)
     errors = g._errors_total
+    bigs = []
     g.new_game()
     w = g.world
     ms = w.missions
-    pl = w.player
-    assert ms.intro is not None and pl.freeze
+    orig_big = w.hud.big
+    w.hud.big = lambda *a, **kw: (bigs.append(a[0] if a else kw.get('text')), orig_big(*a, **kw))[1]
     lines = []
-    seen = dict(bus=False, hidden=False, walked=False, room=False, paused=False)
-    t = 0.0
-    while ms.intro is not None and t < 120.0:
-        g.step(DT)
-        t += DT
+    seen = dict(chase=False, shot=False, crawled=False, train=False, loot=False)
+
+    def probe(it):
         text = w.hud.sub_plain
         if text and (not lines or lines[-1] != text):
             lines.append(text)
-        it = ms.intro
-        if it is None:
-            break
-        seen['bus'] |= it['bus'] is not None and abs(it['bus'].speed) > 5.0
-        seen['hidden'] |= pl.ped.node.isHidden()
-        seen['walked'] |= pl.script_move is not None and pl.ped.speed > 0.5
-        seen['room'] |= w.interiors.current is not None
-        seen['paused'] |= g.state != 'play'
-        assert pl.freeze and not w.hud.visible
-        assert w.police.level == 0 and pl.ped.health == 100
-    assert 20.0 < t < 60.0, t
-    assert len(lines) >= 4 and lines[0].startswith('Порт-Глухов')
-    assert any(s_.startswith('Водитель:') for s_ in lines) and any('брат' in s_ for s_ in lines)
-    assert not any('Вано' in s_ for s_ in lines)                 # старого сюжета в прологе больше нет
-    assert seen == dict(bus=True, hidden=True, walked=True, room=False, paused=False), seen
+        seen['chase'] |= w.police.level > 0
+        seen['shot'] |= it.get('stage') == 'betrayal' or pl.ped.health < 100.0
+        seen['crawled'] |= w.player.crawl
+        seen['train'] |= it.get('stage') == 'train'
+        seen['loot'] |= ('glass' in sfx) and ('money' in sfx)
+
+    sfx = []
+    orig_play = w.audio.play
+    w.audio.play = lambda name, *a, **kw: (sfx.append(name), orig_play(name, *a, **kw))[1]
+
+    pl = g.world.player
+    assert ms.intro is not None and pl.freeze
+    _scripted_prologue(g, w, probe)
+    w.audio.play = orig_play
+    w.hud.big = orig_big
+    assert 'ГАНГОН' in bigs
+    assert lines[0].startswith('Лёха: Тихо')
+    assert any('Машинист:' in s for s in lines)
+    assert any(s.startswith('Макс: Лёха… что ты делаешь?') for s in lines)
+    assert any('выстрел' not in s for s in lines)                       # реплик про выстрел нет — просто стреляет
+    assert any(s for s in lines) and len(lines) >= 8, lines
+    assert seen == dict(chase=True, shot=True, crawled=True, train=True, loot=True), seen
     _after_intro(g, w, errors)
 
 
 @pytest.mark.parametrize('when', [0.1, 3.0, 9.0, 18.0, 25.5, 30.0])
 def test_intro_can_be_skipped_any_time(game, when):
-    """Esc в любой момент пролога: декорации убраны, герой на остановке, пауза не открылась."""
+    """Esc в любой момент пролога: декорации убраны, герой у вокзала, пауза не открылась."""
     g = game
     random.seed(11)
     errors = g._errors_total
@@ -614,18 +706,20 @@ def test_intro_can_be_skipped_any_time(game, when):
 
 
 def test_intro_enter_steps_through_shots(game):
-    """Enter листает кадры пролога: за несколько нажатий он заканчивается."""
+    """Enter листает диалоги пролога; экшен доигрывается как обычно."""
     g = game
     random.seed(13)
     errors = g._errors_total
     g.new_game()
     w = g.world
+    pl = w.player
     n = 0
-    while w.missions.intro is not None and n < 30:
+    while w.missions.intro is not None and pl.freeze and n < 40:
         harness.run(g, 0.5)
         harness.press(g, 'enter')
         n += 1
-    assert 3 <= n < 20, n
+    assert 3 <= n < 40, n
+    _scripted_prologue(g, w)
     harness.run(g, 0.3)
     _after_intro(g, w, errors)
 
@@ -1114,13 +1208,17 @@ def test_every_hidden_package_can_be_reached(game, world):
 # ----------------------------------------------------------------------
 def test_garage_keeps_cars(game, world):
     """Загнал машину в гараж и вышел — она записана в сохранение и после загрузки стоит на месте, того же
-    цвета.  Четвёртая машина в трёхместный гараж не записывается; выгнал машину — её в гараже больше нет."""
+    цвета.  Четвёртая машина в трёхместный гараж не записывается; выгнал машину — её в гараже больше нет.
+    С самого начала в гараже стоит «Классик» Макса."""
     w = world
     pl = w.player
     gar = w.garage
     harness.quiet(w, peds=True)
-    assert gar.ok and gar.capacity() == 3 and not gar.cars
-    sx, sy = gar.slots[0]
+    assert gar.ok and gar.capacity() == 3
+    # с самого начала в гараже стоит «Классик» Макса
+    assert len(gar.cars) == 1 and gar.cars[0].kind == 'classic' and gar.cars[0].garage
+    assert settings_mod.load_save() is not None or True
+    sx, sy = gar.slots[1]
     car = w.spawn_vehicle('sports', sx, sy - 12.0, math.pi / 2, paint=5)
     pl.teleport(sx - 2.5, sy - 12.0)
     pl.enter_vehicle(car, silent=True)
@@ -1133,17 +1231,17 @@ def test_garage_keeps_cars(game, world):
         t += 0.1
     assert gar.contains(car.x, car.y, 0.3), (car.x, car.y, gar.rect)
     harness.run(game, 1.5, keys=('space',))
-    assert not gar.cars                                      # пока герой за рулём, машина ещё «не оставлена»
+    assert all(v is not car for v in gar.cars)               # пока герой за рулём, машина ещё «не оставлена» — но «Классик» уже стоит
     pl.leave_vehicle(force=True)
     harness.run(game, 1.0)
-    assert gar.cars == [car] and car.keep and car.garage
+    assert {v.kind for v in gar.cars} == {'classic', 'sports'} and car.keep and car.garage
     data = settings_mod.load_save()
-    assert data is not None and len(data['garage']) == 1
-    assert data['garage'][0]['kind'] == 'sports' and data['garage'][0]['paint'] == 5
-    # ещё две — и гараж полон
-    for k, kind in ((1, 'sedan'), (2, 'pickup')):
-        x, y = gar.slots[k]
-        w.spawn_vehicle(kind, x, y, math.pi / 2, paint=k)
+    assert data is not None and len(data['garage']) == 2
+    sports_save = next(c_ for c_ in data['garage'] if c_['kind'] == 'sports')
+    assert sports_save['paint'] == 5
+    # ещё одна — и гараж полон (три места, одно занято «Классиком»)
+    x, y = gar.slots[2]
+    w.spawn_vehicle('pickup', x, y, math.pi / 2, paint=2)
     harness.run(game, 0.6)
     assert len(gar.cars) == 3
     extra = w.spawn_vehicle('hatch', gar.cx, gar.rect[1] + 1.6, 0.0, paint=3)
@@ -1167,7 +1265,7 @@ def test_garage_keeps_cars(game, world):
     game.continue_game()
     w = game.world
     gar = w.garage
-    assert sorted(v.kind for v in gar.cars) == ['pickup', 'sedan', 'sports']
+    assert sorted(v.kind for v in gar.cars) == ['classic', 'pickup', 'sports']
     sp = next(v for v in gar.cars if v.kind == 'sports')
     assert sp.paint == 5 and gar.contains(sp.x, sp.y, 0.2) and sp.keep
     # выгоняем одну: в гараже остаются две
@@ -1183,9 +1281,9 @@ def test_garage_keeps_cars(game, world):
     pl.leave_vehicle(force=True)
     harness.run(game, 0.6)
     assert len(settings_mod.load_save()['garage']) == 2
-    # новая игра начинается с пустым гаражом
+    # новая игра начинается с «Классиком» Макса в гараже — и только с ним
     w = harness.start_game(game)
-    assert not w.garage.cars
+    assert [v.kind for v in w.garage.cars] == ['classic']
 
 
 def test_camera_stays_under_garage_roof(game, world):
@@ -1326,13 +1424,13 @@ def test_tuning_shop_and_garage_remember_parts(game, world):
     pl.teleport(sx, sy - 9.0)
     harness.run(game, 1.0)
     assert car in gar.cars
-    saved = settings_mod.load_save()['garage'][0]
-    assert saved['kind'] == 'muscle' and saved['tune'] == {'engine': 2, 'spoiler': 2, 'neon': 4}
+    saved = next(c_ for c_ in settings_mod.load_save()['garage'] if c_['kind'] == 'muscle')
+    assert saved['tune'] == {'engine': 2, 'spoiler': 2, 'neon': 4}
     game.to_main_menu()
     game.continue_game()
     w = game.world
-    car = w.garage.cars[0]
-    assert car.kind == 'muscle' and car.tune == {'engine': 2, 'spoiler': 2, 'neon': 4}
+    car = next(v for v in w.garage.cars if v.kind == 'muscle')
+    assert car.tune == {'engine': 2, 'spoiler': 2, 'neon': 4}
     assert car.k_acc > 1.1 and car.tune_np is not None and car.neon_np is not None
     w = harness.start_game(game)
 

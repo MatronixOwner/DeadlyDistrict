@@ -45,9 +45,10 @@ CREDITS_TEXT = (
     'Игра в духе классических криминальных боевиков начала 2000-х.\n'
     '\n'
     'Люди и мебель — Elbolilloduro, анимация — Mesh2Motion.\n'
-    'Машины — GGBot («PSX Style Cars»), Elbolilloduro, сборник retro3d-assets; такси — MoiDev.\n'
+    'Машины — GGBot («PSX Style Cars»), сборник retro3d-assets, Boggle, DesignerSoup, MoiDev, Bricchi Games.\n'
     'Чоппер — Duhgless; круизер и детали тюнинга — Kenney; велосипеды — Quaternius, retro3d-assets.\n'
-    'Уличный мусор — Daniel Jurys («PSX Waste»); плашки меню — ROHHSA («Free PSX UI»).\n'
+    'Такси — MoiDev; «Ястреб» — boggle; «Гольф» — designersoup; «Призрак» — MoiDev; «Классик» — Bricchi Games.\n'
+    'Уличный мусор — Daniel Jurys («PSX Waste»).\n'
     'Оружие — Mextie, Ace Spectre, Cemckrc и другие авторы сборника retro3d-assets; Quaternius.\n'
     'Материалы города и комнат — Classic64 Asset Library (Craig Snedeker).\n'
     'Город, берега, комнаты, скутеры, автобус, вывески, звуки и музыка созданы кодом игры.\n'
@@ -183,7 +184,7 @@ class Game(object):
         self._ld = a2d.attachNewNode('loading')
         kit.card(self._ld, -5, 5, -1.5, 1.5, ui.INK, 1.0)
         asp = self.base.getAspectRatio()
-        kit.panel(self._ld, -asp - 0.2, asp + 0.2, -1.2, 1.2, ui.SKIN_PANEL, 1.0, edge=0.5, tint=0.8)
+        kit.panel(self._ld, -asp - 0.2, asp + 0.2, -1.2, 1.2, alpha=1.0, line=ui.LINE_SOFT)
         x = -asp + 0.14
         kit.label(self._ld, 'DEADLY', x, 0.20, 0.21, ui.PAPER, kit.title, 'l', shadow=False)
         kit.label(self._ld, 'DISTRICT', x, 0.015, 0.21, ui.ACCENT, kit.title, 'l', shadow=False)
@@ -310,6 +311,11 @@ class Game(object):
         self._begin()
         w = self.world
         w.player.add_money(0)
+        g = w.garage
+        if g.ok:
+            # «Классик» — машина Макса: ждёт его в гараже у дома с самого начала
+            s = g.slots[0]
+            g.restore([dict(kind='classic', paint=0, x=s[0], y=s[1], yaw=g.yaw, hp=1100.0)])
         w.missions.start_intro()
 
     def continue_game(self):

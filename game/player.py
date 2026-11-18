@@ -101,7 +101,7 @@ class Camera(object):
         else:
             p = pl.ped
             tx, ty = p.x, p.y
-            tz = p.z + 1.56
+            tz = p.z + (0.72 if pl.crawl else 1.56)
             aim = pl.aiming
             dist = (2.9, 3.9, 5.4)[self.zoom]
             if pl.indoors:
@@ -213,6 +213,7 @@ class Player(object):
         self.aim_yaw = syaw
         self.invincible = False
         self.god = False               # бессмертие из меню тестера (в обычной игре не включается)
+        self.crawl = False             # доползает до цели (пролог): лёжа, без оружия и прыжков
         self.damage_taken_k = 1.0
         self.state = 'foot'            # foot | entering | car | dead | busted
         self.enter_v = None
@@ -269,6 +270,7 @@ class Player(object):
         self.water_t = 0.0
         self.fire_cd = 0.0
         self.invincible = False
+        self.crawl = False
         sx, sy, syaw = w.city.start_pos
         p.x, p.y, p.yaw = sx, sy, syaw
         p.z = w.city.ground_z(sx, sy)
@@ -447,6 +449,33 @@ class Player(object):
         w = self.w
         p = self.ped
         cam = w.cam
+        if self.crawl:
+            # доползает: в положении лёжа, шаг втрое медленнее, без оружия и прыжков
+            ix = inp.axis('a', 'd', 'arrow_left', 'arrow_right')
+            iy = inp.axis('s', 'w', 'arrow_down', 'arrow_up')
+            cy, sy = math.cos(cam.yaw), math.sin(cam.yaw)
+            mx, my = cy * iy + sy * ix, sy * iy - cy * ix
+            ml = math.hypot(mx, my)
+            if ml > 0.01:
+                mx, my = mx / ml, my / ml
+            else:
+                mx = my = 0.0
+            speed = 0.9 if ml > 0.01 else 0.0
+            k = 1.0 - math.exp(-11.0 * dt)
+            self.mvx += (mx * speed - self.mvx) * k
+            self.mvy += (my * speed - self.mvy) * k
+            p.x += self.mvx * dt + p.vx * dt
+            p.y += self.mvy * dt + p.vy * dt
+            nx, ny, a, b, depth, ref = w.static.push_circle(p.x, p.y, p.radius, F_PED)
+            if depth > 0.0:
+                p.x, p.y = nx, ny
+            sp = math.hypot(self.mvx, self.mvy)
+            p.speed = sp
+            if sp > 0.2:
+                p.yaw = turn_towards(p.yaw, math.atan2(self.mvy, self.mvx), 8.0 * dt)
+            p.z = w.city.ground_z(p.x, p.y)
+            self.aiming = False
+            return
         if p.state == 'down':
             self.mvx = self.mvy = 0.0
             self.aiming = False

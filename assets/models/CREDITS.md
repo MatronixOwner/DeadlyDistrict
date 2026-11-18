@@ -12,9 +12,10 @@
 | Такси (`veh/cab`) | **MoiDev** — «Yellow Taxi/Cab — PS1 Style» (<https://moidev.itch.io/yellow-taxicab-ps1-style>) | CC0 на странице автора; у копии, из которой собрана модель, — CC-BY-SA 4.0, см. примечание | выгрузка модели со Sketchfab в репозитории `Langorithm/3d-models` (`yellow_taxicab_-_ps1_car/`) |
 | Чоппер «Ворон» (`veh/b_chop`) | **Duhgless** — «Another PSX Style Low Poly Bike» (<https://duhgless.itch.io/another-psx-style-low-poly-bike>) | CC0 | репозиторий `webbertakken/citymap` (`apps/web/public/models/vehicles/motorbike.glb`) |
 | Уличный мусор: контейнер, бочка, мешок, коробка, бутылка, банка (`props.json`, `assets/tex/px_*`) | **Daniel Jurys** — «PSX Waste» (<https://daniel-jurys.itch.io/psx-waste>) | CC0 | копия набора в репозитории `morganholly/bike-bullet-delivery` (`enviroment/PSX-Waste`) |
-| Плашки интерфейса (`assets/tex/ui_panel`, `ui_band`, `ui_plate`, `ui_alert`) | **ROHHSA** — «Free PSX UI» (<https://rohhsa.itch.io/free-psx-ui>) | CC0 | копия набора в репозитории `Balwanek-ola/haven-2026` (`FREEPSXUI/`) |
-| Маршрутка и старый седан «Ржавчина» (`veh/hiace`, `veh/dacia`) | **Elbolilloduro** — «Pack of low poly psx style models» | см. примечание | сборник `M3-org/retro3d-assets` (`Large_kits/Models pack psx`) |
-| Седан «Кирпич» (`veh/volvo`) | файл `Vehicles/volvo.blend` сборника; по его списку это, по-видимому, **GGBot** — «European small family car (1960s and 1970s)» | см. примечание | сборник `M3-org/retro3d-assets` |
+| Купе «Ястреб» (`veh/coupe`) | **boggle** — «2 Seater Coupe» (<https://boggle.itch.io/2-seater-coupe>) | см. примечание — на странице лицензии нет | копия в репозитории `KopiOCoder/FormulaCyber` (`cars/japanese_2_seater_coupe/`) |
+| «Гольф» (`veh/golf`) | **designersoup** — «PS1 Pixel Art Style Car» (<https://designersoup.itch.io/ps1-pixel-art-style-car>) | CC0 | копия в репозитории `Soursop-Pop/Roadtrip` (`Assets/Prefabs/car/red_golf.obj`) |
+| «Призрак» (`veh/phantom`) | **MoiDev** — «A Suspicious Car For Your Projects» (<https://moidev.itch.io/a-suspicious-car-for-your-projects>) | CC0 | копия в репозитории `luisfillipedias/OHOMEMDEMETAS` (`assets/models/car/psx/Suspicious Car 01/`) |
+| «Классик» (`veh/classic`) — машина Макса | **Bricchi Games** — «Retro Car With Interior» (<https://bricchi-games.itch.io/retro-car-with-interior>) | **CC BY 4.0**, см. примечание | копия в репозитории `matapao/drifting01` (`src/assets/car/retro-car.fbx`) |
 | Автобус (`veh/bus`) | код проекта, `tools/gen_bus.py` | — | — |
 | Мотоцикл-круизер (`veh/b_moto`): с достроенным оборудованием — «Странник», патрульный, трайк «Мамонт», «Тайга» с коляской | **Kenney** — Starter Kit Racing | CC0 | репозиторий автора `KenneyNL/Starter-Kit-Racing` |
 | Городской велосипед (`veh/b_cycle`) | файл `Vehicles/bike_vintage (unfinished).blend` сборника; автор в его списке не назван | см. примечание | сборник `M3-org/retro3d-assets` |
@@ -39,6 +40,10 @@
   <https://elbolilloduro.itch.io/paquete-de-modelos-low-poly-estilo-psx-2> (мебель)
 - Mesh2Motion — <https://github.com/Mesh2Motion/mesh2motion-app>
 - GGBot (GGBotNet) — <https://ggbot.itch.io/psx-style-cars>
+- boggle — <https://boggle.itch.io/2-seater-coupe>
+- designersoup — <https://designersoup.itch.io/ps1-pixel-art-style-car>
+- MoiDev — <https://moidev.itch.io/a-suspicious-car-for-your-projects>
+- Bricchi Games — <https://bricchi-games.itch.io/retro-car-with-interior>
 - Craig Snedeker — <https://craigsnedeker.itch.io/classic64-asset-library>
 - Quaternius — <https://quaternius.com>
 - Kenney — <https://kenney.nl> (Starter Kit Racing: <https://github.com/KenneyNL/Starter-Kit-Racing>;
@@ -92,25 +97,36 @@ Elbolilloduro (`src/lib/RigConfig.ts`).
 от Quaternius (`tools/import_models.py weapons`); бутылка — тоже его, из набора Survival
 (`tools/import_vehicles.py bottle`): раньше «коктейлем Молотова» служила модель зажигательной гранаты.
 
-## Примечание о новых машинах и велосипеде
+## Примечание о новых машинах
 
-Маршрутка и старый седан взяты из того же набора Elbolilloduro, что и мебель (в сборнике он лежит ещё и одним
-файлом — `Large_kits/Models pack psx`), на тех же условиях: модели лежат в собранном виде как часть игры, автор
-назван, сам набор берите у автора.
+Четыре модели машин собраны не из сборника ретро3д:
 
-Седан «Кирпич» и городской велосипед лежат в папке `Vehicles` сборника отдельными файлами, без подписи.
-О сборнике в целом сказано: всё в нём можно использовать в коммерческих проектах, без указания авторства и без
-условия «распространять на тех же условиях»; в исходном сборнике (`Miziziziz/Retro3DGraphicsCollection`), из
-которого он вырос, от авторов требуется выкладывать работы под CC0. Чьи именно эти два файла, мы установить не
-смогли:
+- «Гольф» (**designersoup**) и «Призрак» (**MoiDev**) — страницы авторов на itch.io с лицензией CC0; файлы взяты из
+  открытых репозиториев на GitHub, где лежат копии этих наборов. «Гольф» красится не по маске, а целиком:
+  у модели своя покраска «грязный GTI с красными арками».
+- «Ястреб» (**boggle**) — на странице автора лицензия не указана, работа выложена бесплатно, в комментариях
+  автор просит не перепродавать её по отдельности. Файл взят из открытого репозитория на GitHub
+  (`KopiOCoder/FormulaCyber`). Если автор попросит убрать модель, она будет заменена — таблица моделей
+  в `tools/import_vehicles.py`, соответствие видам техники — в `game/models.py`.
+- «Классик» — **«Retro Car With Interior» Bricchi Games**, распространяется по CC BY 4.0
+  (<https://creativecommons.org/licenses/by/4.0/>). Автор, название и ссылка указаны здесь и в титрах игры.
+  Изменения относительно оригинала: FBX сконвертирован в glTF/.bam, краска пересчитана по маске автора
+  (`car-paint-mask.png`), геометрия не менялась. Копия файла лежит в открытом репозитории
+  `matapao/drifting01` (`src/assets/car/retro-car.fbx`).
 
-- «Кирпич» — в списке сборника из машин значится только «European small family car (1960s and 1970s)» автора
-  GGBot; что это именно он — догадка, страницу автора мы открыть не смогли;
-- велосипед — файл называется «bike_vintage (unfinished)», в списке сборника его нет. Седла в нём не было:
-  оно взято из набора Quaternius.
+Городской велосипед — по-прежнему из сборника `M3-org/retro3d-assets`, см. раздел ниже.
 
-Если автор попросит убрать модель, её нужно будет заменить: таблицы — в `tools/import_vehicles.py`
-(`CARS`, функции `bike_*`), соответствие видам техники — в `game/models.py` и `game/bikemodels.py`.
+## Примечание о велосипеде
+
+Городской велосипед (`veh/b_cycle`) лежит в папке `Vehicles` сборника `M3-org/retro3d-assets` отдельным файлом,
+без подписи. О сборнике в целом сказано: всё в нём можно использовать в коммерческих проектах, без указания
+авторства и без условия «распространять на тех же условиях»; в исходном сборнике (`Miziziziz/Retro3DGraphicsCollection`),
+из которого он вырос, от авторов требуется выкладывать работы под CC0. Чей именно этот файл, мы установить не
+смогли: он называется «bike_vintage (unfinished)», и в списке сборника его нет. Седла в нём не было: оно взято
+из набора Quaternius.
+
+Если автор попросит убрать модель, её нужно будет заменить: таблицы — в `tools/import_vehicles.py`, соответствие
+видам техники — в `game/models.py` и `game/bikemodels.py`.
 
 ## Примечание о мотоциклах
 

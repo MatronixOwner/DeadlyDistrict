@@ -673,7 +673,7 @@ def m_r4(m):
     yield from m.enter(car, 'Садись в машину Розы.')
     yield from m.board(rosa, car)
     bx, by = c.landmarks['bank']['road']
-    chase = m.ms.start_chasers(m, ['lowrider', 'muscle', 'beater'], 'reds', 3, 9.0)
+    chase = m.ms.start_chasers(m, ['lowrider', 'muscle', 'pickup'], 'reds', 3, 9.0)
     yield from m.goto(bx, by, 5.5, 'Отвези Розу в банк. Не дай «красным» вас достать!', vehicle=car,
                       extra=lambda: rosa.vehicle is car)
     chase['active'] = False
@@ -755,7 +755,7 @@ def m_z2(m):
     pilot = m.npc(ax + 8.6, ay - 2.0, math.pi,
                   make_look(skin=SKINS[1], hair=(0.3, 0.24, 0.16), shirt=(0.42, 0.34, 0.2), pants=(0.2, 0.2, 0.22),
                             torso='jacket', hat='cap', hat_color=(0.3, 0.26, 0.18), model='m_shirt_h3'))
-    chase = m.ms.start_chasers(m, ['beater', 'pickup', 'muscle'], 'greens', 2, 14.0)
+    chase = m.ms.start_chasers(m, ['golf', 'pickup', 'muscle'], 'greens', 2, 14.0)
 
     def tick(dt):
         m.counter('Груз цел на %d%%' % int(100.0 * clamp(van.health / van.max_health, 0.0, 1.0)))
@@ -2109,12 +2109,13 @@ class Missions(object):
 
     # ------------------------------------------------------------------
     def start_intro(self):
-        """Пролог — сценка на движке: ночной автобус привозит Макса в город.
+        """Пролог — играбельное воспоминание: ограбление ювелирного в Гангоне (см. _intro_script).
 
-        Enter, пробел или щелчок мыши — следующий кадр, Esc — пропустить целиком."""
+        WASD — движение, Shift — бег, F — сесть на мотоцикл; Enter, пробел — следующие реплики;
+        Esc — пропустить пролог целиком."""
         w = self.w
         pl = w.player
-        it = dict(t=0.0, wait=0.0, tick=None, bus=None, hint=None)
+        it = dict(t=0.0, wait=0.0, tick=None, hint=None, stage='store')
         it['gen'] = self._intro_script(it)
         self.intro = it
         w.hud.fade(1.0, instant=True)
@@ -2122,19 +2123,30 @@ class Missions(object):
         w.hud.mission_title('')
         pl.freeze = True
         pl.invincible = True
+        pl.god = True                            # в воспоминании Макс не умирает и его не арестуют
         self.letterbox(True)
-        w.traffic.enabled = False              # улицы пустые: сценке не мешает случайный транспорт
+        w.traffic.enabled = False              # улицы пустые: воспоминанию не мешает случайный транспорт
+        w.crowd.enabled = False
         w.sky.time_scale = 0.0
         w.interiors.cinema = True
+        pl.give_weapon(W_PISTOL, 36, select=True)      # у Макса был пистолет
         for mk in self.markers:
             mk.show(False)
         # подсказка на нижней чёрной полосе
         from direct.gui.OnscreenText import OnscreenText
         from panda3d.core import TextNode
-        it['hint'] = OnscreenText(text='Enter — дальше      Esc — пропустить', parent=self.letter, pos=(0, -0.915),
+        it['hint'] = OnscreenText(text='WASD — движение      F — в транспорт      Esc — пропустить пролог',
+                                  parent=self.letter, pos=(0, -0.915),
                                   scale=0.042, fg=(0.62, 0.62, 0.62, 1.0), font=w.hud.f_txt, align=TextNode.ACenter)
 
     def _intro_script(self, it):
+        """Новый пролог — играбельное воспоминание: ограбление ювелирного в Гангоне.
+
+        Гангон, полночь.  Макс и Лёха бьют витрину ювелирного «АВАНГАРД», хватают сумку и уходят от погони
+        на мотоцикле.  На заброшенном тупике у шоссе Лёха предаёт напарника — стреляет в Макса и уезжает.
+        Избитый, Макс доползает до своего мотоцикла, едет к товарному поезду и уходит в Порт-Глухов — так
+        он и оказывается в этом городе.  Enter, пробел или щелчок мыши листают реплики, Esc — пропустить.
+        """
         w = self.w
         c = w.city
         pl = w.player
@@ -2143,131 +2155,267 @@ class Missions(object):
         sky = w.sky
         cam = w.cam
         rn = w.roadnet
-        sx, sy = c.landmarks['terminal']['door']
+        boss = c.landmarks['boss']
+        fx, fy = boss['door'][0] - 12.0, boss['rect'][1] - 0.18       # фасад смотрит на юг, на улицу
+        yard = (560.0, 795.0)                                            # заброшенный тупик у шоссе
+        track_y = 807.5                                                  # рельсы вдоль шоссе
+        it['props'] = []
 
-        def stage(x, y):
-            """Перенести (пока невидимого) героя к месту съёмки и убрать оттуда едущие машины."""
-            pl.script_move = None
-            p.stop_act()
-            pl.teleport(x, y)
-            for v in list(w.vehicles):
-                if v is not it['bus'] and not v.keep and v.mode != Vehicle.PARKED and \
-                        (v.x - x) ** 2 + (v.y - y) ** 2 < 300.0 ** 2:
-                    w.remove_vehicle(v)
-
-        def bus_at(x, y, yaw, speed=0.0):
-            b = it['bus']
-            if b is None or b.removed:
-                b = w.spawn_vehicle('bus', x, y, yaw, 0)
-                b.keep = True
-                b.locked = True
-                b.scripted = True
-                b.mode = Vehicle.PARKED
-                it['bus'] = b
-            b.x, b.y, b.yaw = x, y, yaw
-            b.z = c.ground_z(x, y)
-            b.speed = speed
-            b.sync()
-            b.set_lights(True)
-            return b
+        def _add(obj, cleanup):
+            it['props'].append((obj, cleanup))
+            return obj
 
         def say(text, extra=0.0):
-            dur = 2.3 + len(text) * 0.055 + extra
+            dur = 1.6 + len(text) * 0.055 + extra
             hud.subtitle(text, dur + 0.6, clear=True)
             return dur
 
-        def engine(b):
-            """Мотор автобуса: громче вблизи камеры, выше на ходу."""
-            o = cam.override
-            d = math.hypot(b.x - o[0], b.y - o[1]) if o else 60.0
-            w.scene_engine = ('engine_truck', clamp(1.0 - d / 70.0, 0.0, 1.0) * 0.6,
-                              0.62 + 0.03 * min(abs(b.speed), 16.0))
+        def wait_enter(t_min, dur):
+            t = [0.0]
+            inp = w.game.inp
 
-        # --- 1. ночная трасса на материке: автобус идёт к городу
+            def cond():
+                t[0] += w.dt
+                if t[0] > t_min and (inp.hit('enter') or inp.hit('space') or inp.hit('mouse1')):
+                    return True
+                return t[0] > dur
+            return cond
+
+        def dist(x, y):
+            px, py = pl.pos()
+            return math.hypot(px - x, py - y)
+
+        def marker(x, y, r, color=YELLOW):
+            mk = Marker(w, x, y, r, color, 1.9)
+            _add(mk, mk.remove)
+            it.setdefault('anim', []).append(mk)
+            return mk
+
+        def arrow(obj):
+            a = Arrow(w, obj, z=2.6, color=YELLOW)
+            it.setdefault('anim', []).append(a)
+            return a
+
+        # --- декорации: фасад «Авангарда», Лёха, мотоцикл, добыча
+        facade = _jewel_facade(w, fx, fy)
+        _add(facade, facade.removeNode)
+        loot = _duffel(w, fx + 0.7, fy - 1.35)
+        loot.hide()
+        _add(loot, loot.removeNode)
+        leo = w.spawn_ped(fx + 2.3, fy - 2.4, -math.pi / 2, gang_look('mafia'), kind='civ')
+        leo.keep = True
+        _add(leo, lambda: w.remove_ped(leo))
+        bike = w.spawn_vehicle('chopper', fx - 3.4, fy - 3.4, math.pi / 2, 0)
+        bike.keep = True
+        bike.locked = False
+        _add(bike, lambda: w.remove_vehicle(bike))
+        it['leo'], it['bike'], it['loot'] = leo, bike, loot
+        it['anim'] = it.get('anim', [])
+
+        def tick(dt):
+            for o in it['anim']:
+                o.update(dt)
+            leo_ = it.get('leo')
+            if leo_ is not None and not leo_.dead and not leo_.removed:
+                v = pl.vehicle
+                if v is it['bike'] and leo_.vehicle is None:
+                    # Лёха должен ехать сзади: догнать байк «за кадром» и сесть
+                    if math.hypot(leo_.x - v.x, leo_.y - v.y) > 2.0:
+                        leo_.x = v.x - math.cos(v.yaw) * 1.15
+                        leo_.y = v.y - math.sin(v.yaw) * 1.15
+                        leo_.z = c.ground_z(leo_.x, leo_.y)
+                        leo_.sync()
+                    leo_.set_state('stand')
+                    w.put_in_vehicle(leo_, v)
+            tr = it.get('train')
+            if tr is not None:
+                node = tr['root']
+                if tr['phase'] == 'approach':
+                    tr['x'] -= 17.0 * dt
+                    if tr['x'] <= tr['stop_x'] + 60.0:
+                        tr['phase'] = 'brake'
+                    w.scene_engine = ('engine_truck', 0.75, 0.55)
+                elif tr['phase'] == 'brake':
+                    tr['v'] = max(0.0, tr['v'] - 2.0 * dt)
+                    tr['x'] -= tr['v'] * dt
+                    if tr['v'] <= 0.0:
+                        tr['v'] = 0.0
+                        tr['phase'] = 'done'
+                        w.scene_engine = None
+                elif tr['phase'] == 'leave':
+                    tr['v'] = min(17.0, tr['v'] + 1.6 * dt)
+                    tr['x'] -= tr['v'] * dt
+                node.setX(tr['x'])
+        it['tick'] = tick
+
         sky.set_weather('rain')
-        sky.set_time(23.4)
-        p.node.hide()
-        lane, s0, d0 = rn.nearest_lane(640.0, 825.0, 30.0)
-        hy = lane.y0 if lane is not None else 824.8
-        stage(604.0, hy + 16.0)
-        bus = bus_at(668.0, hy, math.pi, 16.0)
+        sky.set_time(23.55)
+        sky.time_scale = 0.0
+        w.crowd.enabled = False
+        # Макс и Лёха стоят у витрины, лица к магазину
+        pl.teleport(fx + 0.6, fy - 2.4, math.pi / 2)
 
-        def tick(dt):
-            bus.x -= 16.0 * dt
-            cam.override = (606.0, hy + 7.4, 1.25, bus.x, bus.y, 1.8)
-            engine(bus)
-        it['tick'] = tick
-        tick(0.0)
-        hud.fade(0.0, 0.6)
-        yield say('Порт-Глухов. Город, в который не приезжают — в него попадают.', 0.8)
+        # --- 1. Гангон, полночь (кино)
+        cam.override = (fx + 7.6, fy - 9.2, 2.35, fx, fy + 0.4, 1.35)
+        hud.fade(0.0, 1.7)
+        hud.big('ГАНГОН', GOLD, 5.0, u'Ювелирный магазин «Авангард». Полночь.')
+        yield 2.1
+        say('Лёха: Тихо. Витрину — и сразу к кассе.')
+        yield wait_enter(0.7, 3.4)
+        say('Макс: Без геройства. Сумку — и к мотоциклу.')
+        yield wait_enter(0.7, 3.2)
+        say('Лёха: Конечно. Я же в школе отличник был.')
+        yield wait_enter(0.7, 3.0)
 
-        # --- 2. Большой мост: впереди огни острова
-        lane, s0, d0 = rn.nearest_lane(66.0, 520.0, 30.0)
-        bx = lane.x0 if lane is not None else 68.2
-        stage(bx + 14.0, 560.0)
-        bus = bus_at(bx, 584.0, -math.pi / 2, 15.0)
+        # --- 2. играбельно: выбить витрину и схватить сумку
+        cam.override = None
+        self.letterbox(False)
+        hud.show(True)
+        pl.freeze = False
+        hud.help('Выбей витрину ювелирного — подойди вплотную!', 8.0)
+        mk = marker(fx + 0.7, fy - 0.7, 1.7, RED)
+        yield lambda: dist(fx + 0.7, fy - 1.1) < 1.5
+        mk.remove()
+        it['anim'].remove(mk)
+        w.audio.play('glass', 0.95)
+        w.fx.sparks(fx + 0.7, fy - 0.3, 1.6, n=16, nx=0.0, ny=-1.0, nz=0.7, color=(0.82, 0.9, 1.0))
+        w.fx.debris(fx + 0.7, fy - 0.3, 1.5, n=7, color=(0.75, 0.85, 0.9), power=3.5, size=0.22)
+        w.fx.add_shake(0.35)
+        loot.show()
+        hud.help('Сумка! Хватай!', 6.0)
+        yield lambda: dist(fx + 0.7, fy - 1.35) < 1.4
+        loot.hide()
+        w.audio.play('money', 0.7)
+        # сработала сигнализация — едут полицейские
+        w.police.set_level(3)
+        say('Лёха: Сработала сигнализация! Копы! К байку!')
+        yield 1.5
 
-        def tick(dt):
-            bus.y -= 15.0 * dt
-            bus.z = c.ground_z(bus.x, bus.y)
-            cam.override = (bus.x + 13.0, bus.y + 30.0, bus.z + 9.5, bus.x - 3.0, bus.y - 20.0, bus.z + 1.0)
-            engine(bus)
-        it['tick'] = tick
-        tick(0.0)
-        yield say('Три года я крутил баранку для чужих людей. Одно неудачное дело — и не стало ни людей, ни баранки.')
+        # --- 3. играбельно: удрать от погони на север, через мост
+        hud.help('Уезжай от погони!', 9.0)
+        arr = arrow(bike)
+        yield lambda: pl.vehicle is bike
+        arr.remove()
+        if arr in it['anim']:
+            it['anim'].remove(arr)
+        mk = marker(70.0, 600.0, 10.0, YELLOW)
+        blip = hud.add_blip('blip_dest', 70.0, 600.0)
+        hud.help('Через мост на север — и вдоль трассы на северо-восток!', 9.0)
+        yield lambda: pl.vehicle is bike and dist(70.0, 600.0) < 32.0
+        hud.remove_blip(blip)
+        mk.remove()
+        it['anim'].remove(mk)
+        w.police.clear()
+        hud.help('Погоня отстала. Дыши.', 4.0)
+        yield 1.6
 
-        # --- 3. рассвет, Старый город: автобус подходит к остановке у дома
-        sky.set_weather('cloudy')
-        sky.set_time(6.1)
-        lane, s0, d0 = rn.nearest_lane(sx, sy - 5.0, 12.0)
-        ly = lane.y0 if lane is not None else sy - 5.6
-        stop_x = sx - 9.0
-        stage(sx - 4.0, sy + 0.5)
-        v0, dist = 8.0, 36.0
-        acc = v0 * v0 / (2.0 * dist)
-        total = 2.0 * dist / v0
-        bus = bus_at(stop_x + dist, ly, math.pi, v0)
-        t = [0.0]
+        # --- 4. заброшенный тупик: «разделим добычу»
+        mk = marker(yard[0], yard[1], 7.0, YELLOW)
+        hud.help('Сворачивай в заброшенный тупик у трассы — разделим добычу.', 8.0)
+        yield lambda: pl.vehicle is bike and dist(yard[0], yard[1]) < 8.0
+        mk.remove()
+        it['anim'].remove(mk)
 
-        def tick(dt):
-            t[0] = min(total, t[0] + dt)
-            bus.x = stop_x + dist - (v0 * t[0] - 0.5 * acc * t[0] * t[0])
-            bus.speed = v0 - acc * t[0]
-            cam.override = (stop_x - 12.5, sy - 1.5, 1.45, bus.x - 2.0, bus.y + 0.8, 1.6)
-            engine(bus)
-        it['tick'] = tick
-        tick(0.0)
-        say('Из имущества — сумка да телефон. Из родни в этом городе — один брат.', 2.0)
-        yield lambda: t[0] >= total
+        # --- 5. предательство (кино)
+        it['stage'] = 'betrayal'
+        pl.freeze = True
+        pl.leave_vehicle(force=True)
+        bike.x, bike.y = yard[0] + 4.6, yard[1] + 1.8
+        bike.yaw = -0.8
+        bike.z = c.ground_z(bike.x, bike.y)
+        bike.speed = 0.0
+        bike.sync()
+        w.take_out(leo, 1)
+        self.letterbox(True)
+        hud.show(False)
+        cam.override = (yard[0] + 5.4, yard[1] - 3.6, 2.35, yard[0], yard[1], 1.15)
+        say('Лёха: Тихо. Встань.')
+        yield wait_enter(0.7, 3.4)
+        say('Макс: Лёха… что ты делаешь?')
+        yield wait_enter(0.7, 2.8)
+        say('Лёха: Добыча на двоих… Сам понимаешь. Деньги мне нужнее.')
+        yield wait_enter(0.7, 3.6)
+        # выстрел
+        w.audio.play_at('pistol', leo.x, leo.y, 1.0)
+        w.fx.muzzle(leo.x, leo.y, 1.32, 0.7)
+        w.fx.tracer(leo.x, leo.y, 1.32, p.x, p.y, 1.05, (1.0, 0.86, 0.5), 0.06, 0.1)
+        w.fx.blood(p.x, p.y, 1.0, n=7)
+        pl.ped.health = 34.0
+        p.knock_down(9999.0, 0.9, -0.4, 0.0)
+        hud.damage_flash(72)
+        w.fx.add_shake(0.6)
+        yield 1.2
+        say('Макс: А… а-а…')
+        yield wait_enter(0.9, 2.4)
+        say('Лёха: Доползи до байка. А деньги мне нужнее — у меня семья.')
+        yield wait_enter(0.7, 4.0)
+        # Лёха садится на «Призрак» и уезжает
+        sedan = w.spawn_vehicle('phantom', yard[0] + 7.6, yard[1] + 2.3, -0.35, 0)
+        sedan.keep = True
+        sedan.locked = False
+        _add(sedan, lambda: w.remove_vehicle(sedan))
+        leo.x, leo.y = yard[0] + 5.6, yard[1] + 1.2
+        leo.z = c.ground_z(leo.x, leo.y)
+        leo.set_state('stand')
+        leo.sync()
+        w.put_in_vehicle(leo, sedan, driver=True)
+        it['sedan'] = sedan
 
-        # --- 4. конечная: Макс выходит, автобус уезжает
-        bus = bus_at(stop_x, ly, math.pi, 0.0)
-        w.audio.play_at('door', bus.x, bus.y, 0.9)
-        p.node.show()
-        pl.teleport(stop_x - 3.3, ly + 2.3, math.pi / 2)
-        pl.script_move = (stop_x - 2.9, sy - 1.3, 1.35)
-        cam.override = (stop_x + 1.6, sy - 0.2, 1.55, stop_x - 3.4, sy - 2.2, 1.25)
-        t = [0.0]
+        def sedan_tick(dt):
+            if sedan.removed:
+                return
+            sedan.x += 8.0 * dt
+            sedan.speed = 8.0
+            sedan.z = c.ground_z(sedan.x, sedan.y)
+            sedan.sync()
+            if math.hypot(sedan.x - yard[0], sedan.y - yard[1]) > 110.0:
+                w.remove_vehicle(sedan)
+        it['base_tick'] = it['tick']
 
-        def tick(dt):
-            t[0] += dt
-            if t[0] > 2.4:
-                bus.speed = min(9.0, bus.speed + 1.8 * dt)
-                bus.x -= bus.speed * dt
-            engine(bus)
-        it['tick'] = tick
-        yield say('Водитель: Конечная, парень. Дальше — только море.', 1.6)
+        def tick2(dt):
+            it['base_tick'](dt)
+            sedan_tick(dt)
+        it['tick'] = tick2
+        self.letterbox(False)
+        hud.show(True)
+        cam.override = None
 
-        # --- 5. автобус ушёл, Макс остаётся на остановке: дальше играет игрок
-        yield 2.2
-        it['tick'] = None
-        w.scene_engine = None
-        if not bus.removed:
-            bus.keep = False
-            w.remove_vehicle(bus)
-        it['bus'] = None
-        hud.fade(1.0, 2.5)
-        yield 0.5
+        # --- 6. играбельно: доползти до своего мотоцикла
+        pl.crawl = True
+        pl.freeze = False
+        hud.help('Доползи до своего мотоцикла!', 10.0)
+        mk = marker(bike.x, bike.y, 1.7, YELLOW)
+        yield lambda: dist(bike.x, bike.y) < 1.8
+        pl.crawl = False
+        p.timer = 0.01                       # встанет сам
+        mk.remove()
+        it['anim'].remove(mk)
+
+        # --- 7. к поезду
+        mk = marker(yard[0], track_y, 4.6, YELLOW)
+        hud.help('Садись и езжай к поезду!', 9.0)
+        yield lambda: pl.state == 'car'
+        yield lambda: dist(yard[0], track_y) < 6.0
+        mk.remove()
+        it['anim'].remove(mk)
+
+        # --- 8. товарный поезд (кино)
+        it['stage'] = 'train'
+        pl.freeze = True
+        self.letterbox(True)
+        hud.show(False)
+        tr = _train_build(w, track_y, 830.0)
+        _add(tr['root'], tr['root'].removeNode)
+        _add(tr['bed'], tr['bed'].removeNode)
+        tr['phase'], tr['v'], tr['stop_x'] = 'approach', 17.0, yard[0]
+        it['train'] = tr
+        cam.override = (yard[0] - 9.5, yard[1] + 0.5, 2.5, yard[0] + 30.0, track_y, 2.1)
+        yield lambda: tr['phase'] == 'done'
+        say('Машинист: Да ты весь в крови, парень… Залезай.')
+        yield wait_enter(0.8, 4.6)
+        hud.fade(1.0, 1.8)
+        yield 1.1
+        # (дальше — утро в Порт-Глухове: _end_intro)
 
     def _step_intro(self, dt):
         w = self.w
@@ -2320,12 +2468,29 @@ class Missions(object):
         pl = w.player
         p = pl.ped
         hud = w.hud
-        bus = it.get('bus')
-        if bus is not None and not bus.removed:
-            bus.keep = False
-            w.remove_vehicle(bus)
+        # декорации Гангона: фасад, сумка, Лёха, мотоцикл, «Призрак», маркеры, товарный поезд
+        for (_, cleanup) in it.get('props', []):
+            try:
+                cleanup()
+            except Exception:
+                pass
+        it['tick'] = None
+        it['leo'] = None
+        it['bike'] = None
         self._intro_off()
+        w.crowd.enabled = True
+        pl.god = False                       # в Порт-Глухове снова всё по-настоящему
+        pl.crawl = False
+        if p.state == 'down':                # пропуск пролога в момент, когда Макса только что подстрелили
+            p.set_state('stand')
+        p.air = False
+        p.vx = p.vy = p.vz = 0.0
+        w.police.clear()
+        pl.clear_weapons()                   # пистолета у Макса не осталось
+        pl.ped.health = max(pl.ped.health, 65.0)   # рана саднит, но он жив
+        w.scene_engine = None
         w.interiors.cinema = False
+        hud.clear_big()                      # «ГАНГОН» и подсказки не должны рваться в утро
         for mk in self.markers:
             mk.show(True)
         if it.get('hint') is not None:
@@ -2343,7 +2508,7 @@ class Missions(object):
         pl.freeze = False
         # пока шла сценка, героя носило по всей карте и улицу у дома «разобрали»: заселяем её заново
         sx, sy, syaw = w.city.start_pos
-        pl.teleport(sx - 11.5, sy - 1.3, 0.0)           # у остановки, где его высадил автобус
+        pl.teleport(sx - 11.5, sy - 1.3, 0.0)           # у вокзала, где его высадил товарный поезд
         w.cam.face(sx - 11.5, sy - 1.3, 0.0)
         w.cam.pitch = -0.16
         w.traffic.populate()
@@ -2475,3 +2640,70 @@ class Missions(object):
         if 'safehouse' in w.interiors.rooms:
             w.interiors.enter('safehouse', instant=True, spot='wake')
             self.in_save = True
+
+
+# ---------------------------------------------------------------------------
+# пролог: ювелирный в Гангоне (декорации, которых в городе нет — они стираются в конце пролога)
+# ---------------------------------------------------------------------------
+def _jewel_facade(w, x, y):
+    """Фасад ювелирного «Авангард» и золотая вывеска; смотрит на юг (на улицу)."""
+    from .meshbuilder import MeshBuilder
+    mb = MeshBuilder()
+    z0, z1 = 0.0, 4.7
+    mb.wall('gf_jewel', x - 4.6, y, x + 4.6, y, z0, z1)          # стена с витриной (текстура лицом на юг)
+    mb.wall('sign_jewel', x - 4.4, y - 0.06, x + 4.4, y - 0.06, 3.35, 4.15)   # золотая вывеска
+    mb.box('metal_paint', x - 4.7, y - 0.12, z1 - 0.18, x + 4.7, y + 0.25, z1, (0.12, 0.11, 0.12, 1))   # козырёк
+    node = mb.build('jewel', w.assets.apply_state)
+    node.reparentTo(w.fx.root)
+    return node
+
+
+def _duffel(w, x, y):
+    """Сумка с добычей: жёлто-коричневый баул."""
+    from .meshbuilder import MeshBuilder
+    mb = MeshBuilder()
+    mb.box('metal_paint', -0.30, -0.16, 0.0, 0.30, 0.16, 0.34, (0.32, 0.26, 0.10, 1), uv_m=0.4)
+    mb.box(None, -0.13, -0.02, 0.34, 0.13, 0.02, 0.44, (0.20, 0.17, 0.08, 1))
+    mb.box(None, -0.06, -0.03, 0.40, 0.06, 0.03, 0.47, (0.75, 0.62, 0.25, 1))
+    node = mb.build('duffel', w.assets.apply_state)
+    node.reparentTo(w.fx.root)
+    node.setPos(x, y, w.city.ground_z(x, y))
+    return node
+
+
+def _train_build(w, track_y, nose_x, z=0.0):
+    """Грузовой поезд: капот, кабина, четыре вагона.  Едет с востока на запад."""
+    from .meshbuilder import MeshBuilder
+    mb = MeshBuilder()
+    body = (0.13, 0.14, 0.16, 1)
+    roof = (0.09, 0.095, 0.105, 1)
+    # --- тепловоз: капот, кабина, юбка, труба
+    mb.box('metal_paint', 0.0, -1.35, 0.9, -13.5, 1.35, 2.6, body, uv_m=3.2)            # длинный капот
+    mb.box('metal_paint', -13.5, -1.35, 0.9, -17.5, 1.35, 4.3, body, uv_m=3.2)          # кабина
+    mb.box(None, -13.6, -1.36, 2.65, -17.5, 1.36, 3.15, (0.92, 0.88, 0.55, 1))          # окна (светятся)
+    mb.box(None, -12.9, -1.36, 2.15, -13.6, 1.36, 2.3, (0.86, 0.6, 0.2, 1))             # «рога» на капоте
+    mb.box(None, 0.0, -1.4, 0.25, -17.5, 1.4, 0.95, (0.07, 0.07, 0.08, 1))              # юбка
+    mb.cylinder('metal_paint', -3.5, 0.0, 2.6, 3.15, 0.34, 8, roof)                     # выхлопная труба
+    mb.box(None, 0.0, -1.42, 1.05, -1.3, 1.42, 1.35, (0.75, 0.65, 0.2, 1))              # передняя перекладина
+    # --- четыре вагона: два полувагона (ржавые) и две цистерны
+    cars = [(-19.5, -33.5, (0.42, 0.26, 0.16, 1), 'box'), (-35.5, -49.5, (0.4, 0.27, 0.17, 1), 'box'),
+            (-51.5, -63.5, (0.17, 0.18, 0.19, 1), 'tank'), (-65.5, -77.5, (0.2, 0.21, 0.22, 1), 'tank')]
+    for (x0, x1, col, kind) in cars:
+        if kind == 'box':
+            mb.box('corrugated', x0, -1.3, 0.75, x1, 1.3, 3.6, col, uv_m=2.4)
+            mb.box(None, x0, -1.32, 0.25, x1, 1.32, 0.8, (0.07, 0.07, 0.08, 1))
+        else:
+            mb.cylinder_x('metal_paint', x0, x1, 0.0, 2.0, 1.28, 10, col, cap_color=roof)
+            mb.box(None, x0, -0.9, 0.25, x1, 0.9, 0.85, (0.07, 0.07, 0.08, 1))
+    # голова поезда: два белых фонаря
+    mb.box(None, 0.0, -0.62, 1.05, 0.12, -0.28, 1.45, (1.0, 0.98, 0.85, 1))
+    mb.box(None, 0.0, 0.28, 1.05, 0.12, 0.62, 1.45, (1.0, 0.98, 0.85, 1))
+    node = mb.build('train', w.assets.apply_state)
+    # рельсы-«подложка»: тёмная полоса вдоль путей (декорация)
+    mb = MeshBuilder()
+    mb.flat(None, -600.0, track_y - 1.9, 900.0, track_y + 1.9, z - 0.02, color=(0.10, 0.10, 0.11, 1))
+    bed = mb.build('railbed', w.assets.apply_state)
+    bed.reparentTo(w.fx.root)
+    node.reparentTo(w.fx.root)
+    node.setPos(nose_x, track_y, z)
+    return dict(root=node, bed=bed, x=nose_x)

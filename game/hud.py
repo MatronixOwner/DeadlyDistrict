@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Экран игры: мини-карта с полосками здоровья и брони, деньги и розыск, оружие, сообщения, телефон.
 
-Расположение — как в играх серии после 2008 года: карта слева внизу, всё остальное по углам, середина
-экрана свободна.  Облик (шрифты, цвета, плашки) описан в ui.py.
+Расположение — как в играх GTA III / Vice City: мини-карта слева сверху, под ней полоски здоровья и брони
+и деньги; розыск — справа сверху; таймер — посередине сверху; оружие и патроны — справа внизу;
+улица и район — над ним.  Облик (шрифты, цвета, плашки) описан в ui.py.
 """
 import math
 import re
@@ -11,7 +12,7 @@ from panda3d.core import (CardMaker, TextNode, TransparencyAttrib, TextureStage,
                           PandaNode, ClockObject, TextProperties, TextPropertiesManager, LColor)
 
 from . import ui
-from .ui import INK, PAPER, MUTE, ACCENT, CASH, HEALTH, ARMOR, DANGER, GOLD, WHITE, rgba
+from .ui import INK, PAPER, MUTE, ACCENT, CASH, HEALTH, ARMOR, DANGER, GOLD, WHITE, rgba, LINE_SOFT
 from .mapinfo import MAP_CX, MAP_CY, MAP_HALF
 from .mathutil import clamp, DEG
 
@@ -39,11 +40,14 @@ class Hud(object):
         self.msg = base.aspect2d.attachNewNode(PandaNode('hud_msg'), sort=10)
         self.msg_br = self.msg.attachNewNode('br')
         self.msg_tl = self.msg.attachNewNode('tl')
+        self.msg_tc = self.msg.attachNewNode('tc')
         self.f_txt = kit.text                      # этим шрифтом пишут подсказки и другие модули
         self.tr = self.root.attachNewNode('tr')
+        self.tc = self.root.attachNewNode('tc')
         self.bl = self.root.attachNewNode('bl')
         self.br = self.root.attachNewNode('br')
         self.tl = self.root.attachNewNode('tl')
+        self.lt = self.root.attachNewNode('lt')
         self.aspect = 0.0
         tp = TextProperties()
         tp.setTextColor(LColor(*ACCENT))
@@ -58,20 +62,14 @@ class Hud(object):
             on.hide()
             off.hide()
             self.stars.append((on, off))
-        self.money_text = kit.label(self.tr, '', -M, -M - 0.15, 0.066, CASH, kit.bold, 'r')
-        self.delta_text = kit.label(self.tr, '', -M, -M - 0.205, 0.044, CASH, kit.bold, 'r')
-        self.delta_t = 0.0
-        self.weapon_icon = kit.image(self.tr, 'w_fist', -M - 0.105, -M - 0.295, 0.105, 0.0525)
-        self.ammo_text = kit.label(self.tr, '', -M - 0.235, -M - 0.312, 0.05, PAPER, kit.bold, 'r')
-        self.weapon_name = kit.label(self.tr, '', -M, -M - 0.385, 0.036, MUTE, kit.text, 'r')
-        self.weapon_t = 0.0
-        self.timer_text = kit.label(self.tr, '', -M, -M - 0.48, 0.062, PAPER, kit.bold, 'r')
-        self.counter_text = kit.label(self.tr, '', -M, -M - 0.55, 0.046, PAPER, kit.text, 'r')
+        # --- центр сверху: таймер и счётчик задания
+        self.timer_text = kit.label(self.tc, '', 0, -M - 0.015, 0.062, PAPER, kit.bold, 'c')
+        self.counter_text = kit.label(self.tc, '', 0, -M - 0.085, 0.046, PAPER, kit.text, 'c')
 
-        # --- мини-карта и полоски под ней
-        self.radar = self.bl.attachNewNode('radar')
-        self.radar.setPos(M, 0, M + BAR_H + 0.012)
-        kit.panel(self.radar, -0.016, MAP_W + 0.016, -BAR_H - 0.030, MAP_H + 0.016, ui.SKIN_PANEL, 0.92, edge=0.05)
+        # --- мини-карта слева сверху и полоски под ней
+        self.radar = self.lt.attachNewNode('radar')
+        self.radar.setPos(M, 0, -M - 0.016 - MAP_H)
+        kit.panel(self.radar, -0.016, MAP_W + 0.016, -BAR_H - 0.030, MAP_H + 0.016, alpha=0.92)
         cm = CardMaker('map')
         cm.setFrame(0.0, MAP_W, 0.0, MAP_H)
         k = MAP_H / MAP_W * 2.0
@@ -96,20 +94,27 @@ class Hud(object):
         self.hp_frac = -1.0
         self.ar_frac = -1.0
         self.nx_frac = 0.0
-        self.clock_text = kit.label(self.radar, '', 0.0, MAP_H + 0.03, 0.042, PAPER, kit.bold, 'l')
-        self.day_text = kit.label(self.radar, '', MAP_W, MAP_H + 0.03, 0.034, MUTE, kit.text, 'r')
-        # полоска задания (например, состояние чужой машины): над картой, видна только когда нужна
+        self.money_text = kit.label(self.radar, '', 0.0, -BAR_H - 0.056, 0.060, CASH, kit.bold, 'l')
+        self.delta_text = kit.label(self.radar, '', 0.0, -BAR_H - 0.111, 0.040, CASH, kit.bold, 'l')
+        self.delta_t = 0.0
+        self.clock_text = kit.label(self.radar, '', 0.0, -BAR_H - 0.156, 0.040, PAPER, kit.bold, 'l')
+        self.day_text = kit.label(self.radar, '', MAP_W, -BAR_H - 0.156, 0.032, MUTE, kit.text, 'r')
+        # полоска задания (например, состояние чужой машины): под картой, видна только когда нужна
         self.task_root = self.radar.attachNewNode('task')
-        self.task_root.setPos(0, 0, MAP_H + 0.085)
+        self.task_root.setPos(0, 0, -BAR_H - 0.245)
         self.task_label = kit.label(self.task_root, '', 0.0, 0.034, 0.034, PAPER, kit.text, 'l')
         self.task_bar = kit.bar(self.task_root, 0.0, 0.0, MAP_W, BAR_H * 0.8, ACCENT)
         self.task_root.hide()
 
-        # --- правый нижний угол: улица и район, машина
+        # --- правый нижний угол: оружие и патроны, над ними улица и район, машина
+        self.weapon_icon = kit.image(self.br, 'w_fist', -M - 0.105, M + 0.030, 0.105, 0.0525)
+        self.ammo_text = kit.label(self.br, '', -M - 0.235, M + 0.040, 0.05, PAPER, kit.bold, 'r')
+        self.weapon_name = kit.label(self.br, '', -M, M + 0.140, 0.036, MUTE, kit.text, 'r')
+        self.weapon_t = 0.0
         self.br_text = self.br.attachNewNode('text')                # сдвигается, когда поднят телефон
-        self.street_text = kit.label(self.br_text, '', -M, M + 0.075, 0.040, MUTE, kit.text, 'r')
-        self.zone_text = kit.label(self.br_text, '', -M, M, 0.066, PAPER, kit.head, 'r')
-        self.veh_text = kit.label(self.br_text, '', -M, M + 0.15, 0.056, ACCENT, kit.head, 'r')
+        self.street_text = kit.label(self.br_text, '', -M, M + 0.195, 0.040, MUTE, kit.text, 'r')
+        self.zone_text = kit.label(self.br_text, '', -M, M + 0.240, 0.066, PAPER, kit.head, 'r')
+        self.veh_text = kit.label(self.br_text, '', -M, M + 0.325, 0.056, ACCENT, kit.head, 'r')
 
         # --- сообщения
         # субтитры: нижняя строка всегда на одной высоте (над чёрной полосой сценок), длинные растут вверх
@@ -117,24 +122,26 @@ class Hud(object):
         self.sub_base = -0.735
         self.sub_text = kit.label(self.msg, '', 0, self.sub_base, self.sub_scale, PAPER, kit.bold, 'c', wrap=40)
         self.sub_plain = ''
-        self.help_text = kit.label(self.msg_tl, '', M + 0.03, -M - 0.065, 0.044, PAPER, kit.text, 'l', wrap=20,
+        self.help_text = kit.label(self.msg_tc, '', 0.0, -0.150, 0.044, PAPER, kit.text, 'c', wrap=44,
                                    shadow=False)
         tn = self.help_text.textNode
         tn.setCardColor(LColor(*rgba(INK, 0.80)))
         tn.setCardAsMargin(0.55, 0.55, 0.42, 0.34)
         tn.setCardDecal(True)
         self.help_text.hide()
-        # большое сообщение: полоса через экран, заголовок и строка под ним
-        self.band = kit.panel(self.msg, -5, 5, -0.03, 0.37, ui.SKIN_BAND, 0.86, edge=0.30, name='band')
-        self._band_skin = ui.SKIN_BAND
+        # большое сообщение: плоская полоса через экран, заголовок и строка под ним
+        self.band = self.msg.attachNewNode('band')
+        kit.card(self.band, -5, 5, -0.03, 0.37, INK, 0.85)
+        self._band_lines = [kit.card(self.band, -5, 5, 0.37 - 0.008, 0.37, LINE_SOFT),
+                            kit.card(self.band, -5, 5, -0.03, -0.03 + 0.008, LINE_SOFT)]
         self.band.hide()
         self.big_text = kit.label(self.msg, '', 0, 0.165, 0.15, ACCENT, kit.title, 'c', shadow=False)
         self.big_sub = kit.label(self.msg, '', 0, 0.045, 0.056, PAPER, kit.bold, 'c', shadow=False)
         self.title_root = self.msg_br.attachNewNode('title')
         self.title_text = kit.label(self.title_root, '', -M, M + 0.27, 0.15, ACCENT, kit.script, 'r')
-        self.radio_text = kit.label(self.root, '', 0, 0.87, 0.058, ACCENT, kit.head, 'c')
-        self.radio_sub = kit.label(self.root, '', 0, 0.815, 0.038, PAPER, kit.text, 'c')
-        self.fps_text = kit.label(self.tl, '', M, -M - 0.01, 0.036, MUTE, kit.text, 'l')
+        self.radio_text = kit.label(self.root, '', 0, 0.795, 0.058, ACCENT, kit.head, 'c')
+        self.radio_sub = kit.label(self.root, '', 0, 0.74, 0.038, PAPER, kit.text, 'c')
+        self.fps_text = kit.label(self.bl, '', M, 0.014, 0.034, MUTE, kit.text, 'l')
         self.cross = kit.image(self.root, 'crosshair', 0, 0, 0.05)
         self.cross.hide()
 
@@ -212,11 +219,14 @@ class Hud(object):
             return
         self.aspect = asp
         self.tr.setPos(asp, 0, 1)
+        self.tc.setPos(0, 0, 1)
+        self.lt.setPos(-asp, 0, 1)
         self.tl.setPos(-asp, 0, 1)
         self.bl.setPos(-asp, 0, -1)
         self.br.setPos(asp, 0, -1)
         self.msg_br.setPos(asp, 0, -1)
         self.msg_tl.setPos(-asp, 0, 1)
+        self.msg_tc.setPos(0, 0, 1)
         self.dmg_np.setScale(asp, 1, 1)
 
     def stash(self, on):
@@ -260,15 +270,23 @@ class Hud(object):
         self.help_text.show()
         self.help_t = dur
 
+    def clear_big(self):
+        """Крупное сообщение и подсказка гаснут сразу (например, при пропуске пролога)."""
+        self.big_t = 0.0
+        for node in (self.big_text, self.big_sub, self.band):
+            node.hide()
+        self.help_t = 0.0
+        self.help_text.hide()
+
     def big(self, text, color=GOLD, dur=4.0, sub=''):
         self.big_text.setText(text.upper())
         self.big_text.setFg(color)
         # красное сообщение («потрачено», «задание провалено») — на красной полосе, остальные — на бордовой
         alert = color[0] > 0.7 and color[1] < 0.45 and color[2] < 0.45
-        skin = ui.SKIN_ALERT if alert else ui.SKIN_BAND
-        if skin != self._band_skin:
-            self._band_skin = skin
-            self.band.setTexture(self.kit.assets.tex(skin, clamp=True, smooth=True), 1)
+        # красное сообщение («потрачено», «арестован») — полоса с красной кромкой
+        edge = (0.86, 0.26, 0.22, 0.85) if alert else LINE_SOFT
+        for ln in self._band_lines:
+            ln.setColor(*edge)
         if alert:
             self.big_text.setFg(PAPER)          # красным по красному не прочесть
         self.big_sub.setText(sub)

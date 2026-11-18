@@ -8,7 +8,7 @@ import math
 from panda3d.core import CardMaker, TextNode, TransparencyAttrib, PandaNode, NodePath
 
 from . import ui
-from .ui import INK, PAPER, MUTE, DIM, ACCENT, SKIN_PANEL, rgba
+from .ui import INK, PAPER, MUTE, DIM, ACCENT, rgba
 from .mapinfo import MAP_CX, MAP_CY, MAP_HALF
 
 GOLD = ACCENT
@@ -47,7 +47,6 @@ class Menu(object):
         self.text = text
         self.wide = wide
         self.text_scale = 0.062
-        self.skin = SKIN_PANEL          # расцветка плашки под меню (у меню тестера — своя)
         self.dim = 0.66                 # затемнение игры за меню; у ателье — слабое, машину должно быть видно
         self.on_select = None           # вызывается, когда выбранная строка меняется (предпросмотр)
         self.sel = 0
@@ -149,10 +148,10 @@ class MenuUI(object):
         self.left.setX(-asp)
         # плашка под столбцом меню; своей ширины она собирается заново: её края не растягиваются
         pw = LEFT + (ROW_WIDE if m.wide else ROW_W) + 0.10
-        if (pw, m.skin) != self._panel_w:
-            self._panel_w = (pw, m.skin)
+        if pw != self._panel_w:
+            self._panel_w = pw
             self.panel.getChildren().detach()
-            self.kit.panel(self.panel, -0.3, pw, -1.6, 1.6, m.skin, 0.90, edge=0.11, turn=True)
+            self.kit.panel(self.panel, -0.3, pw, -1.6, 1.6, alpha=0.90)
         self.panel.show()
         logo = self.show_logo and len(self.stack) == 1
         if logo:

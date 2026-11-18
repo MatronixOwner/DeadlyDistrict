@@ -25,7 +25,6 @@ PAINTS = [
 ]
 PAINT_NAMES = ['Красный', 'Синий', 'Белый', 'Чёрный', 'Серебристый', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый',
                'Коричневый', 'Бирюзовый', 'Вишнёвый', 'Бежевый', 'Графитовый']
-RUST_PAINTS = [(0.42, 0.30, 0.22), (0.36, 0.38, 0.34), (0.50, 0.44, 0.34), (0.30, 0.24, 0.26)]
 
 
 class Spec(object):
@@ -120,11 +119,8 @@ _add(Spec('army', 'Барракуда', 6.8, 2.4, 2.6, hood=0.4, ws_rake=0.2, tr
           clear=0.5, wheel_r=0.52, wheel_w=0.32, mass=8000.0, top=34.0, accel=4.6, steer=0.5, health=3200.0,
           front_axle=2.4, rear_axle=-2.1, seats=2, box=(4.3, 3.1, (0.26, 0.31, 0.2)),
           paints=[(0.26, 0.31, 0.2)], value=0, radio=False, engine='truck', tail_drop=0.35))
-_add(Spec('beater', 'Ржавчина', 4.4, 1.76, 1.5, paints=RUST_PAINTS, top=29.0, accel=4.2, health=750.0,
-          value=120, grip=6.5))
 _add(Spec('lowrider', 'Барон', 4.3, 1.8, 2.0, hood=1.6, trunk=1.2, clear=0.14, top=42.0, accel=6.5,
           paints=[(0.42, 0.10, 0.44), (0.10, 0.42, 0.22), (0.60, 0.08, 0.20)], value=900, grip=6.8))
-
 # --- машины на тех же кузовах, но других пропорций, окраски и назначения
 _add(Spec('limo', 'Лимузин', 6.9, 1.9, 1.42, hood=1.7, trunk=1.0, top=40.0, accel=5.6, grip=5.8, value=3000,
           mass=2300.0, seats=6, health=1300.0, steer=0.5,
@@ -132,9 +128,6 @@ _add(Spec('limo', 'Лимузин', 6.9, 1.9, 1.42, hood=1.7, trunk=1.0, top=40.
 _add(Spec('racer', 'Болид', 4.5, 1.9, 1.16, hood=1.4, ws_rake=0.8, rw_rake=0.9, trunk=0.5, nose_drop=0.2,
           belt=0.62, clear=0.12, top=66.0, accel=12.0, grip=11.0, brake=19.0, value=6000, mass=1050.0,
           paints=[(0.92, 0.72, 0.10), (0.80, 0.10, 0.09), (0.12, 0.26, 0.62)], kit=('wing',)))
-_add(Spec('minibus', 'Маршрутка', 4.7, 1.9, 2.0, hood=0.5, ws_rake=0.45, trunk=0.02, rw_rake=0.04, belt=1.0,
-          mass=1900.0, top=31.0, accel=4.4, health=1300.0, value=600, wheel_r=0.31, seats=8,
-          paints=[(0.92, 0.72, 0.10), (0.90, 0.90, 0.88), (0.30, 0.50, 0.62), (0.62, 0.20, 0.14)], kit=('route',)))
 _add(Spec('firetruck', 'Пожарная', 7.6, 2.5, 3.1, hood=0.5, ws_rake=0.3, trunk=0.02, rw_rake=0.04, belt=1.2,
           clear=0.42, wheel_r=0.46, wheel_w=0.3, mass=7500.0, top=34.0, accel=4.4, steer=0.5, health=3000.0,
           front_axle=2.7, rear_axle=-2.4, seats=4, paints=[(0.80, 0.10, 0.09)], value=0, radio=False,
@@ -153,12 +146,21 @@ _add(Spec('jeep', 'Вездеход', 4.5, 2.0, 2.02, belt=1.1, clear=0.50, whee
           paints=[(0.26, 0.31, 0.20), (0.44, 0.38, 0.26), (0.24, 0.28, 0.34)], kit=('bullbar', 'lightbar', 'spare')))
 _add(Spec('pizza', 'Доставка', 3.9, 1.65, 1.45, trunk=0.02, rw_rake=0.35, hood=0.9, top=33.0, accel=5.6,
           mass=950.0, value=300, paints=[(0.80, 0.10, 0.09), (0.90, 0.90, 0.88)], kit=('box',)))
-_add(Spec('brick', 'Кирпич', 4.8, 1.76, 1.44, hood=1.35, trunk=1.0, top=33.0, accel=4.8, mass=1350.0, value=320,
-          health=1150.0, grip=7.2))
 _add(Spec('tuner', 'Дрифт', 3.9, 1.7, 1.38, trunk=0.02, rw_rake=0.35, hood=0.9, top=46.0, accel=8.6, grip=8.0,
           mass=900.0, value=2400, clear=0.14,
           paints=[(0.16, 0.56, 0.66), (0.42, 0.10, 0.44), (0.85, 0.42, 0.10), (0.10, 0.42, 0.22)],
           tune={'spoiler': 3, 'rims': 3, 'susp': 1, 'neon': 0, 'exhaust': 1}))
+# --- новые машины с готовыми моделями (ит./копии в ассетах)
+_add(Spec('coupe', 'Ястреб', 4.3, 1.72, 1.25, hood=1.5, ws_rake=0.7, rw_rake=0.75, trunk=0.6, nose_drop=0.12,
+          belt=0.72, clear=0.15, top=52.0, accel=8.8, grip=8.8, value=2800, mass=1150.0, seats=2,
+          front_axle=1.22, rear_axle=-1.20, wheel_r=0.33, extras=('spoiler',)))
+_add(Spec('golf', 'Гольф', 3.9, 1.76, 1.45, trunk=0.02, rw_rake=0.35, hood=0.9, top=33.0, accel=6.4, grip=7.6,
+          mass=950.0, value=900, wheel_r=0.34,
+          paints=[(0.80, 0.10, 0.09), (0.90, 0.90, 0.88), (0.12, 0.26, 0.62), (0.10, 0.10, 0.12), (0.85, 0.42, 0.10)]))
+_add(Spec('phantom', 'Призрак', 4.9, 1.82, 1.5, hood=1.6, ws_rake=0.55, rw_rake=0.5, trunk=1.3, belt=0.8,
+          clear=0.18, top=31.0, accel=4.4, grip=6.8, health=1200.0, value=700, mass=1600.0, seats=6))
+_add(Spec('classic', 'Классик', 4.7, 1.8, 1.44, hood=1.6, ws_rake=0.6, rw_rake=0.55, trunk=1.1, belt=0.78,
+          clear=0.16, top=44.0, accel=6.8, grip=7.4, health=1100.0, value=3500, mass=1400.0, seats=5))
 # --- мотоциклы, скутер, мопед, велосипеды, квадроцикл, трайк, мотоцикл с коляской (модели собирает bikes.py)
 _add(Spec('bike', 'Стрела', 2.10, 0.74, 1.16, bike=True, lean=True, seats=1, mass=230.0, top=64.0, accel=13.0,
           grip=9.0, brake=18.0, health=420.0, wheel_r=0.30, front_axle=0.70, rear_axle=-0.70, radio=False,
@@ -223,20 +225,20 @@ BIKES = tuple(k for k, s in SPECS.items() if s.bike)
 
 # какие машины встречаются в каком районе (тип, вес)
 ZONE_CARS = {
-    'D': [('sedan', 5), ('taxi', 4), ('sports', 1.2), ('suv', 2), ('hatch', 2), ('bus', 0.8), ('van', 1), ('brick', 2),
-          ('muscle', 0.6), ('limo', 0.5), ('minibus', 0.9), ('bike', 0.7), ('scooter', 0.9), ('pizza', 0.6),
+    'D': [('sedan', 5), ('taxi', 4), ('sports', 1.2), ('suv', 2), ('hatch', 2), ('bus', 0.8), ('van', 1), ('golf', 1.6),
+          ('muscle', 0.6), ('limo', 0.5), ('coupe', 0.9), ('bike', 0.7), ('scooter', 0.9), ('pizza', 0.6),
           ('cashvan', 0.3), ('racer', 0.15), ('firetruck', 0.2), ('tourer', 0.5), ('copbike', 0.35),
           ('courier', 1.0)],
-    'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('beater', 1.5), ('bus', 0.6), ('pickup', 1), ('brick', 3),
-          ('minibus', 1.2), ('scooter', 1.4), ('bicycle', 1.0), ('pizza', 0.8), ('icecream', 0.3), ('chopper', 0.4),
+    'O': [('sedan', 4), ('hatch', 4), ('taxi', 2), ('van', 1.5), ('golf', 3.0), ('bus', 0.6), ('pickup', 1),
+          ('coupe', 0.6), ('scooter', 1.4), ('bicycle', 1.0), ('pizza', 0.8), ('icecream', 0.3), ('chopper', 0.4),
           ('moped', 1.0), ('sidecar', 0.4), ('copbike', 0.25), ('courier', 1.1), ('cargo', 0.7)],
-    'G': [('beater', 6), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1), ('chopper', 1.6), ('brick', 1.5),
+    'G': [('golf', 3.0), ('phantom', 1.2), ('lowrider', 2.5), ('pickup', 2), ('hatch', 2), ('van', 1), ('muscle', 1), ('chopper', 1.6),
           ('hotrod', 0.6), ('dirt', 0.8), ('bicycle', 0.8), ('moped', 1.0), ('trike', 0.7), ('bmx', 0.8),
           ('sidecar', 0.5), ('cargo', 0.8), ('kart', 0.3)],
-    'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5), ('jeep', 1.0), ('brick', 2.5),
-          ('bicycle', 1.4), ('scooter', 0.8), ('icecream', 0.5), ('minibus', 0.6), ('quad', 0.3), ('bmx', 0.9),
+    'R': [('sedan', 4), ('suv', 4), ('hatch', 3), ('pickup', 1.5), ('muscle', 1), ('sports', 0.5), ('jeep', 1.0), ('golf', 1.5),
+          ('bicycle', 1.4), ('scooter', 0.8), ('icecream', 0.5), ('coupe', 0.5), ('quad', 0.3), ('bmx', 0.9),
           ('moped', 0.6), ('tourer', 0.4), ('sidecar', 0.5), ('caddy', 0.9), ('courier', 0.6), ('kart', 0.3)],
-    'I': [('truck', 4), ('van', 4), ('pickup', 3), ('beater', 2), ('sedan', 1), ('jeep', 0.8), ('dirt', 0.7), ('brick', 1),
+    'I': [('truck', 4), ('van', 4), ('pickup', 3), ('golf', 1.5), ('sedan', 1), ('jeep', 0.8), ('dirt', 0.7), ('golf', 0.8),
           ('cashvan', 0.3), ('sidecar', 0.5), ('moped', 0.5), ('cargo', 1.4)],
     'B': [('sports', 2.5), ('sedan', 3), ('taxi', 3), ('muscle', 2), ('suv', 2), ('hatch', 2), ('bus', 0.5),
           ('limo', 0.8), ('bike', 1.4), ('chopper', 1.0), ('tuner', 1.2), ('racer', 0.4), ('hotrod', 0.6),

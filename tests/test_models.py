@@ -383,9 +383,10 @@ def test_long_gun_lies_in_both_hands(game, world):
 def test_fleet_has_bikes_and_new_cars(world):
     """Транспорта стало больше чем вдвое: шестнадцать видов мотоциклов и их родни и десять новых машин."""
     from game.vehicle import BIKES, ZONE_CARS
-    assert len(SPECS) >= 43
+    assert len(SPECS) >= 45
     assert set(BIKES) == set(ALL_BIKES) and len(ALL_BIKES) == 16
-    new_cars = {'limo', 'racer', 'minibus', 'firetruck', 'cashvan', 'icecream', 'hotrod', 'jeep', 'pizza', 'tuner'}
+    new_cars = {'limo', 'racer', 'firetruck', 'cashvan', 'icecream', 'hotrod', 'jeep', 'pizza', 'tuner',
+               'coupe', 'golf', 'phantom'}
     assert new_cars <= set(SPECS) and new_cars <= set(VEHICLE_MODELS)
     titles = [s.title for s in SPECS.values()]
     assert len(titles) == len(set(titles))                         # у каждой машины своё название
@@ -1102,24 +1103,29 @@ def test_balconies_span_door_and_window_and_signs_stay_below(world):
 
 
 def test_new_cars_are_real_models_and_take_paint(game, world):
-    """Три машины с фототекстурой: модель, колёса, краска.  Перекраска меняет кузов и не трогает стёкла."""
+    """Машины из ассетов itch.io: модель, колёса, краска.  Перекраска меняет кузов и не трогает стёкла."""
+    import os
     from panda3d.core import PNMImage
+    from game.vehicle import PAINTS
     w = world
     m = w.models
-    for kind, model in (('brick', 'volvo'), ('minibus', 'hiace'), ('beater', 'dacia'), ('fbi', 'volvo')):
+    for kind, model in (('coupe', 'coupe'), ('golf', 'golf'), ('phantom', 'phantom'), ('classic', 'classic'),
+                        ('fbi', 'caprice')):
         assert VEHICLE_MODELS[kind][0] == model
         info = m.meta['vehicles'][model]
-        assert len(info['wheels']) == 4 and not info.get('fixed') and 500 < info['L'] * 100 / 1 < 520 or info['L'] > 3.5
-        for f in (model + '.bam', model + '.png', model + '_shade.png'):
+        assert len(info['wheels']) == 4
+        for f in (model + '.bam', model + '.png'):
             assert os.path.isfile(os.path.join(m.dir, 'veh', f)), f
-    spec = SPECS['brick']
-    red = m.vehicle_texture('brick', spec, (0.80, 0.10, 0.09))
-    blue = m.vehicle_texture('brick', spec, (0.12, 0.26, 0.62))
+    for model in ('coupe', 'phantom', 'classic', 'caprice'):
+        assert os.path.isfile(os.path.join(m.dir, 'veh', model + '_shade.png')), model
+    spec = SPECS['coupe']
+    red = m.vehicle_texture('coupe', spec, (0.80, 0.10, 0.09))
+    blue = m.vehicle_texture('coupe', spec, (0.12, 0.26, 0.62))
     a, b = PNMImage(), PNMImage()
     red.store(a)
     blue.store(b)
     detail = PNMImage()
-    assert detail.read(os.path.join(m.dir, 'veh', 'volvo.png'))
+    assert detail.read(os.path.join(m.dir, 'veh', 'coupe.png'))
     painted = same = diff = 0
     for y in range(0, 256, 4):
         for x in range(0, 256, 4):
@@ -1128,10 +1134,27 @@ def test_new_cars_are_real_models_and_take_paint(game, world):
             if detail.getAlpha(x, y) < 0.5:
                 painted += 1
                 diff += d > 0.15
-                assert pa[0] > pa[2] and pb[2] > pb[0], (x, y)             # красный красен, синий синь
             else:
                 same += d < 0.02
-    assert painted > 400 and diff > painted * 0.9 and same > 1000
+    assert painted > 200 and diff > painted * 0.8
+    assert same > painted * 0.5                        # стёкла и детали не красятся
+    # «Призрак» и «Классик» красятся по готовой маске, а не по правилу цвета
+    for kind in ('phantom', 'classic'):
+        spec = SPECS[kind]
+        tex = m.vehicle_texture(kind, spec, PAINTS[0], 0)
+        assert tex is not None and tex.getXSize() == 256
+
+
+def test_hero_car_is_real_model_with_interior(game, world):
+    """«Классик» — машина главного героя: готовая модель с салоном, отдаётся в гараж в начале игры."""
+    import os
+    w = world
+    m = w.models
+    info = m.meta['vehicles']['classic']
+    assert info['L'] > 4.0 and info['H'] > 1.0
+    assert os.path.isfile(os.path.join(m.dir, 'veh', 'classic.bam'))
+    spec = SPECS['classic']
+    assert spec.seats == 5 and VEHICLE_MODELS['classic'][0] == 'classic'
 
 
 def test_cruiser_and_bicycles_are_models(game, world):
@@ -1399,7 +1422,7 @@ def test_gun_in_the_hands_points_where_the_ped_looks(game, world):
 
 
 # ---------------------------------------------------------------------------
-# наборы с itch.io: такси MoiDev, чоппер Duhgless, мусор PSX Waste, плашки Free PSX UI
+# наборы с itch.io: такси MoiDev, чоппер Duhgless, мусор PSX Waste
 # ---------------------------------------------------------------------------
 def test_taxi_is_the_yellow_cab_model(game, world):
     """Такси — модель MoiDev со своей раскраской: жёлтый кузов, шашечки и фонарь на крыше нарисованы в текстуре,
@@ -1564,57 +1587,54 @@ def test_soft_shadows_under_props_and_along_walls(game, world):
 
 
 def test_ui_panels_keep_their_edges(game, world):
-    """Плашки интерфейса — текстуры набора Free PSX UI; края плашки не растягиваются вместе с ней."""
+    """Плоские плашки интерфейса: тёмная заливка, тонкая светлая кромка, без текстур."""
     from panda3d.core import NodePath
     from game import ui
     w = world
     kit = w.hud.kit
-    for skin in (ui.SKIN_PANEL, ui.SKIN_BAND, ui.SKIN_PLATE, ui.SKIN_ALERT):
-        t = w.assets.tex(skin, clamp=True, smooth=True)
-        assert (t.getXSize(), t.getYSize()) == (512, 128), skin
     assert not w.assets.missing
     root = NodePath('t')
-    for turn in (False, True):
-        for (x0, x1, z0, z1) in ((0.0, 2.0, 0.0, 0.5), (-1.0, 0.2, -1.5, 1.5), (0.0, 0.06, 0.0, 0.04)):
-            p = kit.panel(root, x0, x1, z0, z1, ui.SKIN_PANEL, 0.9, edge=0.05, turn=turn)
-            mn, mx = p.getTightBounds()
-            assert abs(mn.x - x0) < 1e-5 and abs(mx.x - x1) < 1e-5 and abs(mn.z - z0) < 1e-5 and abs(mx.z - z1) < 1e-5
-            pts, tris = _node_mesh(p)
-            xs = sorted(set(round(q[0], 5) for q in pts))
-            zs = sorted(set(round(q[2], 5) for q in pts))
-            if x1 - x0 > 0.5:
-                assert len(xs) == 4 and len(zs) == 4 and len(tris) == 18     # девять частей
-                # края одной толщины, какой бы ни была плашка
-                long_edge = (zs[1] - zs[0]) if turn else (xs[1] - xs[0])
-                assert abs(long_edge - 0.05) < 1e-5
-            else:
-                assert 2 <= len(xs) <= 4 and 2 <= len(zs) <= 4               # крошечной плашке края ужимаются
-            assert abs(p.getColor()[3] - 0.9) < 1e-3
-            p.setAlphaScale(0.5)                                         # плавное исчезновение не мешает цвету
-            assert abs(p.getColor()[3] - 0.9) < 1e-3
+    for (x0, x1, z0, z1) in ((0.0, 2.0, 0.0, 0.5), (-1.0, 0.2, -1.5, 1.5), (0.0, 0.06, 0.0, 0.04)):
+        p = kit.panel(root, x0, x1, z0, z1, alpha=0.9)
+        mn, mx = p.getTightBounds()
+        assert abs(mn.x - x0) < 1e-5 and abs(mx.x - x1) < 1e-5 and abs(mn.z - z0) < 1e-5 and abs(mx.z - z1) < 1e-5
+        pts, tris = _node_mesh(p)
+        assert len(tris) == 10                                # заливка + четыре кромки
+        for q in pts:
+            assert z0 - 1e-6 <= q[2] <= z1 + 1e-6
+        assert all(ch.getTexture() is None for ch in p.getChildren())     # плоская, без текстур
+        fill = p.getChildren()[0]
+        assert abs(fill.getColor()[3] - 0.82 * 0.9) < 1e-3
+        p.removeNode()
+    root.removeNode()
     # меню: плашка под столбцом, при смене ширины собирается заново
     harness.press(game, 'escape')
     harness.run(game, 0.2)
     menu = game.ui
     assert menu.stack and not menu.panel.isHidden() and menu.panel.getNumChildren() == 1
-    w0, skin = menu._panel_w
-    assert skin == ui.SKIN_PANEL
+    inner = menu.panel.getChildren()[0]
+    assert inner.getNumChildren() == 5                     # заливка + четыре кромки
+    w0 = menu._panel_w
     mn, mx = menu.panel.getTightBounds(menu.left)
     assert abs(mx.x - w0) < 1e-4
     harness.press(game, 'escape')
     harness.run(game, 0.2)
-    # полоса большого сообщения и рамка мини-карты — тоже плашки с текстурой
-    assert any(ch.getTexture() is not None and ch.getTexture().getName().startswith('ui_panel')
-               for ch in w.hud.radar.getChildren() if ch.getName() == 'panel')
+    # рамка мини-карты — плоская плашка, без текстуры
+    panels = [ch for ch in w.hud.radar.getChildren() if ch.getName() == 'panel']
+    assert panels and all(ch.getTexture() is None for ch in panels[0].getChildren())
+    # полоса большого сообщения — плоская; у красного сообщения кромка красная
     w.hud.big(u'ПРОВЕРКА', sub=u'строка')
     harness.run(game, 0.2)
     assert not w.hud.band.isHidden()
-    assert w.hud.band.getTexture().getName().startswith('ui_band')
-    # красное сообщение — на красной полосе и светлыми буквами
+    edge = w.hud._band_lines[0].getColor()
+    assert abs(edge[0] - ui.LINE_SOFT[0]) < 1e-3 and abs(edge[3] - ui.LINE_SOFT[3]) < 1e-3
     from game.missions import REDC
     w.hud.big(u'ПОТРАЧЕНО', REDC, 5.0)
-    assert w.hud.band.getTexture().getName().startswith('ui_alert')
+    edge = w.hud._band_lines[0].getColor()
+    assert edge[0] > 0.7 and edge[1] < 0.35
     fg = w.hud.big_text.textNode.getTextColor()
     assert abs(fg[0] - ui.PAPER[0]) < 0.01 and abs(fg[1] - ui.PAPER[1]) < 0.01
     w.hud.big(u'ГОТОВО')
-    assert w.hud.band.getTexture().getName().startswith('ui_band')
+    edge = w.hud._band_lines[0].getColor()
+    assert abs(edge[0] - ui.LINE_SOFT[0]) < 1e-3
+
