@@ -201,6 +201,94 @@ def test_animation_follows_state(game, world):
     assert p.dead and p.vis.cur.startswith('death')
 
 
+def test_every_weapon_sits_in_the_fist(game, world):
+    """Оружие лежит в сжатой кисти, а не поперёк запястья.
+
+    Раньше начало координат модели ставилось между костями кисти, а пальцы оставались как в клипе: в стойке
+    и на ходу ладонь раскрыта, и нож торчал сквозь запястье, а пистолет лежал на открытой руке."""
+    from panda3d.core import LPoint3
+    from game.defs import W_KNIFE
+    from game.models import HOLD, FIST, PALM_X, PALM_ROOF
+    w = world
+    harness.quiet(w, peds=True)
+    px, py = w.player.pos()
+    p = w.spawn_ped(px + 3.0, py, 0.0, random_look(random.Random(5), 'D'))
+    p.keep = True
+    p.set_state('stand')
+    vis = p.vis
+    mid = vis.actor.exposeJoint(None, 'modelRoot', 'middle_03_r')
+    for wid in WEAPON_MODELS:
+        name = w.models.weapon_name(wid)
+        hold = HOLD[name]
+        p.set_weapon(wid)
+        hand = vis.grips['_hand']
+        fist = LPoint3(PALM_X - hold['r'], 0.0, PALM_ROOF - hold['r']) if 'r' in hold else LPoint3(*FIST)
+        long = WEAPONS[wid].long and WEAPONS[wid].kind != 'melee'
+        clips = ('rifle_idle', 'rifle_walk', 'rifle_run', 'rifle_fire', 'air') if long else \
+            ('idle', 'walk', 'jog', 'pistol_aim', 'punch_b', 'swing', 'throw')
+        for clip in clips:
+            for k in range(4):
+                vis.play(clip, True, 1.0, 0.0, True, k / 4.0)
+                for _ in range(3):
+                    vis.update(0.0)
+                    vis.actor.update(force=True)
+                at = hand.getRelativePoint(vis.gun, LPoint3(*hold['at']))
+                assert (at - fist).length() < 0.012, (name, clip, k, at, fist)       # рукоять — в середине кулака
+                # пальцы сжаты: последняя фаланга среднего пальца подогнута к ладони, а не вытянута
+                tip = mid.getPos(hand)
+                assert tip.x < -0.03 and tip.z < 0.12, (name, clip, tip)
+        assert vis._fing is not None
+    # нож: клинок выходит из кулака со стороны большого пальца и смотрит вперёд, навершие — у пятки ладони
+    p.set_weapon(W_KNIFE)
+    vis.play('idle', True, 1.0, 0.0, True, 0.0)
+    vis.update(0.0)
+    vis.actor.update(force=True)
+    hand = vis.grips['_hand']
+    tip = hand.getRelativePoint(vis.gun, LPoint3(0, 0, 0.228))
+    butt = hand.getRelativePoint(vis.gun, LPoint3(0, 0, -0.072))
+    assert tip.y < -0.08 and tip.z > 0.15, tip          # к большому пальцу и вперёд, за пальцы
+    assert butt.y > 0.03 and -0.01 < butt.z < 0.06, butt    # у пятки ладони, а не в запястье
+    assert abs(tip.x - butt.x) < 0.01                   # в плоскости ладони: не протыкает кисть
+    # ножом бьют только правой рукой: в ней он и лежит
+    for _ in range(3):
+        vis.strike(False, True)
+        assert vis.cur == 'punch_b'
+
+    # за рулём и в седле оружие убрано (руки на руле), после выхода — снова в руке
+    def put_away(n):                                    # спрятан сам узел оружия, а не вся фигура
+        h = n.getHiddenAncestor()
+        return (not h.isEmpty()) and h == n
+
+    pl = w.player
+    pl.give_weapon(W_AK, 30)
+    pl.select(W_AK)
+    pv = pl.ped.vis
+    assert pv.gun is not None and not put_away(pv.gun) and pv._fing is not None
+    for kind in ('retro', 'chopper'):
+        v = w.spawn_vehicle(kind, px + 8.0, py + 6.0, 0.0)
+        v.keep = True
+        pl.enter_vehicle(v, silent=True)
+        harness.run(game, 0.3)
+        assert pv.stowed and put_away(pv.gun) and pv._fing is None, kind
+        pl.select(W_PISTOL)                             # сменил оружие за рулём: оно тоже убрано
+        assert put_away(pv.gun) and pv._fing is None, kind
+        pl.select(W_AK)
+        pl.leave_vehicle(force=True)
+        harness.run(game, 0.3)
+        assert not pv.stowed and not put_away(pv.gun) and pv._fing is not None, kind
+        w.remove_vehicle(v)
+    pl.select(W_FIST)
+    # без оружия пальцы снова слушаются клипа, а кулаки бьют по очереди
+    p.set_weapon(W_FIST)
+    assert vis._fing is None and vis.gun is None
+    seen = set()
+    for _ in range(4):
+        vis.strike(False, True)
+        seen.add(vis.cur)
+    assert seen == {'punch_a', 'punch_b'}
+    w.remove_ped(p)
+
+
 def test_women_and_special_poses(game, world):
     w = world
     x, y = w.city.landmarks['terminal']['road']
@@ -339,20 +427,28 @@ def test_long_gun_lies_in_both_hands(game, world):
     p.set_state('stand')
     p.set_weapon(W_AK)
     vis = p.vis
-    for clip in ('rifle_idle', 'rifle_walk', 'rifle_run'):
-        worst = 0.0
-        for k in range(6):
-            vis.play(clip, True, 1.0, 0.0, True, k / 6.0)
-            vis.update(0.0)
-            vis.actor.update(force=True)
-            vis.update(0.0)
-            gun = vis.gun
-            left = vis.grips['_left']
-            lp = left.getPos(gun)                    # левая ладонь в системе оружия: ствол — ось +Y
-            assert lp.y > 0.05, (clip, k, lp)        # ладонь впереди рукояти
-            worst = max(worst, math.hypot(lp.x, lp.z))
-        assert worst < 0.03, (clip, worst)
-        assert vis._ik is None, clip                 # левую руку ведёт клип
+    from game.pedvisual import LEFT_PALM
+    for wid in (W_AK, W_SHOTGUN):
+        p.set_weapon(wid)
+        vis = p.vis
+        sz = vis.support[1]
+        for clip in ('rifle_idle', 'rifle_walk', 'rifle_run'):
+            for k in range(6):
+                vis.play(clip, True, 1.0, 0.0, True, k / 6.0)
+                vis.update(0.0)
+                vis.actor.update(force=True)
+                vis.update(0.0)
+                gun = vis.gun
+                left = vis.grips['_left']
+                lp = left.getPos(gun)                    # левая ладонь в системе оружия: ствол — ось +Y
+                assert lp.y > 0.05, (clip, k, lp)        # ладонь впереди рукояти
+                assert abs(lp.x) < 0.03, (wid, clip, k, lp)
+                # костяшки — под цевьём на толщину ладони (раньше ствол смотрел прямо на кисть, и у автомата
+                # она приходилась на магазин: цевьё на 11 см выше рукояти)
+                assert abs(lp.z - (sz - LEFT_PALM)) < 0.03, (wid, clip, k, lp, sz)
+            assert vis._ik is None, clip                 # левую руку ведёт клип
+    p.set_weapon(W_AK)
+    vis = p.vis
     for wid in (W_AK, W_M4, W_SHOTGUN, W_DOUBLE, W_ROCKET):
         p.set_weapon(wid)
         vis = p.vis

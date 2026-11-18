@@ -9,7 +9,7 @@ import random
 
 from panda3d.core import PartBundle, LMatrix4, LVector3, NodePath
 
-from .models import CHAR_HEIGHT, PED_HEIGHT
+from .models import CHAR_HEIGHT, PED_HEIGHT, FINGERS
 
 # скорость (м/с), при которой ступни клипа не «скользят» по земле
 REF = {'walk': 1.05, 'walk_f': 1.15, 'jog': 3.6, 'sprint': 5.5, 'run_f': 4.0, 'pistol_walk': 1.35,
@@ -27,6 +27,7 @@ SHOULDERED = 'rifle_fire'   # стойка прицеливания и стре�
 SUPPORT = {'ak': (0.41, 0.115), 'm4': (0.32, 0.082), 'shotgun': (0.36, -0.01), 'double': (0.27, 0.022),
            'sniper': (0.34, 0.05), 'rocket': (0.30, 0.04)}
 SUPPORT_ANY = (0.34, 0.03)
+LEFT_PALM = 0.03            # на сколько костяшки левой кисти ниже цевья, когда оно лежит в ладони, м
 AIM_PITCH = 32.0            # дальше этого угла ствол за взглядом не идёт: корпус персонажа не наклоняется
 ELBOW = LVector3(0.55, 0.2, -0.8)       # куда смотрит левый локоть: наружу и вниз (модель глядит в −Y, лево — +X)
 RIDE_ELBOW = {'l': LVector3(0.62, 0.25, -0.74), 'r': LVector3(-0.62, 0.25, -0.74)}     # локти ездока: в стороны и вниз
@@ -101,6 +102,10 @@ class PedVisual(object):
         self._ik = None             # узлы, ведущие кости левой руки, пока она на цевье
         self._bars = None           # узлы, ведущие кости обеих рук ездока, пока он держится за руль
         self._legs = None           # узлы, ведущие кости ног сидящего в салоне
+        self._fing = None           # узлы, ведущие пальцы правой кисти, пока в ней оружие
+        self._fing_pose = None
+        self._fing_want = None      # как пальцы сжаты на оружии (пока оно не убрано)
+        self.stowed = False         # оружие убрано: персонаж за рулём или в седле
         self.play('idle', True, 1.0, 0.0)
         self.time = random.random() * 2.0           # чтобы толпа не дышала в такт
 
@@ -258,9 +263,11 @@ class PedVisual(object):
         self.play(name, True, 0.7 if r < 0.7 else (1.7 if r > 1.7 else r))
 
     def strike(self, bat, restart):
-        """Удар кулаком или битой."""
+        """Удар кулаком, ножом или битой."""
         if bat:
             self.play('swing', False, 3.2, 0.06, restart)
+        elif self.gun is not None:
+            self.play('punch_b', False, 2.6, 0.06, restart)     # нож — в правой руке: бьют только ею
         else:
             if restart:
                 self.punch_n += 1
@@ -268,59 +275,115 @@ class PedVisual(object):
 
     # ------------------------------------------------------------------
     def set_weapon(self, wid, kind):
-        """Вложить оружие в руку.  kind — 'pistol' (одной рукой) или 'rifle' (двумя)."""
+        """Вложить оружие в руку.  kind — 'pistol' (одной рукой) или 'rifle' (двумя).
+
+        Рукоять приходится на середину кулака, а пальцы правой кисти сжимаются на ней: в клипах «стоит» и
+        «идёт» ладонь раскрыта, и без этого оружие лежало бы на открытой руке."""
         if self.gun is not None:
             self.gun.removeNode()
             self.gun = None
         self.gun_kind = None
+        self._rifle = None
         self._free_arm()
         t = self.models.weapon(wid)
         if t is None:
+            self._fing_want = None
+            self._fingers(None)
             return
-        self.support = SUPPORT.get(self.models.weapon_name(wid), SUPPORT_ANY)
-        grip = self.grips.get(kind)
+        name = self.models.weapon_name(wid)
+        self.support = SUPPORT.get(name, SUPPORT_ANY)
+        joint, mat, fingers, piv, at = self.models.hand_matrix(kind, name)
+        grip = self.grips.get('grip')
         if grip is None:
-            joint, mat = self.models.hand_matrix(kind)
             hand = self.grips.get('_hand')
             if hand is None:
                 hand = self.grips['_hand'] = self.actor.exposeJoint(None, 'modelRoot', joint)
-            grip = self.grips[kind] = hand.attachNewNode('grip')
-            grip.setMat(mat)
+            grip = self.grips['grip'] = hand.attachNewNode('grip')
+        grip.setMat(mat)
+        self._fing_want = fingers
         self.gun = t.copyTo(grip)                   # у шаблона своя текстура, чужая на него не ложится
         self.gun_kind = kind
-        if kind == 'rifle' and self._rifle is None:
+        if self.stowed:
+            self.gun.hide()
+        else:
+            self._fingers(fingers)
+        if kind == 'rifle':
             if '_left' not in self.grips:
                 self.grips['_left'] = self.actor.exposeJoint(None, 'modelRoot', 'middle_01_l')
                 self.grips['_clav'] = self.actor.exposeJoint(None, 'modelRoot', 'clavicle_l')
             m = grip.getMat()
-            self._rifle = (m.getRow3(3), LVector3(m.getRow3(2)), LMatrix4(m))
+            self._rifle = (piv, at, LVector3(m.getRow3(2)), LMatrix4(m))
+
+    def stow(self, on):
+        """Убрать оружие с глаз (за рулём и в седле руки заняты) или достать его снова."""
+        on = bool(on)
+        if on == self.stowed:
+            return
+        self.stowed = on
+        if self.gun is not None:
+            if on:
+                self.gun.hide()
+            else:
+                self.gun.show()
+        self._fingers(None if on else (self._fing_want if self.gun is not None else None))
+
+    def _fingers(self, pose):
+        """Сжать пальцы правой кисти на рукояти (pose — 'grip' или 'hold') или вернуть их клипу (None)."""
+        if pose == self._fing_pose:
+            return
+        a = self.actor
+        if a is None:
+            return
+        if pose is None:
+            if self._fing is not None:
+                for n in FINGERS:
+                    a.releaseJoint('modelRoot', n)
+                self._fing = None
+        else:
+            if self._fing is None:
+                self._fing = [NodePath(n) for n in FINGERS]
+                for n, np_ in zip(FINGERS, self._fing):
+                    a.controlJoint(np_, 'modelRoot', n)
+            for np_, m in zip(self._fing, self.models.finger_ref(pose)):
+                np_.setMat(m)
+        self._fing_pose = pose
 
     def _aim_long(self):
-        """Длинный ствол лежит в двух руках: правая держит рукоять, ствол смотрит на левую ладонь.
+        """Длинный ствол лежит в двух руках: правая держит рукоять, левая — цевьё.
 
         Оружие привязано к правой кисти жёстко, а кисти в каждом клипе стоят друг относительно друга
-        по-своему; без этой поправки автомат на бегу и в стойке торчит мимо левой руки."""
-        grip = self.grips['rifle']
-        o, up0, rest = self._rifle
+        по-своему; без этой поправки автомат на бегу и в стойке торчит мимо левой руки.  Оружие поворачивается
+        вокруг середины правого кулака так, чтобы левая ладонь пришлась под цевьё (а не под магазин, как
+        было, когда ствол просто смотрел на левую кисть)."""
+        grip = self.grips['grip']
+        piv, at, up0, rest = self._rifle
         if self.cur == SHOULDERED:
-            self._shoulder(grip, o)
+            self._shoulder(grip, piv, at)
             return
         self._free_arm()
         if self.cur not in TWO_HANDS:
             grip.setMat(rest)
             return
-        d = self.grips['_left'].getPos(self.grips['_hand']) - o
-        if d.lengthSquared() < 0.0036:              # ладони сошлись (меньше 6 см): направление ненадёжно
+        d = self.grips['_left'].getPos(self.grips['_hand']) - piv
+        dist = d.length()
+        if dist < 0.06:                             # ладони сошлись (меньше 6 см): направление ненадёжно
             return
-        d.normalize()
+        d /= dist
         r = d.cross(up0)
         if r.lengthSquared() < 1e-6:
             return
         r.normalize()
         up = r.cross(d)
-        grip.setMat(LMatrix4(r.x, r.y, r.z, 0.0, d.x, d.y, d.z, 0.0, up.x, up.y, up.z, 0.0, o.x, o.y, o.z, 1.0))
+        # левая кисть — ниже цевья на толщину ладони; на сколько она выше (или ниже) правого кулака
+        s = (self.support[1] - LEFT_PALM - at.z) / dist
+        s = 0.5 if s > 0.5 else (-0.5 if s < -0.5 else s)
+        c = math.sqrt(1.0 - s * s)
+        f = d * c - up * s
+        up = d * s + up * c
+        o = piv - (r * at.x + f * at.y + up * at.z)
+        grip.setMat(LMatrix4(r.x, r.y, r.z, 0.0, f.x, f.y, f.z, 0.0, up.x, up.y, up.z, 0.0, o.x, o.y, o.z, 1.0))
 
-    def _shoulder(self, grip, o):
+    def _shoulder(self, grip, piv, at):
         """Стойка прицеливания с длинным стволом.
 
         В клипе левая рука вытянута вперёд ниже оружия: если вести ствол к ней, он смотрит в землю, если
@@ -334,7 +397,8 @@ class PedVisual(object):
         f = LVector3(0.0, -math.cos(p), math.sin(p))            # модель смотрит в −Y
         up = LVector3(0.0, math.sin(p), math.cos(p))
         hand = self.grips['_hand'].getMat()                     # правая кисть в осях модели
-        g = hand.xformPoint(o)
+        # начало координат оружия: рукоять (точка at) остаётся в середине правого кулака
+        g = hand.xformPoint(piv) - (LVector3(-1.0, 0.0, 0.0) * at.x + f * at.y + up * at.z)
         inv = LMatrix4(hand)
         inv.invertInPlace()
         grip.setMat(LMatrix4(-1.0, 0.0, 0.0, 0.0, f.x, f.y, f.z, 0.0, up.x, up.y, up.z, 0.0, g.x, g.y, g.z, 1.0) * inv)
@@ -562,6 +626,7 @@ class PedVisual(object):
     def remove(self):
         self._ik = None
         self._bars = None
+        self._fing = None
         a = self.actor
         if a is not None:
             self.actor = None

@@ -904,6 +904,7 @@ class Vehicle(object):
             fy, fz, half = feet[idx]
             vis.ride_legs(self.tilt, LPoint3(seat[0] - half, fy, fz), LPoint3(seat[0] + half, fy, fz),
                           bikes.POSES[pose]['clips'])
+        vis.stow(True)                                  # оружие за рулём убрано
         ped.shadow.hide()
         ped.node.show()
         return True
@@ -928,6 +929,7 @@ class Vehicle(object):
             ped.node.setPosHpr(seat[0], seat[1], seat[2] - 0.92, 0.0, 0.0, 0.0)
         else:
             self._pose_rider(vis, ped.node, seat, pose, bars=not passenger)
+            vis.stow(True)                              # руки на руле: оружие убрано
         ped.node.show()
         return True
 
@@ -948,6 +950,7 @@ class Vehicle(object):
             ped.node.reparentTo(par)
             ped.node.setHpr(0, 0, 0)
         if ped.vis is not None:
+            ped.vis.stow(False)
             ped.vis.play('idle', True, 1.0, 0.0, True)
 
     def hit_top(self):

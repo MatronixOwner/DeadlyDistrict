@@ -9,10 +9,11 @@ PlayStation 1), tools/import_vehicles.py (такси, машины с itch.io, �
 таблицы ниже.
 """
 import json
+import math
 import os
 
-from panda3d.core import (Filename, NodePath, LMatrix4, BoundingSphere, LPoint3, PNMImage, Texture, LColorf,
-                          TransparencyAttrib)
+from panda3d.core import (Filename, NodePath, LMatrix4, LVector3, BoundingSphere, LPoint3, PNMImage, Texture,
+                          LColorf, TransparencyAttrib)
 
 from .defs import (W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_ROCKET, W_GRENADE, W_MOLOTOV, W_SILENCED,
                    W_M4, W_DOUBLE, W_SNIPER, W_KNIFE)
@@ -102,6 +103,38 @@ WEAPON_MODELS = {
     W_MOLOTOV: ('molotov', (0.0, 0.0, 0.0)),
 }
 
+# Как оружие лежит в правой кисти.  Оси кисти (кость hand_r): +Z — вдоль ладони к пальцам, −Y — в сторону
+# большого пальца, −X — со стороны ладони: туда сгибаются пальцы.  Сжатые пальцы охватывают рукоять вокруг
+# точки FIST, ось кулака идёт вдоль Y.  Раньше начало координат оружия ставилось между костями кисти: рукоять
+# оказывалась внутри ладони, а оружие — «поверх» кулака или поперёк запястья.
+FIST = (-0.029, 0.002, 0.075)
+# Толстый предмет (бита, бутылка, граната) лежит в полусогнутых пальцах: с одной стороны ладонь, сверху — пальцы.
+PALM_X = -0.012             # поверхность ладони
+PALM_ROOF = 0.107           # до сюда достают согнутые пальцы
+# at — точка модели оружия, которая приходится на середину кулака (у оружия ствол — ось +Y, верх — +Z);
+# fingers — как сжаты пальцы: 'grip' (рукоять) или 'hold' (толстый предмет радиуса r);
+# tilt — холодное оружие и бутылка: на сколько градусов клинок отклонён от «вверх из кулака» вперёд, к пальцам
+#        (рукоять лежит в ладони наискось — от основания указательного пальца к пятке ладони);
+# у ножа и биты клинок — ось +Z модели (их модели повёрнуты при загрузке), у бутылки вдоль оси Y, горлышко — −Y.
+HOLD = {
+    'pistol': dict(at=(0.0, 0.005, -0.008)),
+    'silenced': dict(at=(0.0, 0.005, -0.008)),
+    'uzi': dict(at=(0.0, -0.012, -0.015)),
+    'ak': dict(at=(0.0, -0.012, 0.012)),
+    'm4': dict(at=(0.0, -0.012, -0.012)),
+    'shotgun': dict(at=(0.0, -0.035, -0.012)),      # у ружей пистолетной рукояти нет: кисть охватывает шейку приклада
+    'double': dict(at=(0.0, -0.030, -0.005)),
+    'sniper': dict(at=(0.0, -0.030, -0.035)),       # передняя стойка рамочного приклада
+    'rocket': dict(at=(0.0, 0.0, -0.022)),          # рукояти под рукой нет: кулак упирается в трубу снизу
+    'knife': dict(at=(0.0, 0.004, 0.005), tilt=55.0),
+    'bat': dict(at=(0.0, 0.0, 0.03), tilt=32.0, fingers='hold', r=0.030),
+    'grenade': dict(at=(0.0, 0.0, 0.0), tilt=0.0, fingers='hold', r=0.040),
+    'molotov': dict(at=(0.0, 0.05, 0.0), tilt=0.0, axis='-y', fingers='hold', r=0.037),
+}
+FINGERS = tuple('%s_%02d_r' % (f, i) for f in ('thumb', 'index', 'middle', 'ring', 'pinky') for i in (1, 2, 3))
+# откуда снята поза пальцев: (клип, кадр)
+FINGER_POSE = {'grip': ('rifle_idle', 0), 'hold': ('texting', 16)}
+
 CHAR_HEIGHT = 1.80          # рост моделей набора, м
 PED_HEIGHT = 1.80           # рост персонажа в игре при look.scale == 1
 
@@ -134,6 +167,7 @@ class Models(object):
         self._weapons = {}
         self._hand = {}
         self._arm = None
+        self._fingers = {}
         self._ride = {}
         self._ctex = {}
         self._vinfo = {}
@@ -485,15 +519,65 @@ class Models(object):
             self._ride[key] = res
         return res
 
-    def hand_matrix(self, kind):
-        """(имя кости, матрица «оружие -> кость»): kind — 'pistol' (в одной руке) или 'rifle' (в двух)."""
-        res = self._hand.get(kind)
+    def hand_matrix(self, kind, name=None):
+        """Как оружие лежит в правой кисти: (имя кости, матрица «оружие -> кость», поза пальцев, середина
+        кулака в осях кости, точка оружия, которая на неё приходится).
+
+        kind — 'pistol' (в одной руке) или 'rifle' (в двух), name — модель оружия: у каждой своя точка хвата
+        и свой наклон в кулаке (см. HOLD)."""
+        key = (kind, name)
+        res = self._hand.get(key)
         if res is None:
             h = self.meta['hand'][kind]
-            r, b, u, o = h['right'], h['barrel'], h['up'], h['origin']
+            r, b, u = LVector3(*h['right']), LVector3(*h['barrel']), LVector3(*h['up'])
+            hold = HOLD.get(name)
+            if hold is None:
+                piv = LVector3(*h['origin'])
+                at = LVector3(0.0, 0.0, 0.0)
+            else:
+                if 'tilt' in hold:
+                    # клинок выходит из кулака со стороны большого пальца и наклонён вперёд, к пальцам
+                    a = math.radians(hold['tilt'])
+                    tip = LVector3(0.0, -math.cos(a), math.sin(a))
+                    edge = LVector3(0.0, math.sin(a), math.cos(a))
+                    r = LVector3(1.0, 0.0, 0.0)
+                    if hold.get('axis') == '-y':
+                        b, u = -tip, edge                # бутылка: горлышко — ось −Y модели
+                    else:
+                        b, u = edge, tip
+                if 'r' in hold:
+                    piv = LVector3(PALM_X - hold['r'], 0.0, PALM_ROOF - hold['r'])
+                else:
+                    piv = LVector3(*FIST)
+                at = LVector3(*hold['at'])
+            o = piv - (r * at[0] + b * at[1] + u * at[2])
             res = (self.meta['hand']['joint'],
-                   LMatrix4(r[0], r[1], r[2], 0, b[0], b[1], b[2], 0, u[0], u[1], u[2], 0, o[0], o[1], o[2], 1))
-            self._hand[kind] = res
+                   LMatrix4(r[0], r[1], r[2], 0, b[0], b[1], b[2], 0, u[0], u[1], u[2], 0, o[0], o[1], o[2], 1),
+                   (hold or {}).get('fingers', 'grip'), piv, at)
+            self._hand[key] = res
+        return res
+
+    def finger_ref(self, pose):
+        """Пальцы правой кисти, сжатые на рукояти: матрицы костей FINGERS относительно родителей.
+
+        Снимаются с клипа, где кисть уже сжата (FINGER_POSE).  Скелет у всех персонажей общий."""
+        res = self._fingers.get(pose)
+        if res is None:
+            from panda3d.core import PartBundle
+            clip, frame = FINGER_POSE[pose]
+            a = self.actor('hero')
+            b = a.getPartBundle('modelRoot')
+            b.setAnimBlendFlag(True)
+            b.setBlendType(PartBundle.BTNormalizedLinear)
+            c = a.getAnimControl(clip)
+            b.setControlEffect(c, 1.0)
+            c.pose(min(frame, c.getNumFrames() - 1))
+            js = [a.exposeJoint(None, 'modelRoot', n, localTransform=True) for n in FINGERS]
+            a.update(force=True)
+            res = [LMatrix4(j.getMat()) for j in js]
+            a.cleanup()
+            a.removeNode()
+            self._fingers[pose] = res
         return res
 
     # ------------------------------------------------------------------
