@@ -404,18 +404,18 @@ class City(object):
             k = 2.0 * math.pi / lam
             b, g = math.radians(beta), math.radians(gamma)
             waves.append((amp * math.cos(g), amp * math.sin(g), k * math.cos(b), k * math.sin(b), ph))
+        # прямые, которые изгибу не поддаются: мосты, взлётная полоса, сухогруз (по порядку: см. Warp)
         rigid = []
-        sh = self.special.get('ship')
-        for seg in self.bridges:                      # мост остаётся прямым
-            a, b, c = seg['a'] - 10.0, seg['b'] + 10.0, seg['c']
-            r1 = 30.0
-            if sh is not None and seg['kind'] == 'h' and a < sh['x1'] and abs(sh['cy'] - c) < 110.0:
-                r1 = 100.0                            # вместе с ним — причал и сухогруз у его въезда
-            rigid.append((a, c, b, c, r1, r1 + 190.0) if seg['kind'] == 'h' else (c, a, c, b, r1, r1 + 190.0))
+        for seg in self.bridges:
+            a, b, c = seg['a'] - 12.0, seg['b'] + 12.0, seg['c']
+            rigid.append((a, c, b, c, 12.0, 160.0) if seg['kind'] == 'h' else (c, a, c, b, 12.0, 160.0))
         lm = self.landmarks.get('airfield')
-        if lm is not None:                            # взлётная полоса — тоже
+        if lm is not None:
             x0, y0, x1, y1 = lm['runway']
-            rigid.append((x0, y0 + 50.0, x1, y1 + 50.0, 125.0, 215.0))
+            rigid.append((x0 - 20.0, y0, x1 + 20.0, y1, 30.0, 120.0))
+        sh = self.special.get('ship')
+        if sh is not None:
+            rigid.append((sh['x0'] - 26.0, sh['cy'], sh['x1'] + 4.0, sh['cy'], 12.0, 45.0))
         t = self.terrain
         if t.ok:
             box = (t.x0, t.y0, t.x1, t.y1)

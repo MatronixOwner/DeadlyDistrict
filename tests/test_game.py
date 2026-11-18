@@ -1321,17 +1321,12 @@ def test_bridges_are_drivable(game, world, name, back):
     c = w.city
     harness.quiet(w, peds=True)
     seg = next(s for s in c.bridges if s['bridge']['name'] == name)
-    a, b, cc = seg['a'], seg['b'], seg['c']
-    mid = (a + b) * 0.5
-    px, py = (mid, cc) if seg['kind'] == 'h' else (cc, mid)
-    lanes = [l for l in w.roadnet.lanes_near(px, py, 0.0, 40.0)
-             if l.turn is None and abs(l.length - (b - a)) < 1.0]
-    assert len(lanes) >= 2
-    # полоса нужного направления
-    def forward(l):
-        return (l.x1 - l.x0) + (l.y1 - l.y0) > 0
-    lane = next(l for l in lanes if forward(l) != back)
+    # полоса нужного направления (мост — единственное в изогнутом городе, что осталось прямым)
+    d = {('h', False): 'e', ('h', True): 'w', ('v', False): 'n', ('v', True): 's'}[(seg['kind'], back)]
+    lane = w.roadnet.lane_index[(seg['kind'], seg['i'], seg['j'], d, 0)]
     L = lane.length
+    mx, my, _ = lane.pos(L * 0.5)
+    assert abs((mx - lane.x0) * (lane.y1 - lane.y0) - (my - lane.y0) * (lane.x1 - lane.x0)) / L < 0.3, 'мост прямой'
     ux, uy = (lane.x1 - lane.x0) / L, (lane.y1 - lane.y0) / L
     x0, y0 = lane.x0 - ux * 30.0, lane.y0 - uy * 30.0            # разгон с берега
     total = L + 60.0
@@ -1369,14 +1364,15 @@ def test_story_places_are_reachable(game, world):
     for v in list(w.vehicles):
         if not v.keep:
             w.remove_vehicle(v)
-    foot = [('дверь ' + r.name, r.out[0], r.out[1] - 0.6) for r in w.interiors.order]
+    # места сюжета заданы по чертежу города; в мир их переводит сам город (улицы изогнуты)
+    foot = [('дверь ' + r.name,) + c.off(r.out[0], r.out[1], 0.0, -0.6) for r in w.interiors.order]
     for x, y in ((1000.0, -243.0), (1161.0, 258.0), (686.0, 40.0)):                 # ящики «Улова»
-        fx, fy = w.missions.free_spot(x, y)
+        fx, fy = w.missions.free_spot(*c.to_world(x, y))
         foot.append(('ящик', fx, fy))
-    ap = c.landmarks['airfield']['apron']
-    foot.append(('самолёт', ap[0] - 11.0, ap[1] + 14.0))
-    cars = [('самолёт', ap[0] - 11.0, ap[1] + 14.0), ('фургон на причале', 470.0, 30.0),
-            ('«Комета» у участка', c.landmarks['police']['road'][0] + 13.0, c.landmarks['police']['road'][1] + 2.9)]
+    ap = c.frame(*c.landmarks['airfield']['apron'])
+    foot.append(('самолёт',) + ap(-11.0, 14.0))
+    cars = [('самолёт',) + ap(-11.0, 14.0), ('фургон на причале',) + c.to_world(470.0, 30.0),
+            ('«Комета» у участка',) + c.frame(*c.landmarks['police']['road'])(13.0, 2.9)]
     for name in ('grom', 'zakhar', 'vano', 'rosa', 'prof'):
         rx, ry = c.landmarks[name]['road']
         cars.append(('машина у ' + name, rx, ry))
@@ -1384,8 +1380,7 @@ def test_story_places_are_reachable(game, world):
     lost += [n + ' (на машине)' for n, x, y in cars if not harness.reachable(w, x, y, car=True)]
     assert not lost, lost
     # и проверка самой проверки: точка внутри здания недостижима
-    x0, y0, x1, y1 = c.landmarks['bank']['rect']
-    assert not harness.reachable(w, (x0 + x1) * 0.5, (y0 + y1) * 0.5)
+    assert not harness.reachable(w, *c.landmarks['bank']['center'])
 
 
 def test_every_hidden_package_can_be_reached(game, world):
@@ -1418,8 +1413,9 @@ def test_garage_keeps_cars(game, world):
     harness.quiet(w, peds=True)
     assert gar.ok and gar.capacity() == 3 and not gar.cars
     sx, sy = gar.slots[0]
-    car = w.spawn_vehicle('sports', sx, sy - 12.0, math.pi / 2, paint=5)
-    pl.teleport(sx - 2.5, sy - 12.0)
+    off = w.city.off                                         # сдвиги — по чертежу гаража: улицы города изогнуты
+    car = w.spawn_vehicle('sports', *off(sx, sy, 0.0, -12.0), gar.yaw, paint=5)
+    pl.teleport(*off(sx, sy, -2.5, -12.0))
     pl.enter_vehicle(car, silent=True)
     harness.run(game, 0.5)
     assert gar.k > 0.5                                       # ворота поднялись навстречу
@@ -1440,10 +1436,10 @@ def test_garage_keeps_cars(game, world):
     # ещё две — и гараж полон
     for k, kind in ((1, 'sedan'), (2, 'pickup')):
         x, y = gar.slots[k]
-        w.spawn_vehicle(kind, x, y, math.pi / 2, paint=k)
+        w.spawn_vehicle(kind, x, y, gar.yaw, paint=k)
     harness.run(game, 0.6)
     assert len(gar.cars) == 3
-    extra = w.spawn_vehicle('hatch', gar.cx, gar.rect[1] + 1.6, 0.0, paint=3)
+    extra = w.spawn_vehicle('hatch', *gar.out(-1.6), gar.yaw - math.pi / 2, paint=3)
     said = []
     orig = w.hud.help
     w.hud.help = lambda text, dur=6.0: said.append(text)
@@ -1471,9 +1467,9 @@ def test_garage_keeps_cars(game, world):
     pl = w.player
     w.interiors.leave(instant=True)
     w.traffic.enabled = False
-    pl.teleport(sp.x - 2.0, sp.y - 9.0)
+    pl.teleport(*w.city.off(sp.x, sp.y, -2.0, -9.0))
     pl.enter_vehicle(sp, silent=True)
-    sp.x, sp.y = gar.cx, gar.rect[1] - 14.0
+    sp.x, sp.y = gar.out(14.0)
     sp.sync()
     harness.run(game, 0.5)
     assert sp not in gar.cars and len(gar.cars) == 2
@@ -1491,8 +1487,8 @@ def test_camera_stays_under_garage_roof(game, world):
     pl = w.player
     gar = w.garage
     harness.quiet(w, peds=True)
-    pl.teleport(gar.cx, gar.cy + 1.0, math.pi / 2)
-    w.cam.yaw = -math.pi / 2                                 # смотрим из глубины гаража на ворота
+    pl.teleport(*gar.out(-4.6), gar.yaw)
+    w.cam.yaw = gar.yaw + math.pi                            # смотрим из глубины гаража на ворота
     w.cam.pitch = -0.9
     w.cam.snap()
     harness.run(game, 0.6)
@@ -1515,7 +1511,7 @@ def _with_hero_car(game, seed):
 def _leave_in_town(game, w, car, x, y):
     """Выгнать машину из гаража и оставить в точке (x, y): герой рядом с гаражом, чтобы тот это заметил."""
     gar = w.garage
-    w.player.teleport(gar.cx, gar.rect[1] - 20.0)
+    w.player.teleport(*gar.out(20.0))
     car.x, car.y = x, y
     car.vx = car.vy = car.speed = 0.0
     car.sync()
@@ -1546,10 +1542,10 @@ def test_hero_car_waits_in_the_garage(game):
     blip = hc.blip
     assert blip is not None and blip in w.hud.blips and blip.tex == 'blip_car' and blip.obj is car
     # ворота открываются навстречу; сел — не угон, розыска нет, значок на время убран
-    pl.teleport(car.x, gar.rect[1] - 5.0)
+    pl.teleport(*gar.out(5.0))
     harness.run(game, 1.0)
     assert gar.k > 0.9
-    pl.teleport(car.x - 1.5, car.y)
+    pl.teleport(*w.city.off(car.x, car.y, -1.5, 0.0))
     stolen = w.stats['stolen']
     pl.enter_vehicle(car, silent=True)
     harness.run(game, 0.5)
@@ -1612,7 +1608,7 @@ def test_hero_car_comes_back_home(game):
         assert len(said) == 1
         # герой возле дома: пока он тут, новая машина не появляется
         del said[:]
-        pl.teleport(gar.cx, gar.rect[1] - 30.0)
+        pl.teleport(*gar.out(30.0))
         harness.run(game, 0.5)
         new.explode(False)
         harness.run(game, HERO_BACK + 10.0)
@@ -1667,7 +1663,7 @@ def test_hero_car_is_saved(game):
     car = hc.v
     assert hc.alive() and car.kind == 'retro' and car.paint == 0 and car not in gar.cars and car.keep
     # она ждёт на площадке перед воротами и ни с чем не пересекается
-    assert abs(car.x - gar.cx) < 0.1 and 3.0 < gar.rect[1] - car.y < 6.0
+    assert math.hypot(car.x - gar.out(4.2)[0], car.y - gar.out(4.2)[1]) < 0.1   # на площадке перед воротами
     assert not w.static.overlap_circle(car.x, car.y, 1.0, F_CAR)
     # новая игра начинается с чистого листа: заводская окраска, тюнинга нет
     w = harness.start_game(game, hero=True)
@@ -1707,7 +1703,7 @@ def test_sleeping_at_home_brings_the_hero_car_back(game):
         del said[:]
         pl.teleport(mk.x + 6.0, mk.y)
         harness.run(game, 0.3)
-        _leave_in_town(game, w, new, gar.cx, gar.rect[1] - 6.0)
+        _leave_in_town(game, w, new, *gar.out(6.0))
         assert not hc.away()
         pl.teleport(mk.x, mk.y)
         harness.run(game, 0.3)
@@ -1836,10 +1832,10 @@ def test_tuning_shop_and_garage_remember_parts(game, world):
     gar = w.garage
     pl.leave_vehicle(force=True)
     sx, sy = gar.slots[1]
-    car.x, car.y, car.yaw = sx, sy, math.pi / 2
+    car.x, car.y, car.yaw = sx, sy, gar.yaw
     car.vx = car.vy = car.speed = 0.0
     car.sync()
-    pl.teleport(sx, sy - 9.0)
+    pl.teleport(*w.city.off(sx, sy, 0.0, -9.0))
     harness.run(game, 1.0)
     assert car in gar.cars
     saved = settings_mod.load_save()['garage'][0]
@@ -1900,9 +1896,9 @@ def test_garage_keeps_a_motorcycle(game, world):
     gar = w.garage
     gar.reset()
     sx, sy = gar.slots[0]
-    bike = w.spawn_vehicle('chopper', sx, sy, math.pi / 2, paint=2)
+    bike = w.spawn_vehicle('chopper', sx, sy, gar.yaw, paint=2)
     bike.apply_tune({'engine': 1, 'neon': 2, 'rims': 3})
-    pl.teleport(sx, sy - 9.0)
+    pl.teleport(*w.city.off(sx, sy, 0.0, -9.0))
     harness.run(game, 1.0)
     assert bike in gar.cars
     saved = settings_mod.load_save()['garage'][0]
@@ -1917,7 +1913,7 @@ def test_garage_keeps_a_motorcycle(game, world):
     assert bike.tune == {'engine': 1, 'neon': 2, 'rims': 3}
     if w.interiors.current is not None:
         w.interiors.leave(instant=True)
-    pl.teleport(bike.x, bike.y - 3.0)
+    pl.teleport(*w.city.off(bike.x, bike.y, 0.0, -3.0))
     pl.enter_vehicle(bike, silent=True)
     harness.run(game, 0.3)
     assert pl.vehicle is bike and pl.ped.vis.cur == 'mix' and pl.ped.node.getParent() == bike.tilt

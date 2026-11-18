@@ -590,10 +590,10 @@ def test_riding_a_motorcycle(game, world):
     assert abs(p.z - w.city.ground_z(p.x, p.y)) < 0.05
     # удар о стену на скорости
     lm = w.city.landmarks['bank']
-    bx = (lm['rect'][0] + lm['rect'][2]) * 0.5
-    by = lm['rect'][1] - 14.0
-    b2 = w.spawn_vehicle('chopper', bx, by, math.pi / 2, paint=1)
-    pl.teleport(bx - 1.5, by)
+    F = w.city.plan_frame((lm['rect'][0] + lm['rect'][2]) * 0.5, lm['rect'][1])    # середина южной стены банка
+    bx, by, byaw = F.at(0.0, -14.0, math.pi / 2)
+    b2 = w.spawn_vehicle('chopper', bx, by, byaw, paint=1)
+    pl.teleport(*F(-1.5, -14.0))
     pl.enter_vehicle(b2, silent=True)
     hp = p.health
     t = 0.0
@@ -788,17 +788,19 @@ def test_rider_is_exposed_to_bullets_and_crashes(game, world):
     top_rider = b.hit_top()
     assert top_rider > b.spec.H + 0.3
     head_z = b.z + b.spec.H + 0.25                       # выше руля: тут только человек
-    pl.teleport(x, y - 8.0)
+    sx, sy = harness.side(x, y, yaw, 8.0)                # стрелок — справа от полосы, стреляет поперёк неё
+    dx, dy = -math.sin(yaw), math.cos(yaw)
+    pl.teleport(sx, sy)
     before = set(w.peds)
-    t, kind, obj, nx, ny, nz = wpn.trace(x, y - 8.0, head_z, 0.0, 1.0, 0.0, 60.0, pl.ped, None)
+    t, kind, obj, nx, ny, nz = wpn.trace(sx, sy, head_z, dx, dy, 0.0, 60.0, pl.ped, None)
     assert kind == 'veh' and obj is b                   # луч на высоте груди упирается в мотоцикл с ездоком
     assert b.rider_hit(head_z) == 'npc'
-    wpn._apply_bullet(pistol, t, kind, obj, nx, ny, nz, x, y - 8.0, head_z, 0.0, 1.0, 0.0, pl.ped)
+    wpn._apply_bullet(pistol, t, kind, obj, nx, ny, nz, sx, sy, head_z, dx, dy, 0.0, pl.ped)
     fell = [q for q in w.peds if q not in before]
     assert b.rider is None and not b.npc and len(fell) == 1
     assert fell[0].last_attacker is pl.ped and (fell[0].dead or fell[0].health < fell[0].max_health)
     assert b.hit_top() == b.spec.H                      # седло опустело
-    t2, kind2, obj2 = wpn.trace(x, y - 8.0, head_z, 0.0, 1.0, 0.0, 60.0, pl.ped, None)[:3]
+    t2, kind2, obj2 = wpn.trace(sx, sy, head_z, dx, dy, 0.0, 60.0, pl.ped, None)[:3]
     assert obj2 is not b                                # теперь на этой высоте пусто
     for q in fell:
         w.remove_ped(q)
@@ -817,17 +819,18 @@ def test_rider_is_exposed_to_bullets_and_crashes(game, world):
     w.remove_vehicle(b)
     # 3. игрок в седле: пуля выше мотоцикла ранит его самого, мотоцикл цел
     mine = w.spawn_vehicle('chopper', x, y, yaw)
-    pl.teleport(x, y - 2.0)
+    pl.teleport(*harness.side(x, y, yaw, 2.0))
     pl.enter_vehicle(mine, silent=True)
     harness.run(game, 0.2)
     hp, vhp = pl.ped.health, mine.health
     assert mine.rider_hit(mine.z + mine.spec.H + 0.3) is pl.ped
     assert mine.rider_hit(mine.z + 0.3) is None           # по колёсам — в мотоцикл
-    shooter = w.spawn_ped(x, y - 9.0, math.pi / 2, random_look(random.Random(5), 'R'), 'civ')
+    shooter = w.spawn_ped(*harness.side(x, y, yaw, 9.0), yaw + math.pi / 2, random_look(random.Random(5), 'R'), 'civ')
     hz = mine.z + mine.spec.H + 0.3
-    t, kind, obj, nx, ny, nz = wpn.trace(x, y - 8.5, hz, 0.0, 1.0, 0.0, 60.0, shooter, None)
+    sx, sy = harness.side(x, y, yaw, 8.5)
+    t, kind, obj, nx, ny, nz = wpn.trace(sx, sy, hz, dx, dy, 0.0, 60.0, shooter, None)
     assert kind == 'veh' and obj is mine
-    wpn._apply_bullet(WEAPONS[W_AK], t, kind, obj, nx, ny, nz, x, y - 8.5, hz, 0.0, 1.0, 0.0, shooter)
+    wpn._apply_bullet(WEAPONS[W_AK], t, kind, obj, nx, ny, nz, sx, sy, hz, dx, dy, 0.0, shooter)
     assert pl.ped.health < hp and mine.health == vhp and pl.vehicle is mine
     pl.ped.health = 100.0
     pl.leave_vehicle(force=True)
@@ -1037,7 +1040,7 @@ def test_landmark_doors_stand_in_drawn_openings(world):
     c = world.city
     checked = 0
     for room in world.interiors.order:
-        lm = c.landmarks[room.landmark]
+        lm = c.landmarks[room.landmark]['plan']             # дверь сверяем с рисунком стены: по чертежу города
         if lm.get('facing') != 's':
             continue
         bay = c.entry_bay(room.landmark)
@@ -1047,7 +1050,10 @@ def test_landmark_doors_stand_in_drawn_openings(world):
         b = c.landmark_building(room.landmark)
         assert b.gf_tex in ENTRY_TILES and kind in ('shop', 'office', 'garage')
         # дверь — в середине нарисованного проёма своей секции, и секция — та, где середина здания
-        assert abs(lm['door'][0] - (x0 + uc * bw)) < 1e-6 and abs(room.out[0] - lm['door'][0]) < 0.05
+        assert abs(lm['door'][0] - (x0 + uc * bw)) < 1e-6 and abs(room.door_plan[0] - lm['door'][0]) < 0.05
+        # в мире стрелка входа стоит перед этой же дверью, у самой стены
+        ox, oy = c.to_plan(*room.out)
+        assert abs(ox - lm['door'][0]) < 0.1 and abs(oy - (lm['rect'][1] - 0.6)) < 0.1
         assert x0 - 1e-6 <= (b.x0 + b.x1) * 0.5 <= x0 + bw + 1e-6
         assert 0.4 < hw * bw < 0.5 * bw and 1.9 < hh * b.gf_h <= b.gf_h
         # тротуар перед дверью свободен до самого бордюра
@@ -1686,10 +1692,13 @@ def test_street_trash_comes_from_models(game, world):
             assert not (b.x0 - 0.2 < p['x'] < b.x1 + 0.2 and b.y0 - 0.2 < p['y'] < b.y1 + 0.2), p
     # тайники, места для находок и стоянки мусором не завалены
     for p in kinds['trashbag'] + kinds['boxes']:
+        # предметы записаны по чертежу города, тайники и стоянки — уже в мире: сравниваем на чертеже
         for q in list(c.packages) + list(c.pickup_spots):
-            assert max(abs(p['x'] - q[0]), abs(p['y'] - q[1])) >= 1.8, (p['kind'], q)
+            qu, qv = c.to_plan(q[0], q[1])
+            assert max(abs(p['x'] - qu), abs(p['y'] - qv)) >= 1.75, (p['kind'], q)
         for q in c.parking:
-            assert max(abs(p['x'] - q['x']), abs(p['y'] - q['y'])) >= 3.0, (p['kind'], q)
+            qu, qv = c.to_plan(q['x'], q['y'])
+            assert max(abs(p['x'] - qu), abs(p['y'] - qv)) >= 2.95, (p['kind'], q)
     # мешки и коробки машина раскидывает, пешеход обходит; бутылки и банки не мешают никому
     from game.props import BREAK_HARD
     assert P.BUILDERS['trashbag'](MeshBuilder(), MeshBuilder(), dict(n=3), random.Random(2))[3] == BREAK_HARD

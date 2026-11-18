@@ -346,9 +346,7 @@ class CityMesh(object):
         зато она на ладонь шире проезжей части и уходит под бордюр: щели у бордюра быть не может."""
         rx, ry = dy, -dx            # вправо от направления
         hw = half_w + (ROAD_UNDER if mb.warp is not None else 0.0)
-        if mb.warp is not None and mb._xf is None and (dx == 0.0 or dy == 0.0) and not mb._rigid_rect(
-                cx + dx * t0 - rx * half_w, cy + dy * t0 - ry * half_w, cx + dx * t1 + rx * half_w,
-                cy + dy * t1 + ry * half_w):
+        if mb.warp is not None and mb._xf is None and (dx == 0.0 or dy == 0.0):
             base = cx if dy == 0.0 else cy
             sgn = dx if dy == 0.0 else dy
             lo, hi = base + sgn * t0, base + sgn * t1
@@ -875,7 +873,10 @@ class CityMesh(object):
             if breakable:
                 br = Breakable()
                 br.kind = kind
-                br.x, br.y, br.yaw = x, y, yaw
+                # игра спрашивает у сломанного предмета, где он был: это уже точка мира
+                wp = c.warp
+                br.x, br.y = wp.fwd(x, y) if wp is not None else (x, y)
+                br.yaw = yaw + (wp.rot(x, y) if wp is not None else 0.0)
                 br.col = cid
                 br.alive = True
                 br.chunk = chunk

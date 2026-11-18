@@ -52,6 +52,13 @@ def run(g, seconds, dt=1.0 / 30.0, keys=(), each=None):
         g.inp._up(k)
 
 
+def side(x, y, yaw, right=0.0, fwd=0.0):
+    """Точка сбоку от курса yaw: right метров вправо и fwd вперёд.  Улицы города изогнуты, поэтому
+    «в двух метрах от полосы» считается от её курса в этой точке, а не по осям мира."""
+    import math
+    return (x + math.sin(yaw) * right + math.cos(yaw) * fwd, y - math.cos(yaw) * right + math.sin(yaw) * fwd)
+
+
 def press(g, key, dt=1.0 / 30.0):
     g.inp._dn(key)
     g.step(dt)

@@ -18,8 +18,11 @@
   * геометрия переводится в мир при сборке сеток (meshbuilder), вопросы игры к городу
     («какая здесь высота?», «упёрся ли в стену?») переводятся обратно в чертёж функцией inv().
 
-Некоторым сооружениям гнуться нельзя: мосту, взлётной полосе, причалу с кораблём.  Для них заданы
-«жёсткие» области — внутри такой области чертёж только сдвинут и повёрнут как целое.
+Некоторым сооружениям гнуться нельзя: мосту, взлётной полосе, сухогрузу у причала.  Для них заданы
+«прямые» — отрезки чертежа, которые обязаны остаться отрезками.  Вдоль такой прямой изгиб выправляется:
+каждая точка рядом с ней сдвигается ровно на столько, на сколько волны увели с прямой ближайшую точку
+отрезка.  Сама прямая становится идеально прямой, её окрестность идёт за ней, а по концам отрезка
+поправка равна нулю — поэтому кварталы у въезда на мост она почти не трогает.
 """
 import math
 
@@ -38,14 +41,17 @@ class Warp(object):
     """Плавное отображение чертежа в мир и обратно.
 
     waves:  [(ax, ay, kx, ky, phase)] — смещение (ax, ay) * sin(kx * u + ky * v + phase);
-    rigid:  [(x0, y0, x1, y1, r1, r2)] — отрезок-ось жёсткой области: ближе r1 к оси всё жёстко,
-            дальше r2 — как у всех, между ними плавный переход;
+    rigid:  [(x0, y0, x1, y1, r1, band)] — прямые по порядку: отрезок, который должен остаться прямым;
+            ближе r1 к нему поправка действует целиком, на полосе band плавно сходит на нет.  Прямые
+            выправляются по очереди, каждая следующая — поверх предыдущих, поэтому полоса следующей
+            не должна доставать до предыдущих прямых;
     box:    (x0, y0, x1, y1) — где изгиб действует в полную силу; дальше, на полосе fade, он плавно
             сходит на нет (комнаты стоят далеко за краем карты, там мир совпадает с чертежом).
     """
+    TAIL = 70.0          # на столько за концом прямой её поправка сходит на нет
     TILE = 64.0          # размер плитки таблицы обратного отображения
-    STEP = 8.0           # шаг её узлов
-    N = 8                # узлов на плитку по стороне (TILE / STEP)
+    STEP = 4.0           # шаг её узлов
+    N = 16               # узлов на плитку по стороне (TILE / STEP)
 
     def __init__(self, waves, rigid=(), box=(-1e9, -1e9, 1e9, 1e9), fade=300.0, name=''):
         self.name = name
@@ -55,19 +61,20 @@ class Warp(object):
         self._tiles = {}
         self._memo = {}
         self.rigid = []
-        for (x0, y0, x1, y1, r1, r2) in rigid:
-            # подобие, которое переводит концы оси туда же, куда их переводят волны: по концам области
-            # жёсткий кусок совпадает с окружением, и переход получается мягким
-            ax, ay = self._base(x0, y0)
-            bx, by = self._base(x1, y1)
+        for (x0, y0, x1, y1, r1, band) in rigid:
+            k = len(self.rigid)
+            # подобие, которое переводит концы отрезка туда же, куда их переводит всё предыдущее:
+            # по концам поправка равна нулю
+            ax, ay = self._upto(k, x0, y0)
+            bx, by = self._upto(k, x1, y1)
             dx, dy = float(x1 - x0), float(y1 - y0)
             l2 = max(dx * dx + dy * dy, 1e-9)
             ex, ey = bx - ax, by - ay
             qc = (ex * dx + ey * dy) / l2                      # q = (B' - A') / (B - A), комплексное деление
             qs = (ey * dx - ex * dy) / l2
-            self.rigid.append((float(x0), float(y0), dx, dy, l2, float(r1), float(r2),
-                               float(x0), float(y0), ax, ay, qc, qs,
-                               min(x0, x1) - r2, min(y0, y1) - r2, max(x0, x1) + r2, max(y0, y1) + r2))
+            reach = r1 + band + self.TAIL
+            self.rigid.append((float(x0), float(y0), dx, dy, l2, float(r1), float(band), ax, ay, qc, qs,
+                               min(x0, x1) - reach, min(y0, y1) - reach, max(x0, x1) + reach, max(y0, y1) + reach))
 
     # ------------------------------------------------------------------
     def signature(self):
@@ -108,61 +115,40 @@ class Warp(object):
         return (x1 - x0) * k, (x3 - x2) * k, (y1 - y0) * k, (y3 - y2) * k
 
     # ------------------------------------------------------------------
+    def _upto(self, k, u, v):
+        """Волны и первые k выправленных прямых."""
+        if k == 0:
+            return self._base(u, v)
+        r = self.rigid[k - 1]
+        x, y = self._upto(k - 1, u, v)
+        if u < r[11] or u > r[13] or v < r[12] or v > r[14]:
+            return x, y
+        px, py = u - r[0], v - r[1]
+        t = (px * r[2] + py * r[3]) / r[4]
+        # за концами отрезка прямая мысленно продолжается, а поправка плавно сходит на нет: без излома
+        w = 1.0
+        if t < 0.0 or t > 1.0:
+            out = (-t if t < 0.0 else t - 1.0) * math.sqrt(r[4])
+            if out >= self.TAIL:
+                return x, y
+            w = 1.0 - _smooth(out / self.TAIL)
+        lx, ly = r[2] * t, r[3] * t                    # ближайшая точка прямой (от начала отрезка)
+        qx, qy = px - lx, py - ly
+        d = math.sqrt(qx * qx + qy * qy) - r[5]
+        if d >= r[6]:
+            return x, y
+        if d > 0.0:
+            w *= 1.0 - _smooth(d / r[6])
+        bx, by = self._upto(k - 1, r[0] + lx, r[1] + ly)        # куда эту точку прямой увело
+        mx = r[7] + lx * r[9] - ly * r[10]                      # где ей положено быть
+        my = r[8] + lx * r[10] + ly * r[9]
+        return x + (mx - bx) * w, y + (my - by) * w
+
     def fwd(self, u, v):
         """Чертёж -> мир."""
-        x, y = self._base(u, v)
-        hits = None
-        for r in self.rigid:
-            if u < r[13] or u > r[15] or v < r[14] or v > r[16]:
-                continue
-            px, py = u - r[0], v - r[1]
-            t = (px * r[2] + py * r[3]) / r[4]
-            if t < 0.0:
-                t = 0.0
-            elif t > 1.0:
-                t = 1.0
-            qx, qy = px - r[2] * t, py - r[3] * t
-            dist = math.sqrt(qx * qx + qy * qy)
-            if dist >= r[6]:
-                continue
-            if hits is None:
-                hits = [(r, dist)]
-            else:
-                hits.append((r, dist))
-        if hits is None:
-            return x, y
-        for (r, dist) in hits:
-            w = 1.0 - _smooth((dist - r[5]) / (r[6] - r[5]))
-            if len(hits) > 1:
-                # рядом другая жёсткая область: в её середину эта не вмешивается
-                for (o, od) in hits:
-                    if o is not r:
-                        w *= _smooth((od - o[5]) / 20.0)
-            lx, ly = u - r[7], v - r[8]
-            mx = r[9] + lx * r[11] - ly * r[12]
-            my = r[10] + lx * r[12] + ly * r[11]
-            x += (mx - x) * w
-            y += (my - y) * w
-        return x, y
-
-    def rigid_at(self, u, v):
-        """Номер жёсткой области, в середине которой лежит точка чертежа (-1 — не лежит).
-        Там чертёж только сдвинут и повёрнут: прямое остаётся прямым."""
-        k = -1
-        for r in self.rigid:
-            k += 1
-            if u < r[13] or u > r[15] or v < r[14] or v > r[16]:
-                continue
-            px, py = u - r[0], v - r[1]
-            t = (px * r[2] + py * r[3]) / r[4]
-            if t < 0.0:
-                t = 0.0
-            elif t > 1.0:
-                t = 1.0
-            qx, qy = px - r[2] * t, py - r[3] * t
-            if qx * qx + qy * qy < r[5] * r[5]:
-                return k
-        return -1
+        if self.rigid:
+            return self._upto(len(self.rigid), u, v)
+        return self._base(u, v)
 
     def fwd_memo(self, u, v):
         """То же, с памятью: при сборке сеток одна и та же точка встречается много раз."""
@@ -259,17 +245,17 @@ class Warp(object):
         t = self._tiles.get((tx, ty))
         if t is None:
             t = self._tile((tx, ty))
-        fx = (x - t[0]) * 0.125
-        fy = (y - t[1]) * 0.125
+        fx = (x - t[0]) * 0.25
+        fy = (y - t[1]) * 0.25
         i = int(fx)
         j = int(fy)
-        if i > 7:
-            i = 7
-        if j > 7:
-            j = 7
+        if i > 15:
+            i = 15
+        if j > 15:
+            j = 15
         fx -= i
         fy -= j
-        k = j * 9 + i
+        k = j * 17 + i
         us = t[2]
         vs = t[3]
         gx = 1.0 - fx
@@ -277,8 +263,8 @@ class Warp(object):
         w10 = fx * (1.0 - fy)
         w01 = gx * fy
         w11 = fx * fy
-        return (us[k] * w00 + us[k + 1] * w10 + us[k + 9] * w01 + us[k + 10] * w11,
-                vs[k] * w00 + vs[k + 1] * w10 + vs[k + 9] * w01 + vs[k + 10] * w11)
+        return (us[k] * w00 + us[k + 1] * w10 + us[k + 17] * w01 + us[k + 18] * w11,
+                vs[k] * w00 + vs[k + 1] * w10 + vs[k + 17] * w01 + vs[k + 18] * w11)
 
     def rot_w(self, x, y):
         """Поворот чертежа в точке мира."""

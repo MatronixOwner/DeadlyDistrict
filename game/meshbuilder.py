@@ -190,10 +190,8 @@ class MeshBuilder(object):
                     ((ax if ax < bx else bx) if (ax if ax < bx else bx) < cx else cx) > L or
                     ((ay if ay > by else by) if (ay if ay > by else by) > cy else cy) -
                     ((ay if ay < by else by) if (ay if ay < by else by) < cy else cy) > L):
-                k = wp.rigid_at(ax, ay)
-                if k < 0 or wp.rigid_at(bx, by) != k or wp.rigid_at(cx, cy) != k:
-                    self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
-                    return
+                self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
+                return
             f = wp.fwd_memo
             if normals is not None:
                 normals = (self._rot_n(normals[0], ax, ay), self._rot_n(normals[1], bx, by),
@@ -399,8 +397,7 @@ class MeshBuilder(object):
         """Вертикальная стена от A к B, лицом вправо от направления A->B."""
         L = self.CELL
         if self.warp is not None and self._xf is None and self._loc is None and not self.nosplit and \
-                (abs(bx - ax) > L or abs(by - ay) > L) and (ax == bx or ay == by) and \
-                not self._rigid_rect(ax, ay, bx, by):
+                (abs(bx - ax) > L or abs(by - ay) > L) and (ax == bx or ay == by):
             # изгиб: длинная стена вдоль оси — кусками по общей решётке
             u0, v0, u1, v1 = uv
             if ay == by:
@@ -443,7 +440,7 @@ class MeshBuilder(object):
             uvs = uvs[rot:] + uvs[:rot]
         L = self.CELL
         if self.warp is not None and self._xf is None and self._loc is None and not self.nosplit and \
-                (x1 - x0 > L or y1 - y0 > L) and not self._rigid_rect(x0, y0, x1, y1):
+                (x1 - x0 > L or y1 - y0 > L):
             # изгиб: большой прямоугольник сразу кладём плитками по общей решётке
             xs = self._lattice(x0, x1)
             ys = self._lattice(y0, y1)
@@ -467,12 +464,6 @@ class MeshBuilder(object):
                 self.CELL = L
             return
         self.quad(key, (x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z), uvs=uvs, color=color)
-
-    def _rigid_rect(self, x0, y0, x1, y1):
-        """Весь прямоугольник — в одной жёсткой области изгиба: резать его незачем."""
-        wp = self.warp
-        k = wp.rigid_at(x0, y0)
-        return k >= 0 and wp.rigid_at(x1, y1) == k and wp.rigid_at(x0, y1) == k and wp.rigid_at(x1, y0) == k
 
     def _lattice(self, a, b):
         """Точки от a до b: концы и все линии общей решётки между ними."""
