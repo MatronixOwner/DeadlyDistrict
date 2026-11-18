@@ -402,12 +402,12 @@ def main():
     yaw = -0.25
     fx, fy = math.cos(yaw), math.sin(yaw)
     cx, cy = bx + 6.0, by
-    for kind, paint, f, l in (('shade', 3, 0.0, 0.0), ('gti', 0, 0.3, 3.4), ('coupe', 9, -0.2, -3.4),
-                              ('coupe', 1, -5.4, 2.0), ('gti', 6, -5.8, -2.0)):
+    for kind, paint, f, l in (('shade', 3, 0.0, 0.0), ('gti', 0, 0.4, 3.3), ('coupe', 9, -0.1, -3.3),
+                              ('coupe', 1, -5.4, 1.8), ('gti', 10, -5.7, -1.6), ('shade', 5, -5.2, 5.2)):
         v = w.spawn_vehicle(kind, cx + fx * f - fy * l, cy + fy * f + fx * l, yaw, paint=paint)
         v.keep = True
         row.append(v)
-    view(cx + math.cos(yaw - 0.5) * 10.0, cy + math.sin(yaw - 0.5) * 10.0, 2.5, cx - fx * 2.0, cy - fy * 2.0, 0.6)
+    view(cx + math.cos(yaw - 0.45) * 8.2, cy + math.sin(yaw - 0.45) * 8.2, 3.1, cx - fx * 2.4, cy - fy * 2.4, 0.5)
     snap('cars')
     for v in row:
         w.remove_vehicle(v)
@@ -420,12 +420,12 @@ def main():
     q = w.spawn_ped(cx, cy - 4.0, 0.0, story.person_look('bruce'))
     q.keep = True
     w.put_in_vehicle(q, v)
-    harness.run(g, 0.6, keys=('space', 'a'))
-    w.cam.override = (cx + fx * 3.5 - fy * 2.1, cy + fy * 3.5 + fx * 2.1, 1.5, cx + fx * 0.25, cy + fy * 0.25, 0.92)
-    nohelp(('space', 'a'))
+    harness.run(g, 0.6, keys=('space',))
+    w.cam.override = (cx + fx * 3.9 - fy * 1.3, cy + fy * 3.9 + fx * 1.3, 1.6, cx + fx * 0.6, cy + fy * 0.6, 0.98)
+    nohelp(('space',))
     w.hud.show(False)
-    harness.run(g, 0.2, keys=('space', 'a'))
-    snap('hero', ('space', 'a'))
+    harness.run(g, 0.2, keys=('space',))
+    snap('hero', ('space',))
     w.cam.override = None
     pl.leave_vehicle(force=True)
     harness.run(g, 0.6)
