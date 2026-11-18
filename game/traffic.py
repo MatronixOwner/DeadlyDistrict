@@ -133,12 +133,8 @@ class Traffic(object):
             v.s = s
             if v.spec.bike:
                 from .defs import random_look
-                if kind == 'copbike':
-                    from .defs import cop_look
-                    look = cop_look()
-                else:
-                    look = random_look(random, zone if len(zone) == 1 else 'D')
-                    look.female = False if kind in ('chopper', 'dirt', 'trike', 'sidecar', 'cargo') else look.female
+                look = random_look(random, zone if len(zone) == 1 else 'D')
+                look.female = False                 # на чоппере — байкер
                 v.add_rider(look)
             v.persona = random.uniform(0.8, 1.08)
             v.speed = lane.speed * 0.7

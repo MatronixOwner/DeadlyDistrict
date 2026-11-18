@@ -22,7 +22,6 @@ from PIL import Image                                                           
 from game import missions as M                                                  # noqa: E402
 from game.defs import W_M4, W_FIST, WEAPONS                                     # noqa: E402
 from game import story                                                          # noqa: E402
-from game.vehicle import BIKES                                                  # noqa: E402
 from bot import Bot                                                             # noqa: E402
 
 DOCS = os.path.join(ROOT, 'docs')
@@ -330,61 +329,17 @@ def main():
     w.traffic.enabled = True
     c = w.city
 
-    # мотоцикл с коляской: брат едет пассажиром
-    w.sky.set_time(15.0)
+    w.sky.set_time(13.0)
     w.sky.time_scale = 0.0
-    x, y, yaw = lane.pos(5.0)
-    side = w.spawn_vehicle('sidecar', x, y, yaw, paint=1)
-    pl.teleport(x, y - 3)
-    pl.enter_vehicle(side, silent=True)
-    bruce = w.spawn_ped(x, y - 4.0, 0.0, story.person_look('bruce'))
-    bruce.keep = True
-    w.put_in_vehicle(bruce, side)
-    w.cam.yaw = yaw
-    harness.run(g, 3.0, keys=('w',))
-    harness.run(g, 2.5, keys=('space',))            # остановились: камера встаёт спереди сбоку
-    side.vx = side.vy = side.speed = side.omega = 0.0
-    fx, fy = math.cos(side.yaw), math.sin(side.yaw)
-    w.cam.override = (side.x + fx * 3.3 - fy * 2.7, side.y + fy * 3.3 + fx * 2.7, 1.75, side.x - fx * 0.2 + fy * 0.4,
-                      side.y - fy * 0.2 - fx * 0.4, 0.9)
-    nohelp(('space',))
-    harness.run(g, 0.1, keys=('space',))
-    snap('sidecar', ('space',))
-    w.cam.override = None
-    pl.leave_vehicle(force=True)
-    harness.run(g, 1.0)
-    w.remove_ped(bruce)
-    w.remove_vehicle(side)
-
-    # весь двух-, трёх- и четырёхколёсный парк в ряд на лётном поле
     ap = c.landmarks['airfield']['apron']
     bx, by = ap[0] - 60.0, ap[1] - 8.0
-    row = []
-    order = ['bike', 'tourer', 'chopper', 'copbike', 'dirt', 'sidecar', 'trike', 'quad', 'scooter', 'courier', 'cargo',
-             'moped', 'kart', 'caddy', 'bicycle', 'bmx']
-    assert set(order) == set(BIKES)
-    for i, kind in enumerate(order):
-        r, k = (0, i) if i < 6 else ((1, i - 6) if i < 11 else (2, i - 11))
-        v = w.spawn_vehicle(kind, bx + k * 2.5 + r * 1.25, by + r * 3.4, math.pi / 2 + 0.6, paint=i % 4)
-        v.keep = True
-        row.append(v)
-    w.sky.set_time(13.0)
-    view(bx + 6.9, by - 10.6, 4.9, bx + 6.9, by + 2.4, 0.5)
-    snap('bikes')
-    for v in row:
-        w.remove_vehicle(v)
 
-    # готовые модели крупно: чоппер «Ворон» с ездоком и пассажиром, рядом оба велосипеда.  Камера — спереди сбоку
+    # чоппер «Ворон» крупно, с ездоком и пассажиром.  Камера — спереди сбоку
     from game.defs import random_look
     cx, cy = bx + 4.0, by
     yaw = -0.33
     fx, fy = math.cos(yaw), math.sin(yaw)
     moto = w.spawn_vehicle('chopper', cx, cy, yaw, paint=1)
-    cyc = w.spawn_vehicle('bicycle', cx - fx * 0.6 - fy * 2.3, cy - fy * 0.6 + fx * 2.3, yaw + 0.12, paint=1)
-    bmx = w.spawn_vehicle('bmx', cx + fx * 0.9 + fy * 2.1, cy + fy * 0.9 - fx * 2.1, yaw - 0.15, paint=6)
-    for v, seed in ((cyc, 3), (bmx, 8)):
-        v.keep = True
-        v.add_rider(random_look(random.Random(seed), 'R'))
     moto.keep = True
     pl.teleport(moto.x, moto.y - 3.0)
     pl.enter_vehicle(moto, silent=True)
@@ -402,8 +357,7 @@ def main():
     harness.run(g, 0.6)
     w.take_out(q, 1)
     w.remove_ped(q)
-    for v in (moto, cyc, bmx):
-        w.remove_vehicle(v)
+    w.remove_vehicle(moto)
 
     # три новые машины — седан «Тень», хэтчбек «Зажигалка» и купе «Катана» — в двух окрасках, носом к камере
     row = []

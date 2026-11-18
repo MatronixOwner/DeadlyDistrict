@@ -149,10 +149,10 @@ class Garage(object):
         w = self.w
         self.reset()
         free = list(self.slots)
-        for it in (items or [])[:self.capacity()]:
+        # техника, которой в игре больше нет (старые сохранения), места в гараже не занимает
+        known = [it for it in (items or []) if it.get('kind') in SPECS]
+        for it in known[:self.capacity()]:
             kind = it.get('kind')
-            if kind not in SPECS:
-                continue
             x, y, yaw = float(it.get('x', 0.0)), float(it.get('y', 0.0)), float(it.get('yaw', self.yaw))
             if not self.contains(x, y, 0.2):
                 x, y = free[0]

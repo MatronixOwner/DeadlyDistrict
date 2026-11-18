@@ -2024,7 +2024,7 @@ class Missions(object):
             if self.spray_cd.get(name) or abs(v.speed) > 1.2:
                 continue
             self.spray_cd[name] = True
-            if v.kind in ('police', 'enforcer', 'fbi', 'army', 'ambulance', 'bus', 'copbike', 'firetruck'):
+            if v.kind in ('police', 'enforcer', 'fbi', 'army', 'ambulance', 'bus', 'firetruck'):
                 hud.help('С такой машиной здесь не работают.', 4.0)
                 continue
             if 'tune' not in self.hints:

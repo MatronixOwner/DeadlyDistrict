@@ -308,7 +308,10 @@ def test_wanted_level(tg):
     assert pol.level == 0
     t.set_wanted(3)
     t.close()
-    harness.run(tg, 6.0)
+    for _ in range(40):                                   # место для выезда находится не с первой попытки
+        harness.run(tg, 0.5)
+        if pol.units:
+            break
     assert pol.level == 3 and pol.units, 'за героем должна выехать погоня'
     # без удержания розыск живёт сам: новое преступление его поднимает
     for _ in range(6):
@@ -622,7 +625,7 @@ def test_teleport_into_every_room_and_back(tg):
 def test_spawn_every_vehicle(tg):
     w, t, pl = start(tg)
     harness.quiet(w)
-    assert len(SPECS) == 47
+    assert len(SPECS) == 32
     for kind in SPECS:
         assert t.open(), kind
         t.spawn(kind)

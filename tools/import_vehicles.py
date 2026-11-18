@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """Импорт готовых моделей транспорта, которых нет в основном наборе машин: такси и ещё четыре автомобиля
-в стиле PS1 с itch.io (среди них машина героя с салоном), чоппер, мотоцикл, два велосипеда и детали тюнинга.
+в стиле PS1 с itch.io (среди них машина героя с салоном), чоппер и детали тюнинга.
 
 Нужен только тому, кто пересобирает модели: игра читает готовые файлы из assets/models/veh.
 
-    pip install panda3d numpy pillow blender-asset-tracer
+    pip install panda3d numpy pillow scipy potracer     # potracer (GPL) — только для текстуры «Катаны»
     python tools/import_vehicles.py fetch         # скачать исходники в .cache/model_src/new
-    python tools/import_vehicles.py all           # машины, двухколёсные, детали
+    python tools/import_vehicles.py all           # машины, чоппер, детали
     python tools/import_vehicles.py cars cab      # только одна машина (так же: bikes chop)
 
 Откуда что берётся (лицензии и авторы — в assets/models/CREDITS.md):
@@ -18,9 +18,8 @@
     копия из Alekssandher/The-Gandmas-House;
   * чоппер — Another PSX Style Low-poly Bike (Duhgless, CC0); копия с текстурами 256 точек из
     репозитория webbertakken/citymap;
-  * городской велосипед — сборник M3-org/retro3d-assets, папка Vehicles;
-  * мотоцикл — Kenney, Starter Kit Racing (CC0);  спойлеры, бампер, колёса — Kenney, Car Kit (CC0);
-  * второй велосипед, бутылка — Quaternius (CC0), репозиторий chibifire-stages/quaternius-stage.
+  * спойлеры, бампер — Kenney, Car Kit (CC0);
+  * бутылка — Quaternius (CC0), репозиторий chibifire-stages/quaternius-stage.
 
 Модели с itch.io сюда попадают через их копии на GitHub: с самого itch.io файлы скриптом не скачать.
 Какой репозиторий и какая его версия — в таблице SOURCES.
@@ -33,9 +32,8 @@
     краска — то, что меняется от окраски к окраске набора, а если окраска одна — то, что подходит по цвету;
   * у машины с салоном стёкла и рулевое колесо идут отдельными узлами (стёкла игра делает прозрачными, руль
     поворачивает), а в описание модели записываются места сидящих;
-  * у двухколёсных с модели снимаются точки посадки: где седло, где ручки руля, где подножки; руль
-    подводится к рукам ездока (поза у него одна из четырёх готовых), недостающие мелочи — подножки,
-    педали, седло велосипеда — достраиваются.
+  * у чоппера отдельно идёт вилка с рулём, а с модели снимаются точки посадки: где седло, где ручки руля,
+    где подножки; недостающие подножки достраиваются.
 """
 import colorsys
 import json
@@ -56,23 +54,12 @@ VEH = os.path.join(OUT, 'veh')
 
 # исходники: (репозиторий, ревизия, [(путь в репозитории, куда положить в .cache/model_src/new)])
 SOURCES = [
-    ('M3-org/retro3d-assets', None, [
-        ('Vehicles/bike_vintage (unfinished).blend', 'm3/bike_vintage.blend'),
-        ('Vehicles/Materials/bike_vintage.png', 'm3/bike_vintage.png'),
-    ]),
-    ('KenneyNL/Starter-Kit-Racing', None, [
-        ('models/vehicle-motorcycle.glb', 'kenney_racing/vehicle-motorcycle.glb'),
-        ('models/Textures/colormap.png', 'kenney_racing/Textures/colormap.png'),
-        ('README.md', 'kenney_racing/README.md'),
-    ]),
     ('0xKoller/starter-kit-racing-studio', None, [
         ('kenney_car-kit/License.txt', 'kenney_carkit/License.txt'),
         ('kenney_car-kit/Models/OBJ format/Textures/colormap.png', 'kenney_carkit/Textures/colormap.png'),
     ] + [('kenney_car-kit/Models/OBJ format/%s.%s' % (n, e), 'kenney_carkit/%s.%s' % (n, e))
-         for n in ('debris-spoiler-a', 'debris-spoiler-b', 'debris-bumper', 'wheel-racing', 'wheel-dark',
-                   'wheel-default', 'kart-oobi') for e in ('obj', 'mtl')]),
+         for n in ('debris-spoiler-a', 'debris-spoiler-b', 'debris-bumper') for e in ('obj', 'mtl')]),
     ('chibifire-stages/quaternius-stage', None, [
-        ('models/PublicTransport/S_Bicycle.usda', 'quat/S_Bicycle.usda'),
         ('models/Survival/S_WaterBottle_1.usda', 'quat/S_WaterBottle_1.usda'),
     ]),
     # MoiDev, Yellow Taxi/Cab — PS1 Car (https://moidev.itch.io/yellow-taxicab-ps1-style): выгрузка со Sketchfab
@@ -718,37 +705,14 @@ def do_cars(meta, only=None):
 # двухколёсные
 # ---------------------------------------------------------------------------
 DARK = (0.10, 0.10, 0.11)
-SEAT = (0.07, 0.06, 0.06)
 STEEL = (0.70, 0.71, 0.74)
-LAMP = (1.0, 0.96, 0.82)
-RED = (0.78, 0.08, 0.06)
 YUP = np.array([[-1.0, 0, 0], [0, 0, 1.0], [0, 1.0, 0]])        # (x, y, z) -> (-x, z, y): Y вверх -> Z вверх
-YUP_BACK = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])   # то же, но нос исходника смотрел на -Z
 
 
 def poses():
     sys.path.insert(0, ROOT)
     from game import bikes
     return bikes.POSES, bikes.PELVIS_UP, bikes.SOLE
-
-
-def fit_rider(seat_z, seat_y, grips, prefer):
-    """Подобрать посадку: какая из готовых поз ездока ближе всего к модели.
-
-    seat_z — высота поверхности седла, seat_y — (от, до) где на нём можно сидеть, grips — (y, z) ручек руля.
-    Возвращает (имя позы, y таза, z таза, на сколько сдвинуть ручки: (dy, dz))."""
-    P, up, sole = poses()
-    best = None
-    for name in prefer:
-        fwd, hup = P[name]['hand']
-        pz = seat_z + up
-        py = min(seat_y[1], max(seat_y[0], grips[0] - 0.06 - fwd))
-        dy = py + 0.06 + fwd - grips[0]
-        dz = pz + hup - 0.02 - grips[1]
-        err = abs(dy) + abs(dz)
-        if best is None or err < best[0] - 0.03:        # при почти равных — та, что названа раньше
-            best = (err, name, py, pz, (dy, dz))
-    return best[1:]
 
 
 def bend(pts, z0, z1, dy, dz):
@@ -812,322 +776,6 @@ def top_z(tris, x, y):
     if not hit.any():
         return None
     return float((u * a[:, 2] + v * b[:, 2] + w * c[:, 2])[hit].max())
-
-
-def bike_moto():
-    """Мотоцикл Kenney (Starter Kit Racing): круизер.  У исходника «игрушечные» пропорции — очень широкие
-    шины и руль; приводим к настоящим: шины 15 и 19 см, руль 76 см.  Сам руль — рога толщиной 12 см с
-    ручками по 20 см — заменяем трубой с ручками настоящей толщины."""
-    from PIL import Image
-    parts, _ = ms.read_glb(src('kenney_racing', 'vehicle-motorcycle.glb'))
-    pal = np.asarray(Image.open(src('kenney_racing', 'Textures', 'colormap.png')).convert('RGB'))
-    ph, pw = pal.shape[:2]
-    P = named(parts)
-    for p in P.values():
-        p.transform(YUP)
-    R = 0.32                                            # радиус колеса в игре
-    k = R / 0.30
-
-    def color(p, i):
-        uv = p.uvs[i].mean(0)
-        c = pal[min(ph - 1, max(0, int((1.0 - uv[1]) * ph))), min(pw - 1, max(0, int(uv[0] * pw)))].astype(int)
-        return c
-
-    def kind(c):
-        r, g, bl = c
-        mx, mn = max(c), min(c)
-        if mx < 90:
-            return 'dark'
-        if g > r + 40 and g > bl + 15:
-            return 'paint'
-        if r > 200 and g < 180 and bl < 120:
-            return 'red'
-        if mx > 220 and mx - mn < 30:
-            return 'lamp'
-        return 'metal'
-
-    def flat(c, what):
-        if what == 'dark':
-            return DARK
-        if what == 'red':
-            return RED
-        if what == 'lamp':
-            return LAMP
-        if what == 'paint':                              # белый с той же светотенью, что на палитре
-            s = float(lum(c.astype(np.float64))) / 104.0
-            return (min(1.0, s), min(1.0, s), min(1.0, s))
-        g = float(lum(c.astype(np.float64))) / 255.0 * 1.04
-        return (min(1.0, g * 0.98), min(1.0, g * 0.985), min(1.0, g))
-    fy, ry = 0.86, -0.66                                # оси колёс исходника
-    mid = (fy + ry) * 0.5
-    b = Bike('moto')
-    # --- колёса: уже и строго круглые; зелёные «колпаки» — в цвет металла
-    for name, node, cy, width in (('wheel-front', 'wheel_f', fy, 0.15), ('wheel-back', 'wheel_r', ry, 0.19)):
-        p = P[name]
-        kx = width / (0.45 * k)
-        o = b.out(node)
-        for i in range(len(p.tris)):
-            c = color(p, i)
-            what = kind(c)
-            col = flat(c, 'metal' if what == 'paint' else what)
-            pts = (p.verts[p.tris[i]] - (0.0, cy, 0.30)) * (k * kx, k, k)
-            o.tri(pts, color=col)
-    # --- кузов
-    body = P['body']
-    BX = 0.86                                           # кузов чуть уже: двигатель с трубами был шире руля
-    seat_top = None
-    seat_y = [1e9, -1e9]
-    tail = []
-    for i in range(len(body.tris)):
-        c = color(body, i)
-        what = kind(c)
-        pts = (body.verts[body.tris[i]] - (0.0, mid, 0.0)) * (k * BX, k, k)
-        b.out('paint' if what == 'paint' else 'body').tri(pts, color=flat(c, what))
-        n = np.cross(pts[1] - pts[0], pts[2] - pts[0])
-        if what == 'dark' and n[2] > 0.5 * np.linalg.norm(n) and pts[:, 2].max() > 0.7 * k:
-            seat_top = max(seat_top or 0.0, float(pts[:, 2].max()))
-            seat_y = [min(seat_y[0], float(pts[:, 1].min())), max(seat_y[1], float(pts[:, 1].max()))]
-        if what == 'red':
-            tail.append(pts.mean(0))
-    # --- вилка: руль уже; ручки — к рукам ездока
-    fork = P['fork']
-    FX = 0.73
-    fpts = (fork.verts - (0.0, mid, 0.0)) * (k * FX, k, k)
-    grip = []
-    gidx = set()
-    head = []
-    kinds = []
-    for i in range(len(fork.tris)):
-        c = color(fork, i)
-        what = kind(c)
-        kinds.append((what, c))
-        if what == 'dark' and fpts[fork.tris[i]][:, 2].min() > 1.0 * k:
-            grip.append(fpts[fork.tris[i]])
-            gidx.update(int(j) for j in fork.tris[i])
-        if what == 'lamp':
-            head.append(fpts[fork.tris[i]].mean(0))
-    grip = np.concatenate(grip)
-    gy, gz = float(grip[:, 1].mean()), float(grip[:, 2].mean())
-    gx = float(np.abs(grip[:, 0]).mean())
-    pose, py, pz, (dy, dz) = fit_rider(seat_top, (seat_y[0] + 0.14, seat_y[1] - 0.06), (gy, gz), ('chair', 'cruise'))
-    z1 = float(grip[:, 2].min())
-    fpts = bend(fpts, z1 - 0.30, z1, dy, dz)
-    axle_f = (fy - mid) * k
-    # --- руль.  У исходника это два висящих над траверсой «рога» с ручками-бочонками: кисти ездока в них тонут.
-    #     Находим ось каждой ручки, выбрасываем всё, что лежит вдоль неё, и ставим трубу со стойками от траверсы
-    gidx = np.array(sorted(gidx))
-    drop = np.zeros(len(fork.tris), bool)
-    bars = []
-    for side in (-1.0, 1.0):
-        q = fpts[gidx[fpts[gidx, 0] * side > 0.0]]
-        q = np.unique(np.round(q, 4), axis=0)
-        q = q[np.argsort(q[:, 0] * side)]
-        cin, cout = q[:len(q) // 2].mean(0), q[len(q) // 2:].mean(0)
-        ax = cout - cin
-        ax /= np.linalg.norm(ax)
-        rel = fpts - cin
-        t = rel @ ax
-        far = np.linalg.norm(rel - np.outer(t, ax), axis=1)
-        rad = float(far[gidx[fpts[gidx, 0] * side > 0.0]].max())
-        along = (far < rad * 1.12) & (t > -0.30) & (fpts[:, 0] * side > 0.0)
-        drop |= along[fork.tris].all(axis=1)
-        bars.append((side, (cin + cout) * 0.5, ax))
-    assert 40 <= int(drop.sum()) <= 120, drop.sum()
-    left = fpts[fork.tris[~drop]]
-    BAR_R, GRIP_R, GRIP_L = 0.019, 0.029, 0.135
-    o = b.out('fork')
-    off = np.array((0.0, axle_f, 0.0))
-    yoke = None
-    for side, palm, ax in bars:
-        g0, g1 = palm - ax * GRIP_L * 0.5, palm + ax * GRIP_L * 0.5
-        elbow = palm - ax * 0.20
-        cy = palm[1] + 0.22                              # стойка — на верхней грани траверсы
-        cz = top_z(left, side * 0.085, cy)
-        assert cz is not None and palm[2] - 0.22 < cz < palm[2] - 0.05, cz
-        clamp = np.array((side * 0.085, cy, cz - 0.012))
-        yoke = (float(cy), float(cz))                    # верх вилки: через него идёт ось поворота руля
-        up = (elbow - clamp) / np.linalg.norm(elbow - clamp)
-        o.tube(clamp - off, elbow + up * BAR_R * 0.6 - off, BAR_R, STEEL, 6)
-        o.tube(elbow - ax * BAR_R * 0.6 - off, g0 - off, BAR_R, STEEL, 6)
-        o.tube(g0 - off, g1 - off, GRIP_R, DARK, 6)
-        o.tube(g1 - off, g1 + ax * 0.012 - off, GRIP_R + 0.004, STEEL, 6)            # заглушка-грузик
-        fwd = np.cross((0.0, 0.0, 1.0), ax) * side       # рычаг тормоза (сцепления) перед ручкой
-        fwd /= np.linalg.norm(fwd)
-        o.tube(g0 - ax * 0.02 + fwd * 0.012 - off, g0 + ax * 0.012 + fwd * 0.05 - off, 0.009, STEEL, 4)
-        o.tube(g0 + ax * 0.012 + fwd * 0.05 - off, g0 + ax * 0.125 + fwd * 0.058 - off, 0.008, STEEL, 4)
-    for i in range(len(fork.tris)):
-        if drop[i]:
-            continue
-        what, c = kinds[i]
-        pts = fpts[fork.tris[i]] - (0.0, axle_f, 0.0)
-        b.out('fork_paint' if what == 'paint' else 'fork').tri(pts, color=flat(c, what))
-    POS, up, sole = poses()
-    fx, ff, fu = POS[pose]['foot']
-    foot = (fx, py + ff, pz + fu - sole)
-    _pegs(b, foot)
-    allp = np.concatenate([np.array([r[0] for r in o.rows]) for nd in ('body', 'paint') for o in b.nodes[nd].values()])
-    fk = np.concatenate([np.array([r[0] for r in o.rows]) for nd in ('fork', 'fork_paint') for o in b.nodes[nd].values()])
-    b.info.update(
-        wheel_f=[round(axle_f, 3), R, 0.15], wheel_r=[round((ry - mid) * k, 3), R, 0.19],
-        pose=pose, seat=[round(py, 3), round(pz, 3)], grips=[round(gx, 3), round(gy + dy, 3), round(gz + dz, 3)],
-        foot=[round(v, 3) for v in foot], seat_top=round(seat_top, 3), seat_y=[round(seat_y[0], 3), round(seat_y[1], 3)],
-        head=[0.0, round(float(np.mean([h[1] for h in head])) + 0.03, 3), round(float(np.mean([h[2] for h in head])), 3)],
-        tail=[0.0, round(float(np.mean([t[1] for t in tail])) - 0.03, 3), round(float(np.mean([t[2] for t in tail])), 3)],
-        L=round(float(max(allp[:, 1].max(), fk[:, 1].max() + axle_f) - allp[:, 1].min()), 3),
-        y0=round(float(allp[:, 1].min()), 3), y1=round(float(max(allp[:, 1].max(), fk[:, 1].max() + axle_f)), 3),
-        W=round(float(np.abs(fk[:, 0]).max() * 2.0), 3), H=round(float(fk[:, 2].max()), 3), bend=[round(dy, 3), round(dz, 3)],
-        axis=[round(yoke[0], 3), round(yoke[1], 3)])
-    return b.write()
-
-
-def _saddle(b, y, z, k=1.0):
-    """Седло велосипеда — из набора Quaternius (у городского велосипеда исходник без седла)."""
-    parts = named(ms.read(src('quat', 'S_Bicycle.usda')))
-    p = parts['Mesh'].copy()
-    p.transform(YUP_BACK)
-    lo, hi = p.bounds()
-    s = 0.29 * k / (hi[1] - lo[1])                     # длина седла 29 см
-    c = np.array(((lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5, hi[2]))
-    b.out('body').part(p, color=SEAT, uv=False, xf=lambda q: (q - c) * s + (0.0, y, z))
-    return s * (hi[2] - lo[2])
-
-
-def _pedals(b, bb, foot):
-    """Шатуны с педалями: от каретки к стопам ездока."""
-    o = b.out('body')
-    fx, fy, fz = foot
-    d = np.array((fy - bb[0], fz - bb[1]))
-    ln = float(np.linalg.norm(d))
-    d = d / ln * min(ln, 0.175)                         # шатун — 17,5 см
-    py, pz = bb[0] + d[0], bb[1] + d[1]
-    o.tube((-0.09, bb[0], bb[1]), (0.09, bb[0], bb[1]), 0.016, STEEL, 4)
-    for sx in (-1, 1):
-        o.tube((sx * 0.09, bb[0], bb[1]), (sx * 0.09, py, pz), 0.012, STEEL, 4)
-        o.box(sx * 0.09 + (0.0 if sx > 0 else -0.10), py - 0.045, pz - 0.022, sx * 0.09 + (0.10 if sx > 0 else 0.0), py + 0.045, pz - 0.002, DARK)
-    return (max(fx, 0.14), py, pz)
-
-
-def bike_cycle():
-    """Городской велосипед из сборника M3 (bike_vintage): рама красится, хром и колёса со своей текстурой."""
-    from PIL import Image
-    P = named(ms.read(src('m3', 'bike_vintage.blend')))
-    img = Image.open(src('m3', 'bike_vintage.png')).convert('RGBA').resize((256, 256), Image.LANCZOS)
-    img.save(os.path.join(VEH, 'b_cycle.png'), optimize=True)
-    R = 0.34                                            # колесо исходника — в самый раз
-    z0 = -0.34                                          # земля в исходнике
-    fy, ry = 1.17, 0.0
-    mid = (fy + ry) * 0.5
-    off = np.array((0.0, mid, z0))
-    b = Bike('cycle')
-    for p in P.values():
-        p.verts = p.verts - off
-    for name, node, cy in (('bike_vintage_wheel.001', 'wheel_f', fy - mid), ('bike_vintage_wheel.000', 'wheel_r', ry - mid)):
-        p = P[name]
-        b.out(node, 't').part(p, xf=lambda q, cy=cy: q - (0.0, cy, R))
-    # что поворачивается вместе с рулём: передние перья и крыло (куски рамы впереди), вынос и руль (хром)
-    frame, chrome = P['bike_vintage_frame'], P['bike_vintage_chrome']
-    head_y = 1.0 - mid                                  # ось рулевой колонки по длине
-    fork_f, body_f = [], []
-    for comp in components(frame):
-        v = tri_points(frame, comp)
-        (fork_f if v[:, 1].min() > head_y + 0.02 - 0.22 and v[:, 1].max() > fy - mid - 0.2 else body_f).extend(comp)
-    fork_c, body_c = [], []
-    for comp in components(chrome):
-        v = tri_points(chrome, comp)
-        (fork_c if v[:, 1].mean() > 0.2 else body_c).extend(comp)
-    grip = np.concatenate([chrome.verts[chrome.tris[i]] for i in fork_c if np.abs(chrome.verts[chrome.tris[i]][:, 0]).min() > 0.16])
-    gy, gz, gx = float(grip[:, 1].mean()), float(grip[:, 2].mean()), float(np.abs(grip[:, 0]).mean())
-    post = tri_points(chrome, body_c)                   # верх подседельной трубы
-    post_y, post_z = float(post[:, 1].mean()), float(post[:, 2].max())
-    seat_top = post_z + 0.075
-    pose, py, pz, (dy, dz) = fit_rider(seat_top, (post_y - 0.02, post_y + 0.10), (gy, gz), ('std', 'cruise'))
-    axle_f = fy - mid
-    z1 = float(grip[:, 2].min())
-    cv = bend(chrome.verts, z1 - 0.22, z1, dy, dz)
-    for i in fork_c:
-        b.out('fork', 't').tri(cv[chrome.tris[i]] - (0.0, axle_f, 0.0), chrome.uvs[i])
-    for i in body_c:
-        b.out('body', 't').tri(chrome.verts[chrome.tris[i]], chrome.uvs[i])
-    for i in fork_f:
-        b.out('fork_paint').tri(frame.verts[frame.tris[i]] - (0.0, axle_f, 0.0))
-    for i in body_f:
-        b.out('paint').tri(frame.verts[frame.tris[i]])
-    b.out('body', 't').part(P['bike_vintage_gears'])
-    # седло (его в исходнике нет) и стойка под ним, педали
-    th = _saddle(b, py - 0.03, seat_top)
-    b.out('body').tube((0.0, post_y, post_z - 0.02), (0.0, py - 0.03, seat_top - th * 0.6), 0.014, STEEL, 5)
-    gears = tri_points(P['bike_vintage_gears'], components(P['bike_vintage_gears'])[0])
-    bb = (float(gears[:, 1].mean()), float(gears[:, 2].mean()))
-    POS, up, sole = poses()
-    fx, ff, fu = POS[pose]['foot']
-    foot = _pedals(b, bb, (fx, py + ff, pz + fu - sole))
-    allp = np.concatenate([frame.verts, chrome.verts])
-    b.info.update(
-        wheel_f=[round(axle_f, 3), R, 0.04], wheel_r=[round(ry - mid, 3), R, 0.04], tex='b_cycle',
-        pose=pose, seat=[round(py, 3), round(pz, 3)], grips=[round(gx, 3), round(gy + dy, 3), round(gz + dz, 3)],
-        foot=[round(v, 3) for v in foot], seat_top=round(seat_top, 3), bend=[round(dy, 3), round(dz, 3)],
-        L=round(float(R * 2 + fy - ry), 3), y0=round(float(ry - mid - R), 3), y1=round(float(fy - mid + R), 3),
-        W=round(gx * 2 + 0.1, 3), H=round(float(max(gz + dz, seat_top) + 0.06), 3))
-    return b.write()
-
-
-def bike_bmx():
-    """Второй велосипед — Quaternius (Public Transport): колёса меньше, руль выше — «трюковой»."""
-    P = named(ms.read(src('quat', 'S_Bicycle.usda')))
-    for p in P.values():
-        p.transform(YUP_BACK)
-    R = 0.26
-    k = R / 0.95
-    fy, ry = 1.68, -2.25
-    mid = (fy + ry) * 0.5
-    b = Bike('bmx')
-    for p in P.values():
-        p.verts = (p.verts - (0.0, mid, -0.95)) * k
-    fy, ry = (fy - mid) * k, (ry - mid) * k
-    for name, node, cy in (('Cylinder_002', 'wheel_f', fy), ('Cylinder_001', 'wheel_r', ry)):
-        p = P[name]
-        # шина тёмная, обод и втулка — металл: что дальше 80 % радиуса от оси, то шина
-        cols = []
-        for t in p.tris:
-            c = p.verts[t].mean(0)
-            cols.append(DARK if math.hypot(c[1] - cy, c[2] - R) > R * 0.80 else STEEL)
-        b.out(node).part(p, colors=cols, uv=False, xf=lambda q, cy=cy: q - (0.0, cy, R))
-    fork = P['Cube_000']
-    handle = fork.mat == fork.mats.index('Handle')
-    grip = fork.verts[np.unique(fork.tris[handle])]
-    gy, gz, gx = float(grip[:, 1].mean()), float(grip[:, 2].mean()), float(np.abs(grip[:, 0]).max()) - 0.05
-    sad = P['Mesh']
-    lo, hi = sad.bounds()
-    seat_top = float(hi[2])
-    pose, py, pz, (dy, dz) = fit_rider(seat_top, (float(lo[1]) + 0.10, float(hi[1]) - 0.06), (gy, gz), ('std', 'cruise'))
-    z1 = float(grip[:, 2].min())
-    fv = bend(fork.verts, z1 - 0.16, z1, dy, dz)
-    # руль уже: у исходника он полтора метра в пересчёте на рост
-    bar = 0.31 / (float(np.abs(grip[:, 0]).max()))
-    fv[:, 0] = np.where(fv[:, 2] > z1 - 0.02, fv[:, 0] * bar, fv[:, 0])
-    gx = float(np.abs(grip[:, 0]).max()) * bar - 0.05
-    for i in range(len(fork.tris)):
-        pts = fv[fork.tris[i]] - (0.0, fy, 0.0)
-        if handle[i]:
-            b.out('fork').tri(pts, color=DARK)
-        else:
-            b.out('fork_paint').tri(pts)
-    b.out('paint').part(P['Cube_005'], uv=False)
-    b.out('body').part(sad, color=SEAT, uv=False)
-    # каретка — нижняя точка рамы между колёсами
-    fr = P['Cube_005'].verts
-    low = fr[(np.abs(fr[:, 1]) < 0.25)]
-    bb = (float(low[low[:, 2] < low[:, 2].min() + 0.05][:, 1].mean()), float(low[:, 2].min()) + 0.03)
-    POS, up, sole = poses()
-    fx, ff, fu = POS[pose]['foot']
-    foot = _pedals(b, bb, (fx, py + ff, pz + fu - sole))
-    b.info.update(
-        wheel_f=[round(fy, 3), R, 0.07], wheel_r=[round(ry, 3), R, 0.07],
-        pose=pose, seat=[round(py, 3), round(pz, 3)], grips=[round(gx, 3), round(gy + dy, 3), round(gz + dz, 3)],
-        foot=[round(v, 3) for v in foot], seat_top=round(seat_top, 3), bend=[round(dy, 3), round(dz, 3)],
-        L=round(float(R * 2 + fy - ry), 3), y0=round(float(ry - R), 3), y1=round(float(fy + R), 3),
-        W=round(gx * 2 + 0.1, 3), H=round(float(max(gz + dz, seat_top) + 0.06), 3))
-    return b.write()
 
 
 CHOP_K = 0.45               # масштаб чоппера: исходник в 2,2 раза крупнее настоящего мотоцикла
@@ -1273,7 +921,7 @@ def bike_chop():
     return b.write()
 
 
-BIKES = {'moto': bike_moto, 'cycle': bike_cycle, 'bmx': bike_bmx, 'chop': bike_chop}
+BIKES = {'chop': bike_chop}
 
 
 def do_bikes(meta, only=None):

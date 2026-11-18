@@ -1900,20 +1900,20 @@ def test_garage_keeps_a_motorcycle(game, world):
     gar = w.garage
     gar.reset()
     sx, sy = gar.slots[0]
-    bike = w.spawn_vehicle('sidecar', sx, sy, math.pi / 2, paint=2)
+    bike = w.spawn_vehicle('chopper', sx, sy, math.pi / 2, paint=2)
     bike.apply_tune({'engine': 1, 'neon': 2, 'rims': 3})
     pl.teleport(sx, sy - 9.0)
     harness.run(game, 1.0)
     assert bike in gar.cars
     saved = settings_mod.load_save()['garage'][0]
-    assert saved['kind'] == 'sidecar' and saved['paint'] == 2 and saved['tune'] == {'engine': 1, 'neon': 2, 'rims': 3}
+    assert saved['kind'] == 'chopper' and saved['paint'] == 2 and saved['tune'] == {'engine': 1, 'neon': 2, 'rims': 3}
     game.to_main_menu()
     game.continue_game()
     w = game.world
     pl = w.player
     assert len(w.garage.cars) == 1
     bike = w.garage.cars[0]
-    assert bike.kind == 'sidecar' and bike.bparts is not None and bike.paint == 2
+    assert bike.kind == 'chopper' and bike.bparts is not None and bike.paint == 2
     assert bike.tune == {'engine': 1, 'neon': 2, 'rims': 3}
     if w.interiors.current is not None:
         w.interiors.leave(instant=True)
@@ -1922,5 +1922,27 @@ def test_garage_keeps_a_motorcycle(game, world):
     harness.run(game, 0.3)
     assert pl.vehicle is bike and pl.ped.vis.cur == 'mix' and pl.ped.node.getParent() == bike.tilt
     pl.leave_vehicle(force=True)
+    w.garage.reset()
+    w = harness.start_game(game)
+
+
+def test_old_save_with_removed_bikes_still_loads(game, world):
+    """В сохранении прежних версий в гараже мог стоять мотороллер, велосипед или мотоцикл с коляской.  Этой
+    техники больше нет: сохранение грузится, а остальные машины стоят на своих местах."""
+    w = world
+    harness.quiet(w, peds=True)
+    w.garage.reset()
+    w.missions.save_game(auto=True)
+    data = settings_mod.load_save()
+    data['garage'] = [dict(kind='sidecar', paint=1, tune={'engine': 1}), dict(kind='sedan', paint=2, tune={}),
+                      dict(kind='bicycle', paint=0), dict(kind='chopper', paint=1, tune={})]
+    settings_mod.write_save(data)
+    game.to_main_menu()
+    game.continue_game()
+    w = game.world
+    kinds = sorted(v.kind for v in w.garage.cars if not v.hero)
+    assert kinds == ['chopper', 'sedan'], kinds
+    harness.run(game, 0.5)
+    assert game.state == 'play'
     w.garage.reset()
     w = harness.start_game(game)

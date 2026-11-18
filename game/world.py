@@ -440,7 +440,7 @@ class World(object):
         zone = self.city.zone_style(self.city.zone_at(v.x, v.y))
         if zone not in 'DOGRIB' or len(zone) != 1:
             zone = 'D'
-        if v.kind in ('police', 'enforcer', 'fbi', 'army', 'copbike') or v.owner == 'police':
+        if v.kind in ('police', 'enforcer', 'fbi', 'army') or v.owner == 'police':
             p = self.police.make_cop(v.x, v.y, v.yaw, v.kind)
         elif v.kind == 'ambulance':
             p = self.spawn_ped(v.x, v.y, v.yaw, medic_look(), 'civ')
