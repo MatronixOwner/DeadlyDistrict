@@ -1147,12 +1147,14 @@ def test_new_cars_are_real_models_and_take_paint(game, world):
             for x in range(0, size, step):
                 pa, pb = a.getXel(x, y), b.getXel(x, y)
                 d = abs(pa[0] - pb[0]) + abs(pa[1] - pb[1]) + abs(pa[2] - pb[2])
-                if detail.getAlpha(x, y) < 0.5:
+                al = detail.getAlpha(x, y)
+                if al < 0.02:
                     painted += 1
                     assert pa[0] > pa[2] and pb[2] > pb[0], (kind, x, y)   # красный красен, синий синь
-                else:
+                elif al > 0.98:
                     same += 1
                     assert d < 0.02, (kind, x, y)                          # некрашеное не меняется
+                # между ними — сглаженный край (у «Катаны»): там краска просвечивает частично
         assert painted > 600 and same > 400, (kind, painted, same)
     assert not {k for k, model, title in cars} & m.failed
 
@@ -1237,6 +1239,103 @@ def test_hero_car_cabin_seats_people_behind_glass(game, world):
             w.take_out(q)
         q.keep = False
         w.remove_ped(q)
+
+
+def test_coupe_texture_has_smooth_edges():
+    """Текстура «Катаны» в исходнике 128×128: край стекла шёл ступеньками.  Она увеличена с обводкой краёв —
+    у границы краски и стекла есть полутона, а сама машина растягивает её плавно."""
+    from PIL import Image
+    import numpy as np
+    from game.models import VEHICLE_MODELS
+    base = os.path.join(harness.ROOT, 'assets', 'models', 'veh')
+    img = Image.open(os.path.join(base, 'coupe.png'))
+    shade = Image.open(os.path.join(base, 'coupe_shade.png'))
+    assert img.size == (512, 512) and shade.size == (512, 512) and img.mode == 'RGBA'
+    a = np.asarray(img)[..., 3]
+    soft = ((a > 24) & (a < 232)).sum()
+    assert soft > 1500, soft                        # сглаженные края; у пиксельной картинки их нет вовсе
+    assert (a == 0).mean() > 0.6                    # большая часть — краска
+    assert VEHICLE_MODELS['coupe'][1].get('smooth')
+
+
+def test_hero_car_keeps_legs_inside(game, world):
+    """Ноги сидящих в «Ласточке» не торчат под машиной: пол салона под самым сиденьем, поэтому стопы стоят
+    на полу впереди, а колени подняты.  Вышел из машины — ноги снова слушаются анимации."""
+    from game import story
+    w = world
+    pl = w.player
+    x, y = w.city.landmarks['airfield']['apron']
+    pl.teleport(x - 3.0, y)
+    v = w.spawn_vehicle('retro', x, y, math.pi / 2, 0)
+    info = w.models.meta['vehicles']['retro']
+    assert len(info['feet']) == len(info['seats']) == len(v.cabin['feet']) == 4
+    # днище кузова: ниже него у машины только колёса
+    lo = 1e9
+    for gp in v.body.findAllMatches('**/+GeomNode'):
+        a, b = gp.getTightBounds(v.tilt)
+        lo = min(lo, a.z)
+    assert 0.15 < lo < 0.30, lo
+    joints = [j + s for s in ('_l', '_r') for j in ('thigh', 'calf', 'foot', 'ball')]
+
+    def legs(p):
+        a = p.vis.actor
+        ns = [a.exposeJoint(None, 'modelRoot', j) for j in joints]
+        a.update(force=True)
+        return dict((j, n.getPos(v.tilt)) for j, n in zip(joints, ns))
+
+    pl.enter_vehicle(v, silent=True)
+    crew = []
+    for i in range(3):
+        q = w.spawn_ped(x + 4.0 + i, y, 0.0, story.person_look('bruce'), 'mission')
+        q.keep = True
+        w.put_in_vehicle(q, v)
+        crew.append(q)
+    harness.run(game, 0.3)
+    who = v.cabin['who']
+    hw = SPECS['retro'].W * 0.5
+    for p in [pl.ped] + crew:
+        idx = who[p]
+        sx, sy, sz = v.cabin['seats'][idx]
+        fy, fz, half = v.cabin['feet'][idx]
+        assert p.vis._legs is not None
+        L = legs(p)
+        for j, pos in L.items():
+            assert pos.z > lo + 0.2 and abs(pos.x) < hw - 0.1, (idx, j, tuple(pos))       # всё выше днища и между бортами
+        for s, fx in (('_l', sx - half), ('_r', sx + half)):
+            f = L['foot' + s]
+            assert abs(f.x - fx) < 0.02 and abs(f.y - fy) < 0.02 and abs(f.z - fz) < 0.02, (idx, s, tuple(f))
+            assert L['ball' + s].y > f.y + 0.08                                         # носки смотрят вперёд
+            assert L['calf' + s].z > sz + 0.15 and sy < L['calf' + s].y < fy + 0.05       # колено поднято, оно между тазом и стопой
+        # руль остаётся свободным: колени водителя — по обе стороны от обода
+        if idx == 0:
+            st = v.minfo['steer']
+            assert L['calf_l'].x < st[0][0] - st[2] and L['calf_r'].x > st[0][0] + st[2]
+    # без этой постановки ноги — как на стуле: суставы стоп у самого днища, подошвы торчат под машиной
+    # (ради этого всё и сделано)
+    q = crew[0]
+    w.take_out(q)
+    assert q.vis._legs is None
+    feet, v.cabin['feet'] = v.cabin['feet'], []
+    w.put_in_vehicle(q, v)
+    assert q.vis._legs is None and min(pos.z for pos in legs(q).values()) < lo + 0.06
+    w.take_out(q)
+    v.cabin['feet'] = feet
+    w.put_in_vehicle(q, v)
+    assert q.vis._legs is not None and min(pos.z for pos in legs(q).values()) > lo + 0.2
+    # вышли: ноги снова ведёт анимация — стоя, стопы у земли
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.4)
+    assert pl.ped.vis._legs is None
+    a = pl.ped.vis.actor
+    foot = a.exposeJoint(None, 'modelRoot', 'foot_l')
+    a.update(force=True)
+    assert foot.getPos(pl.ped.node).z < 0.25
+    for q in crew:
+        w.take_out(q)
+        assert q.vis._legs is None
+        q.keep = False
+        w.remove_ped(q)
+    w.remove_vehicle(v)
 
 
 def test_hero_car_steering_wheel_turns_under_the_hands(game, world):

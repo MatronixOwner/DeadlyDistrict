@@ -380,6 +380,9 @@ DARK_INSIDE = (30, 30, 32)
 #   tex      — текстура; size — её размер в игре; pixel — нарисована по точкам (размер меняется без сглаживания)
 #   fixed    — текстура идёт как есть, кузов не перекрашивается
 #   variants — та же текстура в других окрасках: краска — это то, что от окраски к окраске меняется
+#              (сильнее, чем на spread; у купе порог низкий — тёмные тени у стёкол там тоже крашеные)
+#   vector   — увеличить текстуру во столько раз, обводя края заново (tools/vector_tex.py): levels — пороги
+#              яркости для слоёв некрашеного, shades — пороги светотени для слоёв краски
 #   paint    — правило «что здесь краска» для единственной окраски (по цвету точек текстуры, занятых кузовом):
 #                hue, sat, val — оттенок от и до (через ноль тоже: 345..12), насыщенность от и до, яркость от;
 #                keep=[(x0, y0, x1, y1), …] — прямоугольники текстуры (в точках исходника), где краски нет
@@ -388,6 +391,8 @@ DARK_INSIDE = (30, 30, 32)
 #   glass    — материал стёкол: они идут отдельным узлом, игра делает их прозрачными (виден салон)
 #   steer    — деталь «рулевое колесо»: отдельный узел, поворачивается вместе с колёсами
 #   seats    — места в салоне: (x, y, z) таза сидящего в метрах от середины машины на земле; первое — водитель
+#   feet     — куда сидящий ставит ноги, для каждого места: (y, z) лодыжек и половина расстояния между ними.
+#              Пол салона у «Ласточки» на высоте 0,42 м — в 13 см под тазом, место для ног только впереди
 #   head/tail — высота фар и задних фонарей в долях высоты кузова, и разнос в долях полуширины
 CARS = {
     # такси MoiDev: текстура как есть (жёлтый кузов с «шашечками»), не перекрашивается
@@ -413,15 +418,20 @@ CARS = {
                    keep=[(366, 60, 386, 94), (366, 140, 386, 174)]),
         flat={'Material.001': (22, 22, 24)},
         head=(0.50, 0.70), tail=(0.62, 0.78)),
-    # двухместное купе boggle: в файле половина кузова, колесо — отдельным файлом; десять окрасок
+    # двухместное купе boggle: в файле половина кузова, колесо — отдельным файлом; десять окрасок.
+    # Текстура у него 128×128: вблизи край лобового стекла шёл ступеньками, швы — зубцами.  Поэтому она
+    # увеличивается «векторно» (tools/vector_tex.py): стёкла, швы и тени обводятся заново, уже без ступенек.
+    # Некрашеное берётся из цветной окраски (в белой задние фонари и поворотники — серые), белая не нужна:
+    # игра красит кузов сама
     'coupe': dict(
-        file=('boggle_coupe', '2_seater_coupe.glb'), tex=('boggle_coupe', 'textures', 'crystal_white.png'),
+        file=('boggle_coupe', '2_seater_coupe.glb'), tex=('boggle_coupe', 'textures', 'bright_yellow.png'),
         variants=[('boggle_coupe', 'textures', c + '.png') for c in (
-            'bright_yellow', 'laser_blue', 'marina_blue', 'merlot_red', 'noble_green', 'shade_green',
+            'laser_blue', 'marina_blue', 'merlot_red', 'noble_green', 'shade_green',
             'silver_tornado_silver', 'sunlight_yellow', 'sunrise_red')],
         parts=('2_seater_coupe',), mirror=True,
         wheel_file=('boggle_coupe', 'wheel.glb'), wheel_at=((0.735, 1.294), (0.735, -1.135)),
         yup=True, turn='y+', width=1.76, size=128, pixel=True, flat={},
+        vector=4, levels=(85, 160), shades=(0.85, 0.45), spread=6,
         head=(0.50, 0.66), tail=(0.62, 0.62)),
     # машина героя — Bricchi Games: кузов с дверями, капотом и багажником, салон, рулевое колесо; четыре окраски
     'retro': dict(
@@ -432,6 +442,7 @@ CARS = {
         wheels=('L_Tire_front', 'R_Tire_Front', 'L_Tire_Back', 'R_Tire_Back'),
         steer='Steering_wheel', glass='carwindows',
         seats=((-0.43, 0.225, 0.547), (0.43, 0.147, 0.556), (-0.40, -0.473, 0.566), (0.40, -0.473, 0.566)),
+        feet=((0.70, 0.50, 0.11), (0.66, 0.50, 0.11), (-0.12, 0.50, 0.10), (-0.12, 0.50, 0.10)),
         yup=True, turn='y+', width=1.71, size=512, flat={},
         head=(0.44, 0.76), tail=(0.47, 0.70)),
 }
@@ -522,12 +533,21 @@ def car_texture(name, d, body, wheels, flat_uv):
     L = lum(a.astype(np.float64))
     ref = float(np.median(L[m])) if m.any() else 128.0
     shade = np.where(m, np.clip(L / ref * 127.5, 0, 255), 128.0)
+    share = float(m.sum()) / max(1.0, float(used.sum()))
+    if d.get('vector'):
+        # мелкая пиксельная текстура: увеличиваем, обводя края заново; колесо остаётся пиксельным
+        import vector_tex
+        big, bshade = vector_tex.upscale(a, m, shade, int(d['vector']), d.get('levels', ()), d.get('shades', ()),
+                                         dilate(uv_mask(wheels, size), 1))
+        _save(Image.fromarray(big, 'RGBA'), os.path.join(VEH, name + '.png'))
+        _save(Image.fromarray(bshade, 'L'), os.path.join(VEH, name + '_shade.png'))
+        return share
     rgba = np.zeros((size, size, 4), np.uint8)
     rgba[..., :3] = np.where(m[..., None], shade[..., None], a).astype(np.uint8)
     rgba[..., 3] = np.where(m, 0, 255)
     _save(Image.fromarray(rgba, 'RGBA'), os.path.join(VEH, name + '.png'))
     _save(Image.fromarray(shade.astype(np.uint8), 'L'), os.path.join(VEH, name + '_shade.png'))
-    return float(m.sum()) / max(1.0, float(used.sum()))
+    return share
 
 
 def free_spot(parts, size=TEX_SIZE, block=14):
@@ -661,6 +681,8 @@ def convert_car(name, d):
                              r=round(rad, 3))
     if d.get('seats'):
         info['seats'] = [[round(float(v), 3) for v in sxyz] for sxyz in d['seats']]
+    if d.get('feet'):
+        info['feet'] = [[round(float(v), 3) for v in f] for f in d['feet']]
     ws = []
     for w in wheels:
         wp = tri_points(w)

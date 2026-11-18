@@ -100,6 +100,7 @@ class PedVisual(object):
         self._pitch = 0.0
         self._ik = None             # узлы, ведущие кости левой руки, пока она на цевье
         self._bars = None           # узлы, ведущие кости обеих рук ездока, пока он держится за руль
+        self._legs = None           # узлы, ведущие кости ног сидящего в салоне
         self.play('idle', True, 1.0, 0.0)
         self.time = random.random() * 2.0           # чтобы толпа не дышала в такт
 
@@ -455,6 +456,88 @@ class PedVisual(object):
             ni.invertInPlace()
             ik[s][0].setMat(n1 * ci)
             ik[s][1].setMat(n2 * ni)
+
+    def ride_legs(self, rel, left, right, mix, toe=(0.0, 1.0, 0.25), spread=0.35, frame=10):
+        """Сидящий ставит стопы в точки left и right (лодыжки, в осях узла rel).
+
+        В клипах посадки человек сидит как на стуле: голени уходят вниз на полметра.  Салон машины ниже: пол
+        под самым сиденьем, а место для ног — впереди.  Поэтому ноги ведём так же, как руки ездока: бедро и
+        голень поворачиваются, чтобы лодыжка пришла в заданную точку, колено уходит вверх и чуть наружу
+        (spread), стопа ложится носком по направлению toe (оси rel)."""
+        a = self.actor
+        if a is None:
+            return
+        ref = self.models.rider_ref(mix, frame)
+        ik = self._legs
+        if ik is None:
+            ik = self._legs = {}
+            for s in 'lr':
+                ns = (NodePath('thigh_' + s), NodePath('calf_' + s), NodePath('foot_' + s))
+                for n, j in zip(ns, ('thigh_', 'calf_', 'foot_')):
+                    a.controlJoint(n, 'modelRoot', j + s)
+                ik[s] = ns
+        pel = ref['spine'][0]
+        tdir = a.getRelativeVector(rel, LVector3(*toe))
+        tdir.normalize()
+        up = a.getRelativeVector(rel, LVector3(0.0, 0.0, 1.0))
+        up.normalize()
+        fwd = a.getRelativeVector(rel, LVector3(0.0, 1.0, 0.0))
+        fwd.normalize()
+        side = fwd.cross(up)                                    # вправо от сидящего (в осях модели)
+        for s, pt in (('l', left), ('r', right)):
+            m1, m2, mf, toe0, l1, l2 = ref['leg_' + s]
+            t = a.getRelativePoint(rel, pt)                     # лодыжка в осях модели
+            b1 = m1 * pel
+            hip = LVector3(b1.getRow3(3))
+            b2 = m2 * b1
+            d = LVector3(t) - hip
+            dist = d.length()
+            if dist < 1e-4:
+                continue
+            d /= dist
+            dist = min(dist, (l1 + l2) * 0.995)
+            k = (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * dist)
+            h = math.sqrt(max(0.0, l1 * l1 - k * k))
+            e = up + side * (spread if s == 'r' else -spread)   # колено: вверх и наружу
+            pole = e - d * e.dot(d)
+            pole.normalize()
+            kn = hip + d * k + pole * h                         # колено
+            an = hip + d * dist                                 # лодыжка
+            v0 = LVector3(b2.getRow3(3)) - hip
+            v0.normalize()
+            v1 = kn - hip
+            v1.normalize()
+            n1 = _about(b1, hip, _arc(v0, v1))
+            n2 = m2 * n1
+            w0 = LVector3((mf * n2).getRow3(3)) - kn
+            w0.normalize()
+            w1 = an - kn
+            w1.normalize()
+            n2 = _about(n2, kn, _arc(w0, w1))
+            nf = mf * n2
+            # стопа: носок — по направлению toe
+            t0 = nf.xformVec(toe0)
+            t0.normalize()
+            nf = _about(nf, LVector3(nf.getRow3(3)), _arc(t0, tdir))
+            pi = LMatrix4(pel)
+            pi.invertInPlace()
+            i1 = LMatrix4(n1)
+            i1.invertInPlace()
+            i2 = LMatrix4(n2)
+            i2.invertInPlace()
+            ik[s][0].setMat(n1 * pi)
+            ik[s][1].setMat(n2 * i1)
+            ik[s][2].setMat(nf * i2)
+
+    def ride_legs_off(self):
+        """Вернуть ноги клипу анимации (седок вышел из машины)."""
+        if self._legs is not None:
+            self._legs = None
+            a = self.actor
+            if a is not None:
+                for s in 'lr':
+                    for j in ('thigh_', 'calf_', 'foot_'):
+                        a.releaseJoint('modelRoot', j + s)
 
     def ride_arms_off(self):
         """Вернуть руки клипу анимации (ездок слез)."""

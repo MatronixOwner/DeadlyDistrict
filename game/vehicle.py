@@ -817,7 +817,7 @@ class Vehicle(object):
         self.swheel = None
         self._swheel_deg = 0.0
         if not spec.bike and self.minfo is not None and self.minfo.get('seats'):
-            self.cabin = dict(seats=list(self.minfo['seats']), who={})
+            self.cabin = dict(seats=list(self.minfo['seats']), feet=list(self.minfo.get('feet') or ()), who={})
             self._new_swheel()
         sh = shadow_template(w.assets).copyTo(self.node)
         sh.setScale(spec.W * 0.72, spec.L * 0.62, 1.0)
@@ -953,7 +953,17 @@ class Vehicle(object):
         if getattr(ped, '_ride_parent', None) is None:
             ped._ride_parent = ped.node.getParent()
         ped.node.setScale(CABIN_SCALE)                  # до посадки: таз и ладони считаются уже для этого роста
-        self._pose_rider(vis, ped.node, cab['seats'][idx], 'car' if idx == 0 else 'seat', bars=(idx == 0))
+        pose = 'car' if idx == 0 else 'seat'
+        seat = cab['seats'][idx]
+        self._pose_rider(vis, ped.node, seat, pose, bars=(idx == 0))
+        feet = cab['feet']
+        if idx < len(feet):
+            # ноги: пол салона под самым сиденьем, поэтому стопы стоят впереди, на полу, а колени подняты —
+            # иначе голени «стула» из клипа проходят сквозь днище и торчат под машиной
+            from . import bikes
+            fy, fz, half = feet[idx]
+            vis.ride_legs(self.tilt, LPoint3(seat[0] - half, fy, fz), LPoint3(seat[0] + half, fy, fz),
+                          bikes.POSES[pose]['clips'])
         ped.shadow.hide()
         ped.node.show()
         return True
@@ -987,6 +997,8 @@ class Vehicle(object):
         self._let_go(ped.vis)
         if self.cabin is not None:
             self.cabin['who'].pop(ped, None)
+            if ped.vis is not None:
+                ped.vis.ride_legs_off()
         if ped.removed or ped.node.isEmpty():
             return                                  # фигуру уже убрали: возвращать некого
         if self.cabin is not None:

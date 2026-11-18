@@ -56,7 +56,8 @@ VEHICLE_MODELS = {
     # готовые модели с itch.io: седан MoiDev, хэтчбек designersoup, купе boggle и машина героя — Bricchi Games
     'shade': ('sus', {}),
     'gti': ('golf', {}),
-    'coupe': ('coupe', {}),
+    # текстура купе увеличена «векторно» (tools/vector_tex.py) — её края гладкие, и растягивать её надо плавно
+    'coupe': ('coupe', {'smooth': True}),
     'retro': ('retro', {}),
 }
 
@@ -210,7 +211,9 @@ class Models(object):
         res = dict(model=ent[0], opt=opt, scale=(sx, sy, sz), wheel_scale=ws * wk, wheels=wheels, lift=lift,
                    wheel_r=(wheels[0][2] if wheels else spec.wheel_r), head=pts('head'), tail=pts('tail'),
                    siren=pts('siren') if opt.get('siren') else [], height=height + lift,
-                   fixed=bool(info.get('fixed')), cut=bool(info.get('cut')), seats=pts('seats'), steer=None)
+                   fixed=bool(info.get('fixed')), cut=bool(info.get('cut')), seats=pts('seats'), steer=None,
+                   # куда сидящие ставят ноги: для каждого места — (y лодыжек, z лодыжек, полурасстояние между ними)
+                   feet=[(f[0] * sy, f[1] * sz + lift, f[2] * sx) for f in info.get('feet', [])])
         st = info.get('steer')
         if st:
             # рулевое колесо: где стоит, куда смотрит колонка, радиус обода
@@ -271,7 +274,7 @@ class Models(object):
             img.copyChannel(self._pnm(model + '_cut'), 0, 3)
         tex = Texture('veh-%s' % '-'.join(str(x) for x in key))
         tex.load(img)
-        self.assets.setup_filter(tex)
+        self.assets.setup_filter(tex, smooth=bool(opt.get('smooth')))
         self._vtex[key] = tex
         return tex
 
@@ -419,7 +422,8 @@ class Models(object):
         return self._arm
 
     def rider_ref(self, mix, frame=10):
-        """Руки ездока в позе посадки mix = ((клип, вес), ...) — то, от чего считается хват руля.
+        """Руки и ноги ездока в позе посадки mix = ((клип, вес), ...) — то, от чего считаются хват руля и
+        постановка стоп.
 
         Для каждой руки ('l', 'r'): матрица ключицы в осях модели, матрицы плеча, предплечья и кисти
         относительно родителей, точка ладони в осях кисти, длины плеча и предплечья; 'spine' — матрица таза
@@ -449,8 +453,25 @@ class Models(object):
                             a.exposeJoint(None, 'modelRoot', 'middle_01_' + s))
             pel = a.exposeJoint(None, 'modelRoot', 'pelvis')
             sp = a.exposeJoint(None, 'modelRoot', 'spine_01', localTransform=True)
+            legs = {}
+            for s in 'lr':
+                legs[s] = (a.exposeJoint(None, 'modelRoot', 'thigh_' + s, localTransform=True),
+                           a.exposeJoint(None, 'modelRoot', 'calf_' + s, localTransform=True),
+                           a.exposeJoint(None, 'modelRoot', 'foot_' + s, localTransform=True),
+                           a.exposeJoint(None, 'modelRoot', 'foot_' + s),
+                           a.exposeJoint(None, 'modelRoot', 'ball_' + s))
             a.update(force=True)
             res = {'spine': (LMatrix4(pel.getMat()), LMatrix4(sp.getMat()))}
+            # ноги: матрицы бедра, голени и стопы относительно родителей, длины бедра и голени, направление
+            # «лодыжка -> носок» и «вниз, к подошве» в осях стопы (по ним стопа ставится на пол)
+            for s in 'lr':
+                th, ca, fo, net, ball = legs[s]
+                m1, m2, mf = LMatrix4(th.getMat()), LMatrix4(ca.getMat()), LMatrix4(fo.getMat())
+                inv = LMatrix4(net.getMat())
+                inv.invertInPlace()
+                toe = inv.xformVec(ball.getPos() - net.getPos())
+                toe.normalize()
+                res['leg_' + s] = (m1, m2, mf, toe, m2.getRow3(3).length(), mf.getRow3(3).length())
             for s in 'lr':
                 clav, up, lo, ha, net, mid = nodes[s]
                 m1, m2, mh = LMatrix4(up.getMat()), LMatrix4(lo.getMat()), LMatrix4(ha.getMat())
