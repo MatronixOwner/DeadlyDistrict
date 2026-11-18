@@ -13,8 +13,9 @@ import harness
 from bot import Bot
 from game import missions as M
 from game import settings as settings_mod
-from game.defs import W_PISTOL, W_UZI, W_ROCKET, random_look
-from game.vehicle import Vehicle
+from game.defs import W_FIST, W_PISTOL, W_UZI, W_ROCKET, random_look
+from game.collision import F_CAR
+from game.vehicle import Vehicle, SPECS, ZONE_CARS
 
 DT = 1.0 / 30.0
 
@@ -533,7 +534,7 @@ def test_graphics_settings_menu(game, world):
 # ----------------------------------------------------------------------
 def _after_intro(g, w, errors):
     """После пролога (досмотренного или пропущенного) игра в рабочем состоянии: герой стоит на остановке,
-    управление у игрока, и ему звонит брат."""
+    управление у игрока, и ему звонит брат.  От погони в городе ничего не осталось."""
     ms = w.missions
     pl = w.player
     assert ms.intro is None and g.state == 'play' and not g.ui.active
@@ -549,6 +550,20 @@ def _after_intro(g, w, errors):
     assert ms.markers and all(not mk.np.isHidden() for mk in ms.markers)
     assert abs(w.sky.hour - 8.0) < 0.3 and w.sky.weather == 'clear'
     assert g._errors_total == errors
+    # розыска нет, из машины снова можно выйти, сигнализация молчит
+    pol = w.police
+    assert pol.level == 0 and pol.locked is None and not pl.lock_in
+    assert not [u for u in pol.units if not u.removed] and not [q for q in w.peds if q.target is pl.ped]
+    assert pl.vehicle is None and pl.state == 'foot' and w.respawn_kind is None
+    alarm = g.audio.loops.get('alarm')
+    assert alarm is None or not alarm[2]
+    # «Ласточка» в городе одна — та, что ждёт в гараже у дома; машина ограбления осталась в прошлом
+    retro = [v for v in w.vehicles if v.kind == 'retro']
+    assert retro == [w.hero_car.v] and retro[0] in w.garage.cars
+    assert not retro[0].immune and retro[0].driver is None and retro[0].rescue is None
+    # пролог в статистику не идёт, денег и оружия он не оставляет
+    assert not [k for k, val in w.stats.items() if val and k != 'play_time'], w.stats
+    assert w.stats['play_time'] < 3.0 and pl.money == 0 and pl.weapon.id == W_FIST
     # управление вернулось: герой идёт
     x0, y0 = pl.pos()
     w.cam.yaw = math.pi
@@ -561,8 +576,42 @@ def _after_intro(g, w, errors):
     assert w.hud.phone_on
 
 
+def _to_chase(g):
+    """Пролистать сценку у банка (Enter — следующий кадр) до погони.  Возвращает число нажатий."""
+    ms = g.world.missions
+    n = 0
+    while ms.intro is not None and not ms.intro['play'] and n < 20:
+        harness.run(g, 0.4)
+        harness.press(g, 'enter')
+        n += 1
+    assert ms.intro is not None and ms.intro['play'], n
+    return n
+
+
+def _watch_intro(g, limit, each=None):
+    """Досмотреть пролог без нажатий.  Возвращает реплики, крупные надписи и прошедшее время."""
+    w = g.world
+    ms = w.missions
+    lines, bigs = [], []
+    t = 0.0
+    while ms.intro is not None and t < limit:
+        g.step(DT)
+        t += DT
+        text = w.hud.sub_plain
+        if text and (not lines or lines[-1] != text):
+            lines.append(text)
+        if w.hud.big_t > 0.0:
+            big = w.hud.big_text.getText()
+            if not bigs or bigs[-1] != big:
+                bigs.append(big)
+        if each is not None and ms.intro is not None:
+            each(ms.intro)
+    return lines, bigs, t
+
+
 def test_intro_plays_to_the_end(game):
-    """Пролог без единого нажатия: трасса, мост, остановка — и игра начинается звонком брата."""
+    """Пролог без единого нажатия: банк, сигнализация, погоня (герой стоит на месте — его берут или выходит
+    время), арест, «Три года спустя», автобус, остановка — и игра начинается звонком брата."""
     g = game
     random.seed(7)
     errors = g._errors_total
@@ -571,61 +620,271 @@ def test_intro_plays_to_the_end(game):
     ms = w.missions
     pl = w.player
     assert ms.intro is not None and pl.freeze
-    lines = []
-    seen = dict(bus=False, hidden=False, walked=False, room=False, paused=False)
-    t = 0.0
-    while ms.intro is not None and t < 120.0:
-        g.step(DT)
-        t += DT
-        text = w.hud.sub_plain
-        if text and (not lines or lines[-1] != text):
-            lines.append(text)
-        it = ms.intro
-        if it is None:
-            break
+    seen = dict(car=False, crew=False, alarm=False, chase=False, cops=False, bus=False, hidden=False, walked=False,
+                room=False, paused=False)
+    ends = set()
+
+    def each(it):
+        car = it['car']
+        if it['play']:
+            seen['chase'] = True
+            seen['cops'] |= len(w.police.units) >= 2            # погоня настоящая: патрульные машины рядом
+            assert w.hud.visible and w.traffic.enabled and w.police.level == 3
+            if w.respawn_kind is None and it['end'] is None:
+                assert not pl.freeze and pl.lock_in and pl.vehicle is car
+        else:
+            assert pl.freeze and not pl.lock_in
+            if it['end'] is None:
+                assert not w.hud.visible            # (сразу после погони HUD гаснет вместе с экраном)
+        ends.add(it['end'])
+        seen['car'] |= car is not None and pl.vehicle is car and car.kind == 'retro'
+        seen['crew'] |= car is not None and [q.vehicle for q in it['peds']] == [car, car]
+        alarm = g.audio.loops.get('alarm')
+        seen['alarm'] |= bool(alarm and alarm[2])
         seen['bus'] |= it['bus'] is not None and abs(it['bus'].speed) > 5.0
         seen['hidden'] |= pl.ped.node.isHidden()
         seen['walked'] |= pl.script_move is not None and pl.ped.speed > 0.5
         seen['room'] |= w.interiors.current is not None
         seen['paused'] |= g.state != 'play'
-        assert pl.freeze and not w.hud.visible
-        assert w.police.level == 0 and pl.ped.health == 100
-    assert 20.0 < t < 60.0, t
-    assert len(lines) >= 4 and lines[0].startswith('Порт-Глухов')
+        assert pl.ped.health == 100
+
+    lines, bigs, t = _watch_intro(g, 260.0, each)
+    assert 50.0 < t < 240.0, t
+    assert lines[0].startswith('Порт-Глухов') and any('Сигнализация' in s_ for s_ in lines)
+    assert any(s_.startswith('Седой: Гони') for s_ in lines) and any(s_.startswith('Уходи от погони') for s_ in lines)
     assert any(s_.startswith('Водитель:') for s_ in lines) and any('брат' in s_ for s_ in lines)
-    assert not any('Вано' in s_ for s_ in lines)                 # старого сюжета в прологе больше нет
-    assert seen == dict(bus=True, hidden=True, walked=True, room=False, paused=False), seen
+    assert not any('Вано' in s_ for s_ in lines)                 # старого сюжета в прологе нет
+    assert ends - {None} <= {'busted', 'time'} and len(ends) == 2, ends
+    assert 'АРЕСТОВАН' in bigs and bigs[-1] == 'ТРИ ГОДА СПУСТЯ', bigs
+    assert seen == dict(car=True, crew=True, alarm=True, chase=True, cops=True, bus=True, hidden=True, walked=True,
+                        room=False, paused=False), seen
     _after_intro(g, w, errors)
 
 
-@pytest.mark.parametrize('when', [0.1, 3.0, 9.0, 18.0, 25.5, 30.0])
+def test_intro_chase_to_the_bridge(game):
+    """Погоня пролога: машину ведёт игрок, выйти из неё нельзя, розыск не спадает, машине ничего не делается.
+    На мосту ждёт заслон: три патрульные машины поперёк дороги и полицейские с пистолетами."""
+    g = game
+    random.seed(23)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    ms = w.missions
+    pl = w.player
+    _to_chase(g)
+    it = ms.intro
+    car = it['car']
+    mk = it['marker']
+    assert car.kind == 'retro' and car.immune and pl.vehicle is car and pl.lock_in and not pl.freeze
+    assert [q.vehicle for q in it['peds']] == [car, car]            # Седой и Клык уже в машине
+    who = car.cabin['who']                                          # …и их видно за стеклом, как и Макса
+    assert who[pl.ped] == 0 and sorted(who[q] for q in it['peds']) == [1, 2]
+    assert not any(q.node.isHidden() for q in it['peds'] + [pl.ped])
+    assert w.police.level == 3 and w.police.locked == 3 and w.hud.visible
+    north = [s_ for s_ in w.city.bridges if s_['bridge'].get('name') == 'north'][0]
+    assert mk in ms.markers and it['blip'] in w.hud.blips
+    assert abs(mk.x - north['c']) < 6.0 and north['a'] < mk.y < north['b']       # метка — на Большом мосту
+    # машина слушается газа
+    x0, y0 = car.x, car.y
+    harness.run(g, 3.0, keys=('w',))
+    assert math.hypot(car.x - x0, car.y - y0) > 8.0
+    # выйти нельзя, машину не разбить, розыск сам не спадает
+    harness.press(g, 'f')
+    harness.run(g, 1.0)
+    assert pl.vehicle is car and pl.state == 'car'
+    w.police.cool_t = 1000.0
+    harness.run(g, 0.3)
+    assert w.police.level == 3
+    hp = car.health
+    car.damage(5000.0, cause='explosion')
+    assert car.health == hp and not car.dead
+    # Enter, пробел и мышь здесь — управление машиной, а не «следующий кадр»
+    for key in ('enter', 'space', 'mouse1'):
+        harness.press(g, key)
+        harness.run(g, 0.3)
+    assert ms.intro is it and it['play'] and it['end'] is None
+    # подъезжаем к мосту
+    car.x, car.y, car.yaw = mk.x, mk.y - 26.0, math.pi / 2
+    car.vx = car.vy = car.speed = car.omega = 0.0
+    car.sync()
+    t = 0.0
+    while it['end'] is None and t < 8.0:
+        harness.run(g, 0.2, keys=('w',))
+        t += 0.2
+    assert it['end'] == 'bridge', (t, car.x, car.y, mk.x, mk.y)
+    harness.run(g, 1.5)
+    # заслон: погоня кончилась, декорации расставлены
+    assert not it['play'] and pl.freeze and not pl.lock_in and not w.hud.visible
+    assert w.police.level == 0 and w.police.locked is None and it['marker'] is None and mk not in ms.markers
+    block = it['cars']
+    assert len(block) == 3 and all(u.kind == 'police' and u.siren and u.keep for u in block)
+    cops = [q for q in it['peds'] if q.kind == 'cop']
+    assert len(cops) == 4 and all(q.aiming and q.weapon.id == W_PISTOL and q.vehicle is None for q in cops)
+    assert pl.vehicle is car and abs(car.speed) < 0.1 and all(u.y > car.y + 12.0 for u in block)
+    assert all(car.y < q.y < min(u.y for u in block) for q in cops)             # полицейские — перед машинами
+    assert all(abs(u.x - north['c']) < 9.0 and north['a'] < u.y < north['b'] for u in block)
+    assert w.hud.sub_plain.startswith('Мост перекрыли')
+    lines, bigs, t = _watch_intro(g, 80.0)
+    assert bigs == ['АРЕСТОВАН', 'ТРИ ГОДА СПУСТЯ'], bigs
+    assert any(s_.startswith('Водитель:') for s_ in lines)
+    assert all(u.removed for u in block) and all(q.removed for q in cops) and car.removed
+    _after_intro(g, w, errors)
+
+
+def test_intro_arrest_in_the_chase(game):
+    """Арест в погоне пролога — часть сюжета: героя не везут в участок и не штрафуют, пролог идёт дальше
+    (уже без заслона на мосту)."""
+    g = game
+    random.seed(29)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    ms = w.missions
+    pl = w.player
+    _to_chase(g)
+    it = ms.intro
+    harness.run(g, 2.0, keys=('w',))
+    w.on_player_busted()
+    assert w.respawn_kind == 'busted' and it['play']
+    t = 0.0
+    while w.respawn_kind is not None and t < 8.0:
+        harness.run(g, 0.2)
+        t += 0.2
+    assert w.respawn_kind is None and it['end'] == 'busted'
+    harness.run(g, 0.5)
+    assert ms.intro is it and not it['play'] and pl.freeze and pl.invincible
+    assert w.police.level == 0 and not it['cars']
+    assert w.hud.sub_plain.startswith('Далеко мы не ушли')
+    px, py = pl.pos()
+    lx, ly = w.city.landmarks['police']['door']
+    assert math.hypot(px - lx, py - ly) > 30.0                      # не у участка
+    lines, bigs, t = _watch_intro(g, 80.0)
+    assert bigs[-1] == 'ТРИ ГОДА СПУСТЯ' and any(s_.startswith('Водитель:') for s_ in lines)
+    assert not any('перекры' in s_ for s_ in lines)
+    _after_intro(g, w, errors)
+
+
+def test_intro_car_in_the_water(game):
+    """Машина в погоне пролога слетела в воду: никто не тонет — «из воды вытащили уже в наручниках»."""
+    g = game
+    random.seed(31)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    c = w.city
+    ms = w.missions
+    pl = w.player
+    _to_chase(g)
+    it = ms.intro
+    car = it['car']
+    mk = it['marker']
+    # вода сбоку от моста
+    spot = None
+    for d in range(12, 120, 4):
+        x, y = mk.x + d, mk.y + 40.0
+        if c.in_water(x, y) and c.ground_z(x, y) < -0.6:
+            spot = (x, y)
+            break
+    assert spot is not None
+    car.x, car.y = spot
+    car.vx = car.vy = car.speed = 0.0
+    car.sync()
+    harness.run(g, 0.3)
+    assert it['end'] == 'water'
+    harness.run(g, 1.5)
+    assert not car.sunk and not car.dead and pl.ped.health == 100 and not pl.ped.dead
+    assert not any(q.dead for q in it['peds'])
+    assert not it['play'] and len(it['cars']) == 3 and pl.vehicle is car
+    assert not c.in_water(car.x, car.y) or c.ground_z(car.x, car.y) > 0.0       # машина снова на мосту
+    assert w.hud.sub_plain.startswith('Из воды нас вытащили')
+    lines, bigs, t = _watch_intro(g, 80.0)
+    assert bigs == ['АРЕСТОВАН', 'ТРИ ГОДА СПУСТЯ'], bigs
+    _after_intro(g, w, errors)
+
+
+@pytest.mark.parametrize('when', [0.1, 3.0, 9.0, 14.0])
 def test_intro_can_be_skipped_any_time(game, when):
-    """Esc в любой момент пролога: декорации убраны, герой на остановке, пауза не открылась."""
+    """Esc в любой момент сценки: декорации убраны, герой на остановке, пауза не открылась."""
     g = game
     random.seed(11)
     errors = g._errors_total
     g.new_game()
     w = g.world
     harness.run(g, when)
-    assert w.missions.intro is not None
+    assert w.missions.intro is not None and not w.missions.intro['play']
     harness.press(g, 'escape')
     harness.run(g, 0.3)
     _after_intro(g, w, errors)
 
 
+@pytest.mark.parametrize('stage', ['chase', 'arrest', 'roadblock', 'bus'])
+def test_intro_can_be_skipped_later(game, stage):
+    """Пропуск после сценки у банка.  В погоне Esc — обычная пауза, и в ней есть «Пропустить пролог»
+    (он срабатывает и на экране «АРЕСТОВАН», куда паузу приводит потеря фокуса окна); у заслона и в автобусе
+    Esc снова пропускает сразу."""
+    g = game
+    random.seed(37)
+    errors = g._errors_total
+    g.new_game()
+    w = g.world
+    ms = w.missions
+    _to_chase(g)
+    it = ms.intro
+    harness.run(g, 2.0, keys=('w',))
+    if stage in ('chase', 'arrest'):
+        if stage == 'arrest':
+            w.on_player_busted()
+            harness.run(g, 1.5)
+            assert w.respawn_kind == 'busted'
+            harness.press(g, 'escape')          # на экране ареста Esc паузу не открывает
+            assert g.state == 'play'
+            g.pause()
+        else:
+            harness.press(g, 'escape')
+        assert g.state == 'pause' and ms.intro is it
+        menu = g.ui.stack[-1]
+        labels = [i_.label for i_ in menu.items]
+        assert labels[:2] == ['Продолжить', 'Пропустить пролог']
+        menu.items[1].action()
+    else:
+        it['end'] = 'bridge'                    # как будто доехали до метки
+        harness.run(g, 2.0)
+        assert not it['play'] and len(it['cars']) == 3
+        if stage == 'bus':
+            t = 0.0
+            while ms.intro is not None and it['bus'] is None and t < 40.0:
+                harness.run(g, 0.2)
+                t += 0.2
+            assert it['bus'] is not None and not it['cars']
+            harness.run(g, 1.0)
+        harness.press(g, 'escape')
+    harness.run(g, 0.3)
+    assert g.state == 'play' and ms.intro is None
+    _after_intro(g, w, errors)
+    # в обычной игре пункта «Пропустить пролог» в паузе нет
+    harness.press(g, 'escape')
+    assert g.state == 'pause' and 'Пропустить пролог' not in [i_.label for i_ in g.ui.stack[-1].items]
+    g.ui.close_all()
+    g.resume()
+
+
 def test_intro_enter_steps_through_shots(game):
-    """Enter листает кадры пролога: за несколько нажатий он заканчивается."""
+    """Enter листает кадры пролога: несколько нажатий до погони и ещё несколько — после неё."""
     g = game
     random.seed(13)
     errors = g._errors_total
     g.new_game()
     w = g.world
+    ms = w.missions
+    n = _to_chase(g)
+    assert 3 <= n <= 8, n
+    ms.intro['end'] = 'bridge'
     n = 0
-    while w.missions.intro is not None and n < 30:
+    while ms.intro is not None and n < 30:
         harness.run(g, 0.5)
         harness.press(g, 'enter')
         n += 1
-    assert 3 <= n < 20, n
+    assert 3 <= n < 16, n
     harness.run(g, 0.3)
     _after_intro(g, w, errors)
 
@@ -662,24 +921,31 @@ def test_first_call_and_hints(game):
         w.hud.help = orig
 
 
-def test_intro_interrupted_by_menu(game):
-    """Пролог прервали (окно потеряло фокус → пауза → главное меню): мир не остаётся «выключенным»."""
+@pytest.mark.parametrize('when', [6.0, 22.0])
+def test_intro_interrupted_by_menu(game, when):
+    """Пролог прервали (окно потеряло фокус → пауза → главное меню) — в сценке или посреди погони:
+    мир не остаётся «выключенным», а розыск и запертая машина не переходят в следующую игру."""
     g = game
     random.seed(19)
     errors = g._errors_total
     g.new_game()
     w = g.world
-    harness.run(g, 20.0)
-    assert w.missions.intro is not None and not w.traffic.enabled
+    harness.run(g, when)
+    it = w.missions.intro
+    assert it is not None and it['play'] == (when > 18.0)
+    assert w.traffic.enabled == it['play'] and w.player.lock_in == it['play']
     g.pause()                                   # так срабатывает потеря фокуса окна
     assert g.state == 'pause'
     g.to_main_menu()
     w = g.world
     assert w.traffic.enabled and w.sky.time_scale == 1.0 and w.scene_engine is None
     assert g.state == 'menu' and w.missions.intro is None and not w.interiors.cinema
+    assert w.police.level == 0 and w.police.locked is None and not w.player.lock_in
+    alarm = g.audio.loops.get('alarm')
+    assert alarm is None or not alarm[2]
     harness.run(g, 1.0)
-    assert not any(v.scripted for v in w.vehicles)
-    w = harness.start_game(g, street=False, story=True)
+    assert not any(v.scripted or v.kind == 'retro' for v in w.vehicles)
+    w = harness.start_game(g, street=False, story=True, hero=True)
     _after_intro(g, w, errors)
 
 
@@ -1201,6 +1467,225 @@ def test_camera_stays_under_garage_roof(game, world):
     harness.run(game, 0.6)
     assert gar.contains(w.cam.x, w.cam.y, -0.5)
     assert w.cam.z < w.city.ceiling(gar.cx, gar.cy) - 0.2
+
+
+# ----------------------------------------------------------------------
+# машина героя
+# ----------------------------------------------------------------------
+def _with_hero_car(game, seed):
+    """Свободный город, в котором «Ласточка» на месте (обычно проверки начинают без неё)."""
+    random.seed(seed)
+    w = harness.start_game(game, hero=True)
+    w.player.invincible = False
+    harness.quiet(w, peds=True)                              # машину героя quiet() не трогает
+    return w
+
+
+def _leave_in_town(game, w, car, x, y):
+    """Выгнать машину из гаража и оставить в точке (x, y): герой рядом с гаражом, чтобы тот это заметил."""
+    gar = w.garage
+    w.player.teleport(gar.cx, gar.rect[1] - 20.0)
+    car.x, car.y = x, y
+    car.vx = car.vy = car.speed = 0.0
+    car.sync()
+    harness.run(game, 0.5)
+    assert car not in gar.cars and car.keep
+
+
+def test_hero_car_waits_in_the_garage(game):
+    """Новая игра: «Ласточка», машина Макса, стоит в гараже у дома и отмечена на радаре.  Она одна на весь
+    город; сесть в неё — не угон; оставленная где угодно, она никуда не исчезает."""
+    from game.garage import HERO_KIND
+    from game.traffic import ZONE_PARKED
+    w = _with_hero_car(game, 41)
+    pl = w.player
+    gar = w.garage
+    hc = w.hero_car
+    car = hc.v
+    assert HERO_KIND == 'retro' and SPECS['retro'].title == 'Ласточка'
+    assert car is not None and car.kind == 'retro' and car.hero and car.keep and car.owner == 'player'
+    assert gar.cars == [car] and math.hypot(car.x - gar.slots[0][0], car.y - gar.slots[0][1]) < 0.1
+    assert abs(car.yaw - gar.yaw) < 0.01 and car.mode == Vehicle.PARKED
+    assert [v for v in w.vehicles if v.kind == 'retro'] == [car]
+    # в потоке машин и на стоянках таких нет
+    assert not any(k == 'retro' for cars in ZONE_CARS.values() for k, _ in cars)
+    assert not any('retro' in kinds for kinds in ZONE_PARKED.values())
+    # значок на радаре
+    harness.run(game, 0.3)
+    blip = hc.blip
+    assert blip is not None and blip in w.hud.blips and blip.tex == 'blip_car' and blip.obj is car
+    # ворота открываются навстречу; сел — не угон, розыска нет, значок на время убран
+    pl.teleport(car.x, gar.rect[1] - 5.0)
+    harness.run(game, 1.0)
+    assert gar.k > 0.9
+    pl.teleport(car.x - 1.5, car.y)
+    stolen = w.stats['stolen']
+    pl.enter_vehicle(car, silent=True)
+    harness.run(game, 0.5)
+    assert pl.vehicle is car and w.stats['stolen'] == stolen and w.police.level == 0
+    assert hc.blip is None and blip not in w.hud.blips and gar.cars == [car]
+    # выезжаем задним ходом
+    t = 0.0
+    while t < 8.0 and gar.contains(car.x, car.y, -2.0):
+        harness.run(game, 0.2, keys=('s',))
+        t += 0.2
+    assert not gar.contains(car.x, car.y) and car not in gar.cars and car.keep and car.hero
+    # оставили на другом конце города и ушли: она там и стоит, и значок ведёт к ней
+    tx, ty = w.city.landmarks['terminal']['road']
+    car.x, car.y = tx, ty
+    car.vx = car.vy = car.speed = 0.0
+    car.sync()
+    pl.leave_vehicle(force=True)
+    harness.run(game, 0.5)
+    assert hc.blip is not None and hc.blip.obj is car
+    ax, ay = w.city.landmarks['airfield']['apron']
+    assert math.hypot(ax - tx, ay - ty) > 400.0
+    pl.teleport(ax, ay)
+    harness.run(game, 40.0)
+    assert hc.v is car and car in w.vehicles and not car.removed and not gar.cars
+    assert math.hypot(car.x - tx, car.y - ty) < 1.0
+
+
+def test_hero_car_comes_back_home(game):
+    """Разбитая (или утонувшая) «Ласточка» через полминуты снова стоит в гараже — в той же окраске и с тем же
+    тюнингом.  Но не на глазах у героя: пока он возле дома, гараж пуст.  Остов убирают, как любой другой."""
+    from game.garage import HERO_BACK, HERO_FAR
+    w = _with_hero_car(game, 43)
+    pl = w.player
+    gar = w.garage
+    hc = w.hero_car
+    car = hc.v
+    car.set_paint(3)
+    car.apply_tune({'engine': 2, 'neon': 1})
+    harness.run(game, 0.2)
+    assert hc.paint == 3 and hc.tune == {'engine': 2, 'neon': 1}
+    said = []                                               # что сказано о «Ласточке» (прочие подсказки не в счёт)
+    orig = w.hud.help
+    w.hud.help = lambda text, dur=6.0: said.append(text) if 'Ласточк' in text else None
+    try:
+        # герой далеко от дома, машину взорвали прямо в гараже
+        tx, ty = w.city.landmarks['terminal']['door']
+        assert math.hypot(tx - gar.cx, ty - gar.cy) > HERO_FAR
+        pl.teleport(tx, ty)
+        car.explode(False)
+        harness.run(game, 1.0)
+        assert car.dead and not hc.alive() and hc.blip is None and not car.keep and not car.hero
+        harness.run(game, HERO_BACK - 3.0)
+        assert not hc.alive() and not said
+        harness.run(game, 4.0)
+        new = hc.v
+        assert new is not car and hc.alive() and new.kind == 'retro' and new.hero and new.keep
+        assert new.paint == 3 and new.tune == {'engine': 2, 'neon': 1} and new.health == new.max_health
+        assert gar.cars == [new] and gar.contains(new.x, new.y, 0.3) and car.removed
+        assert len([v for v in w.vehicles if v.kind == 'retro']) == 1
+        assert len(said) == 1
+        # герой возле дома: пока он тут, новая машина не появляется
+        del said[:]
+        pl.teleport(gar.cx, gar.rect[1] - 30.0)
+        harness.run(game, 0.5)
+        new.explode(False)
+        harness.run(game, HERO_BACK + 10.0)
+        assert not hc.alive() and not said and not gar.cars
+        # ушёл — и она на месте
+        pl.teleport(tx, ty)
+        harness.run(game, 1.0)
+        third = hc.v
+        assert hc.alive() and third in gar.cars and third.paint == 3 and len(said) == 1
+        # утонувшая возвращается так же
+        third._sink()
+        assert third.sunk and not hc.alive()
+        harness.run(game, HERO_BACK + 1.5)
+        assert hc.alive() and hc.v is not third and gar.cars == [hc.v]
+        assert len([v for v in w.vehicles if v.kind == 'retro' and not v.removed]) == 1
+    finally:
+        w.hud.help = orig
+
+
+def test_hero_car_is_saved(game):
+    """Сохранение помнит окраску и тюнинг «Ласточки».  После загрузки она в гараже — одна, а не две.
+    Сохранение прежней версии (без записи о ней) тоже получает машину; занятый гараж ей не помеха."""
+    w = _with_hero_car(game, 47)
+    hc = w.hero_car
+    car = hc.v
+    car.set_paint(5)
+    car.apply_tune({'spoiler': 1, 'rims': 2})
+    harness.run(game, 0.2)
+    assert w.missions.save_game()
+    data = settings_mod.load_save()
+    assert data['hero'] == {'paint': 5, 'tune': {'spoiler': 1, 'rims': 2}}
+    assert [c['kind'] for c in data['garage']] == ['retro']
+    game.to_main_menu()
+    assert not [v for v in game.world.vehicles if v.kind == 'retro'] and game.world.hero_car.v is None
+    game.continue_game()
+    w = game.world
+    hc = w.hero_car
+    retro = [v for v in w.vehicles if v.kind == 'retro']
+    assert len(retro) == 1 and hc.v is retro[0] and retro[0].hero and retro[0].keep and w.garage.cars == retro
+    assert retro[0].paint == 5 and retro[0].tune == {'spoiler': 1, 'rims': 2}
+    # сохранение прежней версии: о «Ласточке» в нём ни слова, а гараж занят тремя машинами
+    del data['hero']
+    data['garage'] = [dict(kind=k, paint=1, x=x, y=y, yaw=w.garage.yaw, hp=900.0, tune={})
+                      for k, (x, y) in zip(('sedan', 'hatch', 'pickup'), w.garage.slots)]
+    assert settings_mod.write_save(data)
+    game.to_main_menu()
+    game.continue_game()
+    w = game.world
+    gar = w.garage
+    hc = w.hero_car
+    assert sorted(v.kind for v in gar.cars) == ['hatch', 'pickup', 'sedan']
+    car = hc.v
+    assert hc.alive() and car.kind == 'retro' and car.paint == 0 and car not in gar.cars and car.keep
+    # она ждёт на площадке перед воротами и ни с чем не пересекается
+    assert abs(car.x - gar.cx) < 0.1 and 3.0 < gar.rect[1] - car.y < 6.0
+    assert not w.static.overlap_circle(car.x, car.y, 1.0, F_CAR)
+    # новая игра начинается с чистого листа: заводская окраска, тюнинга нет
+    w = harness.start_game(game, hero=True)
+    assert w.hero_car.v.paint == 0 and not w.hero_car.v.tune and w.garage.cars == [w.hero_car.v]
+
+
+def test_sleeping_at_home_brings_the_hero_car_back(game):
+    """Оставил «Ласточку» в городе, пришёл домой и лёг спать (сохранение у кровати): к утру она в гараже —
+    как было бы и после загрузки.  Об этом сказано в вопросе о сохранении.  Машину у дома не трогают."""
+    w = _with_hero_car(game, 53)
+    pl = w.player
+    gar = w.garage
+    hc = w.hero_car
+    car = hc.v
+    car.set_paint(2)
+    mk = w.missions.save_mk
+    assert not hc.away()
+    tx, ty = w.city.landmarks['terminal']['road']
+    _leave_in_town(game, w, car, tx, ty)
+    assert hc.away()
+    said = []
+    orig = w.hud.help
+    w.hud.help = lambda text, dur=6.0: said.append(text) if 'Ласточк' in text else None
+    try:
+        pl.teleport(mk.x, mk.y)
+        harness.run(game, 0.3)
+        assert game.state == 'shop' and 'Ласточк' in game.ui.stack[-1].text
+        harness.press(game, 'enter')                         # «Сохранить игру»
+        harness.run(game, 0.3)
+        assert game.state == 'play'
+        new = hc.v
+        assert car.removed and new is not car and hc.alive() and new.paint == 2 and gar.cars == [new]
+        assert not hc.away() and len(said) == 1
+        assert [c['kind'] for c in settings_mod.load_save()['garage']] == ['retro']
+        assert len([v for v in w.vehicles if v.kind == 'retro']) == 1
+        # машина стоит перед домом, не в гараже: это тоже «дома»
+        del said[:]
+        pl.teleport(mk.x + 6.0, mk.y)
+        harness.run(game, 0.3)
+        _leave_in_town(game, w, new, gar.cx, gar.rect[1] - 6.0)
+        assert not hc.away()
+        pl.teleport(mk.x, mk.y)
+        harness.run(game, 0.3)
+        assert game.state == 'shop' and 'Ласточк' not in game.ui.stack[-1].text
+        harness.press(game, 'enter')
+        harness.run(game, 0.3)
+        assert hc.v is new and not new.removed and not said
+    finally:
+        w.hud.help = orig
 
 
 # ----------------------------------------------------------------------

@@ -8,6 +8,7 @@ from .defs import (WEAPONS, W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_R
                    make_look, gang_look, random_look, cop_look, SKINS)
 from .vehicle import Vehicle
 from .garage import HERO_KIND
+from .city import WATER_Z
 from .collision import F_PED, F_CAR
 from .mathutil import clamp, angle_diff
 from . import settings as settings_mod
@@ -2078,10 +2079,13 @@ class Missions(object):
         w.sky.advance(6.0)
         p = w.player.ped
         p.health = p.max_health
+        back = w.hero_car.come_home()               # за эти шесть часов «Ласточку» пригоняют к дому
         ok = self.save_game()
         hud.fade(1.0, 5.0, instant=True)
         hud.fade(0.0, 0.8)
         hud.big('Игра сохранена' if ok else 'Не удалось сохранить', BLUEC, 3.0, w.sky.clock_text())
+        if back:
+            hud.help('Пока ты спал, «Ласточку» пригнали к дому: она в гараже.', 6.0)
         w.audio.play('pickup', 0.8)
         return ok
 
@@ -2220,9 +2224,9 @@ class Missions(object):
         car.immune = True
         car.owner = 'player'
         car.stolen = True
-        car.radio = -1                                  # радио молчит: слушают улицу
         it['car'] = car
         pl.enter_vehicle(car, silent=True)
+        car.radio = -1                                  # радио молчит: слушают улицу (R в погоне его включит)
         car.set_lights(True)
         w.scene_engine = ('engine', 0.30, 0.6)
         # 1. улица: машина с включёнными фарами напротив банка
@@ -2291,7 +2295,14 @@ class Missions(object):
         pl.freeze = False
         pl.lock_in = True
         pl.no_enter_t = 0.5
-        car.rescue = lambda v: it.__setitem__('end', it['end'] or 'water')
+
+        def into_water(v):
+            """Машина слетела в воду: никто не тонет, погоня на этом кончается (см. Vehicle._sink)."""
+            if it['end'] is None:
+                it['end'] = 'water'
+                w.fx.splash(v.x, v.y, WATER_Z, 2.2)
+                au.play_at('splash', v.x, v.y, 1.0, 0.8, 120.0)
+        car.rescue = into_water                         # остаётся до конца пролога: машину ещё снимать у заслона
         pol.locked = 3
         pol.set_level(3)
         mk = Marker(w, mx, my, 9.0, YELLOW)
@@ -2326,7 +2337,6 @@ class Missions(object):
         it['play'] = False
         pl.lock_in = False
         pl.freeze = True
-        car.rescue = None
         hud.clear_subtitles()
         hud.help_text.hide()
         hud.mission_title('')
@@ -2515,8 +2525,15 @@ class Missions(object):
 
     def skip_intro(self):
         """Пропустить пролог целиком (Esc в сценке, пункт меню паузы в погоне)."""
-        if self.intro is not None and not self.respawning:
-            self._end_intro()
+        if self.intro is None:
+            return
+        w = self.w
+        if w.respawn_kind is not None:
+            # пропустили на экране «АРЕСТОВАН»: арест досматривать не обязательно
+            self._intro_caught(w.respawn_kind)
+            w.respawn_kind = None
+            self.respawning = False
+        self._end_intro()
 
     def _step_intro(self, dt):
         w = self.w

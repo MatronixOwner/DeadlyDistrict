@@ -55,11 +55,12 @@ def press(g, key, dt=1.0 / 30.0):
     g.step(dt)
 
 
-def start_game(g, street=True, story=False):
+def start_game(g, street=True, story=False, hero=False):
     """Новая игра с пропуском пролога.
 
     story=False — сюжет считается пройденным и Брюс не звонит: большинству проверок нужен просто
-    свободный город.  street: если герой оказался в помещении, вывести его на улицу."""
+    свободный город.  hero=False — по той же причине в гараже нет «Ласточки», машины героя (и она
+    туда не возвращается).  street: если герой оказался в помещении, вывести его на улицу."""
     g.new_game()
     w = g.world
     for i in range(12):
@@ -75,6 +76,8 @@ def start_game(g, street=True, story=False):
         ms.call_t = 1e9
         ms.refresh_contacts()
         ms.sync_story()
+    if not hero:
+        w.hero_car.remove()
     run(g, 0.5)
     if street and w.interiors.current is not None:
         w.interiors.leave(instant=True)
@@ -86,7 +89,8 @@ def quiet(w, peds=False):
     """Убрать с улиц случайный транспорт (и прохожих), чтобы проверки были воспроизводимыми."""
     w.traffic.enabled = False
     for v in list(w.vehicles):
-        if not v.is_player and getattr(v, 'room', None) is None:      # машины в интерьерах остаются
+        # машины в интерьерах остаются; машина героя (если проверка её оставила) — тоже
+        if not v.is_player and getattr(v, 'room', None) is None and not v.hero:
             w.remove_vehicle(v)
     if peds:
         w.crowd.enabled = False

@@ -17,6 +17,7 @@ SPEED = 1.6                 # полных ходов ворот в секунд
 HERO_KIND = 'retro'         # машина героя (vehicle.SPECS)
 HERO_BACK = 25.0            # через сколько секунд пропавшая машина героя снова стоит у дома
 HERO_FAR = 90.0             # …если герой в это время не ближе стольких метров от гаража
+HERO_NEAR = 40.0            # ближе к гаражу машина считается стоящей «у дома»: её не перегоняют
 
 
 class Garage(object):
@@ -177,7 +178,8 @@ class HeroCar(object):
 
     Она одна на весь город и своя с первой минуты: за её угон не ищут, на карте она отмечена значком.
     Ждёт в гараже у дома.  Если её разбили, утопили или она пропала, через некоторое время она снова стоит
-    в гараже — в той же окраске и с тем же тюнингом."""
+    в гараже — в той же окраске и с тем же тюнингом.  Оставленную где-то в городе пригоняют к дому, пока герой
+    спит (сохранение у кровати): после загрузки она всё равно стояла бы в гараже."""
 
     def __init__(self, world):
         self.w = world
@@ -186,10 +188,12 @@ class HeroCar(object):
         self.tune = {}
         self.lost_t = 0.0
         self.blip = None
+        self.enabled = True                 # False — «Ласточки» в этой игре нет: её не ставят и не возвращают
 
     def reset(self):
         """Мир очищен (новая игра, выход в меню): машину уже убрали вместе со всеми остальными."""
         self._unblip()
+        self.enabled = True
         self.v = None
         self.paint = 0
         self.tune = {}
@@ -216,8 +220,13 @@ class HeroCar(object):
         """Поставить машину у дома: в свободную клетку гаража, а если гараж занят — на площадку перед воротами."""
         w = self.w
         g = w.garage
-        if not g.ok or HERO_KIND not in SPECS:
+        if not self.enabled or not g.ok or HERO_KIND not in SPECS:
             return None
+        for c in list(w.vehicles):              # остов прежней машины места в гараже не занимает
+            if c.dead and not c.removed and not c.is_player and g.contains(c.x, c.y):
+                c.keep = False
+                w.remove_vehicle(c)
+        g.cars = [c for c in g.cars if not c.removed and not c.dead]
         spot = None
         for (sx, sy) in g.slots:
             if not any(not c.removed and (c.x - sx) ** 2 + (c.y - sy) ** 2 < 2.4 ** 2 for c in w.vehicles):
@@ -240,9 +249,23 @@ class HeroCar(object):
             v.garage = True
         return v
 
+    def remove(self):
+        """Убрать машину из игры насовсем (свободный город без «Ласточки»: так начинают проверки)."""
+        w = self.w
+        v = self.v
+        self.reset()
+        self.enabled = False
+        if v is not None and not v.removed:
+            if v in w.garage.cars:
+                w.garage.cars.remove(v)
+            v.keep = False
+            w.remove_vehicle(v)
+
     def update(self, dt):
         w = self.w
         pl = w.player
+        if not self.enabled:
+            return
         if self.alive():
             v = self.v
             self.paint = int(v.paint)
@@ -255,6 +278,10 @@ class HeroCar(object):
                 self.blip = w.hud.add_blip('blip_car', obj=v, scale=1.0, edge=False)
             return
         self._unblip()
+        old = self.v
+        if old is not None and old.hero:
+            old.hero = False                    # разбитая машина — обычный остов: его уберут, как любой другой
+            old.keep = False
         ms = w.missions
         if ms is None or ms.intro is not None or w.respawn_kind is not None:
             return
@@ -269,15 +296,48 @@ class HeroCar(object):
         if self.spawn_home() is not None and had:
             w.hud.help('«Ласточку» вернули в гараж у дома.', 6.0)
 
+    def away(self):
+        """Машины нет у дома: она оставлена где-то в городе, разбита или пропала."""
+        w = self.w
+        g = w.garage
+        if not self.enabled or not g.ok:
+            return False
+        v = self.v
+        if self.alive():
+            return w.player.vehicle is not v and math.hypot(v.x - g.cx, v.y - g.cy) >= HERO_NEAR
+        return True
+
+    def come_home(self):
+        """Герой лёг спать дома: машину, которой нет у дома, за это время пригоняют в гараж.
+        Возвращает True, если её пришлось перегонять."""
+        w = self.w
+        if not self.away():
+            return False
+        v = self.v
+        if self.alive():
+            self.paint = int(v.paint)
+            self.tune = dict(v.tune or {})
+            v.hero = False
+            v.keep = False
+            w.remove_vehicle(v)
+        self._unblip()
+        return self.spawn_home() is not None
+
     # ------------------------------------------------------------------
     def state(self):
         """Для сохранения: окраска и тюнинг (место — всегда гараж у дома)."""
+        if not self.enabled:
+            return dict(off=True)
         return dict(paint=int(self.paint), tune=dict(self.tune or {}))
 
     def restore(self, info):
-        """После загрузки: машина героя — та «Ласточка», что стоит в гараже; если её там нет — ставим."""
+        """После загрузки: машина героя — та «Ласточка», что стоит в гараже; если её там нет — ставим.
+        В сохранениях прежних версий записи о ней нет: там она просто появляется в гараже."""
         w = self.w
         self.reset()
+        if info and info.get('off'):
+            self.enabled = False
+            return
         if info:
             self.paint = int(info.get('paint', 0))
             self.tune = dict(info.get('tune') or {})

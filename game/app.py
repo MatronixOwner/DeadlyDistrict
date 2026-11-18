@@ -974,7 +974,9 @@ class Game(object):
         def save():
             close()
             w.missions.sleep_and_save()
-        text = 'Макс отоспится в общаге: пройдёт шесть часов,\nздоровье восстановится, игра будет сохранена.'
+        text = 'Макс отоспится дома: пройдёт шесть часов,\nздоровье восстановится, игра будет сохранена.'
+        if w.hero_car.away():
+            text += '\n«Ласточку» к утру пригонят в гараж.'
         if settings_mod.load_save() is not None:
             text += '\n\nПрежнее сохранение будет заменено.'
         m = Menu(self.ui, 'Убежище', [Item('Сохранить игру', save), Item('Уйти', close)], text=text, back=close,
