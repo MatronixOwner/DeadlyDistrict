@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Дорожная сеть: полосы для транспорта, светофоры, граф тротуаров."""
 import math
+from bisect import bisect_right
 
 from .city import AVE_W, ST_W, SIDEWALK, ROAD_X_AVE, ROAD_Y_AVE, PARK_I0, PARK_I1, PARK_J0, PARK_J1
 from .mathutil import bezier2, bezier2_tangent, Rng
@@ -22,11 +23,26 @@ DIR_YAW = {'e': 0.0, 'n': math.pi / 2, 'w': math.pi, 's': -math.pi / 2}
 class Link(object):
     """Отрезок пути для машины: полоса (straight) или манёвр на перекрёстке."""
     __slots__ = ('id', 'turn', 'x0', 'y0', 'x1', 'y1', 'cx', 'cy', 'curved', 'length', 'next', 'node',
-                 'dir', 'lane', 'ave', 'speed', 'signal', 'axis', 'zone', 'seg', 'kind', 'flat')
+                 'dir', 'lane', 'ave', 'speed', 'signal', 'axis', 'zone', 'seg', 'kind', 'flat',
+                 'px', 'py', 'pyaw', 'cum')
     # flat: полоса лежит на уровне земли (False — на мосту: высоту нужно спрашивать у города)
+    # px, py, pyaw, cum: путь в мире — точки, курс в них и пройденная длина (улицы изогнуты, см. bake);
+    # x0, y0, x1, y1 после bake — концы пути в мире, length — его настоящая длина
 
     def pos(self, s):
         """Точка и направление (yaw) на расстоянии s от начала."""
+        cum = self.cum
+        if cum is not None:
+            n = len(cum) - 1
+            if s <= 0.0:
+                return self.px[0], self.py[0], self.pyaw[0]
+            if s >= cum[n]:
+                return self.px[n], self.py[n], self.pyaw[n]
+            i = bisect_right(cum, s) - 1
+            f = (s - cum[i]) / (cum[i + 1] - cum[i])
+            px, py, pw = self.px, self.py, self.pyaw
+            return (px[i] + (px[i + 1] - px[i]) * f, py[i] + (py[i + 1] - py[i]) * f,
+                    pw[i] + (pw[i + 1] - pw[i]) * f)
         t = s / self.length if self.length > 0 else 0.0
         if t < 0.0:
             t = 0.0
@@ -41,6 +57,70 @@ class Link(object):
         tx = 2 * u * (self.cx - self.x0) + 2 * t * (self.x1 - self.cx)
         ty = 2 * u * (self.cy - self.y0) + 2 * t * (self.y1 - self.cy)
         return x, y, math.atan2(ty, tx)
+
+    def bake(self, warp, step=6.0):
+        """Перевести путь с чертежа в мир: ломаная из коротких звеньев вдоль изогнутой полосы."""
+        if self.curved:
+            n = 10
+        else:
+            n = max(1, int(math.ceil(math.hypot(self.x1 - self.x0, self.y1 - self.y0) / step)))
+        px, py, pw, cum = [], [], [], [0.0]
+        for k in range(n + 1):
+            t = k / float(n)
+            if self.curved:
+                u = 1.0 - t
+                x = u * u * self.x0 + 2 * u * t * self.cx + t * t * self.x1
+                y = u * u * self.y0 + 2 * u * t * self.cy + t * t * self.y1
+                tx = 2 * u * (self.cx - self.x0) + 2 * t * (self.x1 - self.cx)
+                ty = 2 * u * (self.cy - self.y0) + 2 * t * (self.y1 - self.cy)
+            else:
+                x = self.x0 + (self.x1 - self.x0) * t
+                y = self.y0 + (self.y1 - self.y0) * t
+                tx, ty = self.x1 - self.x0, self.y1 - self.y0
+            yaw = warp.dir(x, y, math.atan2(ty, tx))
+            wx, wy = warp.fwd(x, y)
+            if pw:
+                d = yaw - pw[-1]
+                while d > math.pi:
+                    yaw -= 2.0 * math.pi
+                    d = yaw - pw[-1]
+                while d < -math.pi:
+                    yaw += 2.0 * math.pi
+                    d = yaw - pw[-1]
+                cum.append(cum[-1] + math.hypot(wx - px[-1], wy - py[-1]))
+            px.append(wx)
+            py.append(wy)
+            pw.append(yaw)
+        if self.curved:
+            self.cx, self.cy = warp.fwd(self.cx, self.cy)
+        self.px, self.py, self.pyaw, self.cum = px, py, pw, cum
+        self.x0, self.y0, self.x1, self.y1 = px[0], py[0], px[-1], py[-1]
+        self.length = max(cum[-1], 1e-6)
+
+    def project(self, x, y):
+        """Ближайшая к точке мира точка пути: (s, расстояние)."""
+        cum = self.cum
+        if cum is None:
+            dx, dy = self.x1 - self.x0, self.y1 - self.y0
+            t = ((x - self.x0) * dx + (y - self.y0) * dy) / max(dx * dx + dy * dy, 1e-9)
+            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+            return t * self.length, math.hypot(x - self.x0 - dx * t, y - self.y0 - dy * t)
+        px, py = self.px, self.py
+        n = len(cum) - 1
+        # грубо — по хорде, точно — по соседним звеньям
+        dx, dy = px[n] - px[0], py[n] - py[0]
+        t = ((x - px[0]) * dx + (y - py[0]) * dy) / max(dx * dx + dy * dy, 1e-9)
+        k = int((0.0 if t < 0.0 else (1.0 if t > 1.0 else t)) * n)
+        bs, bd = 0.0, 1e18
+        for i in range(max(0, k - 3), min(n, k + 4)):
+            ex, ey = px[i + 1] - px[i], py[i + 1] - py[i]
+            f = ((x - px[i]) * ex + (y - py[i]) * ey) / max(ex * ex + ey * ey, 1e-9)
+            f = 0.0 if f < 0.0 else (1.0 if f > 1.0 else f)
+            d = math.hypot(x - px[i] - ex * f, y - py[i] - ey * f)
+            if d < bd:
+                bd = d
+                bs = cum[i] + (cum[i + 1] - cum[i]) * f
+        return bs, bd
 
 
 class PedNode(object):
@@ -59,11 +139,49 @@ class RoadNet(object):
         self._build_turns()
         self._build_ped_graph()
         self._build_kerb_parking()
+        self._bake(city.warp)
         self._lane_grid = {}
         for l in self.lanes:
-            cx = int(((l.x0 + l.x1) * 0.5) // 100)
-            cy = int(((l.y0 + l.y1) * 0.5) // 100)
-            self._lane_grid.setdefault((cx, cy), []).append(l)
+            x, y, _ = l.pos(l.length * 0.5)
+            self._lane_grid.setdefault((int(x // 100), int(y // 100)), []).append(l)
+
+    def _bake(self, warp):
+        """Сеть начерчена по линейке — перевести её в мир: полосы и манёвры становятся ломаными вдоль
+        изогнутых улиц, тротуары получают промежуточные узлы (иначе пешеход срезал бы изгиб по прямой)."""
+        if warp is None:
+            return
+        for l in self.links:
+            l.bake(warp)
+        # тротуары: длинные рёбра делим узлами через 14 м
+        for a in list(self.ped_nodes):
+            for (b, kind, info) in list(a.edges):
+                if b.id < a.id or kind != 'walk':
+                    continue
+                L = math.hypot(b.x - a.x, b.y - a.y)
+                n = int(L / 14.0)
+                if n < 1:
+                    continue
+                a.edges = [e for e in a.edges if e[0] is not b]
+                b.edges = [e for e in b.edges if e[0] is not a]
+                prev = a
+                for k in range(1, n + 1):
+                    t = k / float(n + 1)
+                    m = PedNode()
+                    m.id = len(self.ped_nodes)
+                    m.x, m.y = a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t
+                    m.edges = []
+                    m.block = a.block if a.block == b.block else -1
+                    self.ped_nodes.append(m)
+                    prev.edges.append((m, kind, info))
+                    m.edges.append((prev, kind, info))
+                    prev = m
+                prev.edges.append((b, kind, info))
+                b.edges.append((prev, kind, info))
+        for n in self.ped_nodes:
+            n.x, n.y = warp.fwd(n.x, n.y)
+        self._pn_grid = {}
+        for n in self.ped_nodes:
+            self._pn_grid.setdefault((int(n.x // 100), int(n.y // 100)), []).append(n)
 
     # ------------------------------------------------------------------
     def _new_link(self):
@@ -78,6 +196,7 @@ class RoadNet(object):
         l.seg = None
         l.kind = None
         l.flat = True
+        l.px = l.py = l.pyaw = l.cum = None
         self.links.append(l)
         return l
 
@@ -280,17 +399,11 @@ class RoadNet(object):
         bd = maxd
         bs = 0.0
         for l in self.lanes_near(x, y, 0, maxd + 100.0):
-            dx = l.x1 - l.x0
-            dy = l.y1 - l.y0
-            t = ((x - l.x0) * dx + (y - l.y0) * dy) / (l.length * l.length)
-            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
-            px = l.x0 + dx * t
-            py = l.y0 + dy * t
-            d = math.hypot(x - px, y - py)
+            s, d = l.project(x, y)
             if d < bd:
                 bd = d
                 best = l
-                bs = t * l.length
+                bs = s
         return best, bs, bd
 
     def route(self, a, b):

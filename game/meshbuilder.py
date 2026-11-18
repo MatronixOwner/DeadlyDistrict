@@ -49,11 +49,20 @@ WHITE = (1.0, 1.0, 1.0, 1.0)
 
 
 class MeshBuilder(object):
+    CELL = 5.0               # при изгибе длинные грани режутся по общей решётке с таким шагом, м
 
-    def __init__(self):
+    def __init__(self, warp=None):
+        """warp — изгиб города (game/warp.py): координаты задаются по чертежу, в сетку попадают
+        уже изогнутыми.  Мелкие грани просто сдвигаются по вершинам, длинные (дорога, крыша, газон)
+        сначала режутся на куски не длиннее CELL: иначе прямая грань не ляжет на кривую улицу.
+        Режутся они по общей решётке, поэтому у соседних граней швы приходятся на одни и те же точки.
+        То, что ставится через set_xform (фонарь, дерево, скамейка), не гнётся, а ставится целиком:
+        в изогнутую точку и с поворотом, какой там у чертежа."""
         self.groups = {}
         self._xf = None          # (x, y, z, cos, sin, scale)
         self.built = {}          # key -> GeomNode (после build)
+        self.warp = warp
+        self._rots = {}
 
     def mark(self):
         """Запомнить текущее число вершин в каждой группе."""
@@ -75,6 +84,10 @@ class MeshBuilder(object):
         if x == 0.0 and y == 0.0 and z == 0.0 and yaw == 0.0 and scale == 1.0:
             self._xf = None
         else:
+            wp = self.warp
+            if wp is not None:
+                yaw += wp.rot(x, y)
+                x, y = wp.fwd(x, y)
             self._xf = (x, y, z, math.cos(yaw), math.sin(yaw), scale)
 
     def clear_xform(self):
@@ -95,6 +108,28 @@ class MeshBuilder(object):
             p0 = (tx + (p0[0] * c - p0[1] * s) * sc, ty + (p0[0] * s + p0[1] * c) * sc, tz + p0[2] * sc)
             p1 = (tx + (p1[0] * c - p1[1] * s) * sc, ty + (p1[0] * s + p1[1] * c) * sc, tz + p1[2] * sc)
             p2 = (tx + (p2[0] * c - p2[1] * s) * sc, ty + (p2[0] * s + p2[1] * c) * sc, tz + p2[2] * sc)
+        elif self.warp is not None:
+            wp = self.warp
+            ax, ay = p0[0], p0[1]
+            bx, by = p1[0], p1[1]
+            cx, cy = p2[0], p2[1]
+            L = self.CELL
+            if ((ax if ax > bx else bx) if (ax if ax > bx else bx) > cx else cx) - \
+                    ((ax if ax < bx else bx) if (ax if ax < bx else bx) < cx else cx) > L or \
+                    ((ay if ay > by else by) if (ay if ay > by else by) > cy else cy) - \
+                    ((ay if ay < by else by) if (ay if ay < by else by) < cy else cy) > L:
+                self._split_tri(key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2)
+                return
+            f = wp.fwd_memo
+            if normals is not None:
+                normals = (self._rot_n(normals[0], ax, ay), self._rot_n(normals[1], bx, by),
+                           self._rot_n(normals[2], cx, cy))
+            q = f(ax, ay)
+            p0 = (q[0], q[1], p0[2])
+            q = f(bx, by)
+            p1 = (q[0], q[1], p1[2])
+            q = f(cx, cy)
+            p2 = (q[0], q[1], p2[2])
         if normals is None:
             ux, uy, uz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
             vx, vy, vz = p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]
@@ -120,6 +155,96 @@ class MeshBuilder(object):
         g.extend((p0[0], p0[1], p0[2], n0[0], n0[1], n0[2], col0[0], col0[1], col0[2], col0[3], uv0[0], uv0[1],
                   p1[0], p1[1], p1[2], n1[0], n1[1], n1[2], col1[0], col1[1], col1[2], col1[3], uv1[0], uv1[1],
                   p2[0], p2[1], p2[2], n2[0], n2[1], n2[2], col2[0], col2[1], col2[2], col2[3], uv2[0], uv2[1]))
+
+    # ------------------------------------------------------------------
+    # изгиб: поворот нормалей и разрезание длинных граней
+    # ------------------------------------------------------------------
+    def _rot_n(self, n, x, y):
+        """Нормаль, повёрнутая так же, как повёрнут чертёж в этой точке (поворот берётся по клетке 8 м)."""
+        key = (x // 8.0, y // 8.0)
+        r = self._rots.get(key)
+        if r is None:
+            a = self.warp.rot(key[0] * 8.0 + 4.0, key[1] * 8.0 + 4.0)
+            r = self._rots[key] = (math.cos(a), math.sin(a))
+        return (n[0] * r[0] - n[1] * r[1], n[0] * r[1] + n[1] * r[0], n[2])
+
+    @staticmethod
+    def _cut(a, b, axis, c):
+        """Точка ребра a-b на линии решётки (координата axis равна c).  Считается всегда от конца
+        с меньшей координатой: у двух граней с общим ребром точка выходит одна и та же, бит в бит."""
+        if a[axis] > b[axis]:
+            a, b = b, a
+        t = (c - a[axis]) / (b[axis] - a[axis])
+        v = [a[i] + (b[i] - a[i]) * t for i in range(len(a))]
+        v[axis] = c
+        return tuple(v)
+
+    def _split_tri(self, key, p0, p1, p2, uv0, uv1, uv2, color, normals, c1, c2):
+        """Разрезать длинную грань по решётке и отдать куски обратно в tri()."""
+        col0 = tuple(color) if len(color) > 3 else (color[0], color[1], color[2], 1.0)
+        col1 = col0 if c1 is None else (tuple(c1) if len(c1) > 3 else (c1[0], c1[1], c1[2], 1.0))
+        col2 = col0 if c2 is None else (tuple(c2) if len(c2) > 3 else (c2[0], c2[1], c2[2], 1.0))
+        if normals is None:
+            v0 = (p0[0], p0[1], p0[2], uv0[0], uv0[1]) + col0
+            v1 = (p1[0], p1[1], p1[2], uv1[0], uv1[1]) + col1
+            v2 = (p2[0], p2[1], p2[2], uv2[0], uv2[1]) + col2
+        else:
+            v0 = (p0[0], p0[1], p0[2], uv0[0], uv0[1]) + col0 + tuple(normals[0])
+            v1 = (p1[0], p1[1], p1[2], uv1[0], uv1[1]) + col1 + tuple(normals[1])
+            v2 = (p2[0], p2[1], p2[2], uv2[0], uv2[1]) + col2 + tuple(normals[2])
+        L = self.CELL
+        todo = [(v0, v1, v2)]
+        done = []
+        cut = self._cut
+        while todo:
+            t = todo.pop()
+            for axis in (0, 1):
+                a, b, c = t[0][axis], t[1][axis], t[2][axis]
+                lo = min(a, b, c)
+                hi = max(a, b, c)
+                if hi - lo <= L:
+                    continue
+                line = round((lo + hi) * 0.5 / L) * L          # линия решётки поближе к середине
+                if not lo < line < hi:
+                    line = (math.floor(lo / L) + 1.0) * L
+                    if not lo < line < hi:
+                        continue
+                side = [(-1 if v[axis] < line else (1 if v[axis] > line else 0)) for v in t]
+                on = side.count(0)
+                if on == 1:
+                    # линия проходит через вершину: два куска
+                    i = side.index(0)
+                    A, B, C = t[i], t[(i + 1) % 3], t[(i + 2) % 3]
+                    P = cut(B, C, axis, line)
+                    todo.append((A, B, P))
+                    todo.append((A, P, C))
+                else:
+                    # одна вершина по одну сторону, две по другую: треугольник и четырёхугольник
+                    i = 0 if side[0] != side[1] and side[0] != side[2] else (1 if side[1] != side[0] else 2)
+                    A, B, C = t[i], t[(i + 1) % 3], t[(i + 2) % 3]
+                    P = cut(A, B, axis, line)
+                    Q = cut(A, C, axis, line)
+                    todo.append((A, P, Q))
+                    todo.append((P, B, C))
+                    todo.append((P, C, Q))
+                break
+            else:
+                done.append(t)
+        tri = self.tri
+        hold = self.CELL
+        self.CELL = 1e9                    # куски уже нужной длины: второй раз не резать
+        try:
+            for (a, b, c) in done:
+                if normals is None:
+                    ns = None
+                else:
+                    ns = []
+                    for v in (a, b, c):
+                        ln = math.sqrt(v[9] * v[9] + v[10] * v[10] + v[11] * v[11]) or 1.0
+                        ns.append((v[9] / ln, v[10] / ln, v[11] / ln))
+                tri(key, a, b, c, (a[3], a[4]), (b[3], b[4]), (c[3], c[4]), a[5:9], ns, b[5:9], c[5:9])
+        finally:
+            self.CELL = hold
 
     def quad(self, key, p0, p1, p2, p3, uv=(0.0, 0.0, 1.0, 1.0), color=WHITE, uvs=None, colors=None):
         """Четырёхугольник p0..p3 против часовой стрелки (если смотреть с лицевой стороны).

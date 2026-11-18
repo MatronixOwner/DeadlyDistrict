@@ -89,19 +89,19 @@ class CityMesh(object):
     def _mb(self, chunk):
         m = self._mbs.get(chunk)
         if m is None:
-            m = self._mbs[chunk] = MeshBuilder()
+            m = self._mbs[chunk] = MeshBuilder(self.city.warp)
         return m
 
     def _brk(self, chunk):
         m = self._brks.get(chunk)
         if m is None:
-            m = self._brks[chunk] = MeshBuilder()
+            m = self._brks[chunk] = MeshBuilder(self.city.warp)
         return m
 
     def _night(self, chunk):
         m = self._nights.get(chunk)
         if m is None:
-            m = self._nights[chunk] = MeshBuilder()
+            m = self._nights[chunk] = MeshBuilder(self.city.warp)
         return m
 
     def _road_chunk(self, x, y):
@@ -128,6 +128,7 @@ class CityMesh(object):
             return
         root = root.copyTo(self.root)
         root.setName('terrain')
+        self._warp_model(root)
         for gnp in root.findAllMatches('**/+GeomNode'):
             name = gnp.getName()
             key = tuple(name.split('|')) if '|' in name else name
@@ -142,6 +143,24 @@ class CityMesh(object):
         st.add_box(x1, y0, x1 + 6.0, y1, 0.0, 99.0, flags, None)
         st.add_box(x0, y0 - 6.0, x1, y0, 0.0, 99.0, flags, None)
         st.add_box(x0, y1, x1, y1 + 6.0, 0.0, 99.0, flags, None)
+
+    def _warp_model(self, root):
+        """Готовая модель (рельеф) сделана по чертежу: изогнуть её вершины вместе с городом."""
+        wp = self.city.warp
+        if wp is None:
+            return
+        from panda3d.core import GeomVertexRewriter
+        f = wp.fwd_memo
+        for gnp in root.findAllMatches('**/+GeomNode'):
+            gn = gnp.node()
+            for i in range(gn.getNumGeoms()):
+                vd = gn.modifyGeom(i).modifyVertexData()
+                rw = GeomVertexRewriter(vd, 'vertex')
+                while not rw.isAtEnd():
+                    p = rw.getData3()
+                    x, y = f(p[0], p[1])
+                    rw.setData3(x, y, p[2])
+            gn.markInternalBoundsStale()
 
     # ------------------------------------------------------------------
     # мосты
@@ -1033,7 +1052,8 @@ class CityMesh(object):
             key = (phase_idx, axis)
             grp = self._sig_mbs.get(key)
             if grp is None:
-                grp = self._sig_mbs[key] = {'r': MeshBuilder(), 'y': MeshBuilder(), 'g': MeshBuilder()}
+                wp = self.city.warp
+                grp = self._sig_mbs[key] = {'r': MeshBuilder(wp), 'y': MeshBuilder(wp), 'g': MeshBuilder(wp)}
             cols = {'r': (1.0, 0.12, 0.08, 1), 'y': (1.0, 0.75, 0.05, 1), 'g': (0.1, 1.0, 0.35, 1)}
             for (hx, hy, hz) in heads:
                 for k, lamp in enumerate(('g', 'y', 'r')):

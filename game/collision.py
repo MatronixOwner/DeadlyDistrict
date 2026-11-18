@@ -21,7 +21,14 @@ INV_CELL = 1.0 / CELL
 
 class StaticWorld(object):
 
+    RAY_STEP = 12.0          # изогнутый город: луч идёт по чертежу кусками такой длины
+
     def __init__(self):
+        # warp — изгиб города (game/warp.py).  Коробки и круги хранятся в координатах чертежа (там дома —
+        # прямоугольники по осям), а вопросы задаются в координатах мира: каждая проверка переводит точку
+        # в чертёж, считает как раньше и переводит ответ обратно.  Вблизи изгиб — почти чистый поворот,
+        # поэтому круг остаётся кругом, а короткий отрезок луча — отрезком.
+        self.warp = None
         self.boxes = []          # [x0, y0, x1, y1, z0, z1, flags, ref]
         self.circles = []        # [x, y, r, z1, flags, ref]
         self.grid = {}           # (cx, cy) -> ([box ids], [circle ids])
@@ -62,7 +69,26 @@ class StaticWorld(object):
 
     # ------------------------------------------------------------------
     def push_circle(self, x, y, r, mask, out=None):
-        """Вытолкнуть круг из препятствий.
+        """Вытолкнуть круг из препятствий (координаты мира).
+
+        Возвращает (x, y, nx, ny, depth, ref): нормаль и глубина самого
+        сильного контакта (depth == 0 — контактов не было).
+        """
+        wp = self.warp
+        if wp is None:
+            return self._push_circle(x, y, r, mask, out)
+        u, v = wp.inv(x, y)
+        res = self._push_circle(u, v, r, mask, out)
+        if res[4] <= 0.0:
+            return x, y, 0.0, 0.0, 0.0, None
+        a, b, c, d = wp.jac(u, v)
+        du, dv = res[0] - u, res[1] - v
+        nx, ny = a * res[2] + b * res[3], c * res[2] + d * res[3]
+        ln = math.sqrt(nx * nx + ny * ny) or 1.0
+        return x + a * du + b * dv, y + c * du + d * dv, nx / ln, ny / ln, res[4], res[5]
+
+    def _push_circle(self, x, y, r, mask, out=None):
+        """Вытолкнуть круг из препятствий (координаты чертежа).
 
         Возвращает (x, y, nx, ny, depth, ref): нормаль и глубина самого
         сильного контакта (depth == 0 — контактов не было).
@@ -160,6 +186,8 @@ class StaticWorld(object):
 
     def query_circles(self, x, y, r, mask):
         """Список кругов (id), пересекающих данный круг."""
+        if self.warp is not None:
+            x, y = self.warp.inv(x, y)
         out = []
         grid = self.grid
         circles = self.circles
@@ -181,10 +209,46 @@ class StaticWorld(object):
 
     # ------------------------------------------------------------------
     def raycast(self, ox, oy, oz, dx, dy, dz, maxdist, mask=F_BULLET):
-        """Луч в 3D.  (dx, dy, dz) — единичный вектор.
+        """Луч в 3D (координаты мира).  (dx, dy, dz) — единичный вектор.
 
         Возвращает (t, nx, ny, nz, ref) или None.
         """
+        wp = self.warp
+        if wp is None:
+            return self._raycast(ox, oy, oz, dx, dy, dz, maxdist, mask)
+        inv = wp.inv
+        step = self.RAY_STEP
+        t0 = 0.0
+        au, av = inv(ox, oy)
+        while t0 < maxdist:
+            t1 = t0 + step
+            if t1 > maxdist:
+                t1 = maxdist
+            seg = t1 - t0
+            bu, bv = inv(ox + dx * t1, oy + dy * t1)
+            eu, ev, ez = bu - au, bv - av, dz * seg
+            ln = math.sqrt(eu * eu + ev * ev + ez * ez)
+            if ln > 1e-9:
+                k = 1.0 / ln
+                hit = self._raycast(au, av, oz + dz * t0, eu * k, ev * k, ez * k, ln, mask)
+                if hit is not None:
+                    t = t0 + hit[0] * seg * k
+                    nx, ny = hit[1], hit[2]
+                    if nx != 0.0 or ny != 0.0:
+                        a, b, c, d = wp.jac(au + eu * hit[0] * k, av + ev * hit[0] * k)
+                        nx, ny = a * hit[1] + b * hit[2], c * hit[1] + d * hit[2]
+                        h = math.sqrt(nx * nx + ny * ny)
+                        if h > 1e-9:
+                            m = math.sqrt(hit[1] * hit[1] + hit[2] * hit[2]) / h
+                            nx *= m
+                            ny *= m
+                    return (t, nx, ny, hit[3], hit[4])
+            au, av = bu, bv
+            t0 = t1
+        return None
+
+    def _raycast(self, ox, oy, oz, dx, dy, dz, maxdist, mask=F_BULLET):
+        """Луч в 3D в координатах чертежа."""
         self._stamp += 1
         stamp = self._stamp
         bstamp = self._bstamp

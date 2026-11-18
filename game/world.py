@@ -60,6 +60,9 @@ class World(object):
         step(0.15, 'Возводим кварталы…')
         self.citymesh = CityMesh(self.city, self.assets, self.static, self.root,
                                  progress=(lambda f: step(0.15 + 0.6 * f, 'Возводим кварталы…')))
+        # город начерчен и собран по чертежу; дальше всё живёт в мире — на изогнутых улицах
+        self.city.go_live()
+        self.static.warp = self.city.warp
         step(0.8, 'Заселяем улицы…')
         self.models = Models(self.assets, self.base.loader)
         self.models.preload()

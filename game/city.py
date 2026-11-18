@@ -12,6 +12,7 @@ from bisect import bisect_right
 
 from .mathutil import Rng, clamp
 from .terrain import Terrain, C_FOREST, C_ROCK, C_GRASS
+from .warp import Warp
 
 # ---------------------------------------------------------------------------
 # размеры
@@ -210,8 +211,55 @@ class Building(object):
         self.open_sides = kw.get('open_sides', '')
 
 
+LANDMARK_POINTS = ('door', 'road', 'center', 'bay', 'lot', 'park', 'yard', 'pumps', 'garage', 'apron', 'gate')
+
+# Волны изгиба главного города: (длина волны, куда бежит волна, куда сдвигает, размах, фаза); углы в градусах.
+WARP_WAVES = [
+    (1500.0, 0.0, 90.0, 55.0, 0.6),
+    (1300.0, 90.0, 0.0, 45.0, 2.2),
+    (700.0, 35.0, 125.0, 16.0, 1.0),
+    (520.0, -50.0, 40.0, 10.0, 4.0),
+    (380.0, 100.0, 190.0, 5.5, 0.3),
+]
+
+
+class Frame(object):
+    """Местная система отсчёта у точки города: оси — «восток» и «север» чертежа в этом месте.
+
+    Сюжет расставляет людей и машины словами «семь метров вдоль улицы, три поперёк»; улицы изогнуты,
+    поэтому такие сдвиги считаются не по осям мира, а по чертежу:
+
+        F = city.frame(x, y)
+        F(7.0, -3.0)      точка мира: на 7 м «восточнее» и 3 м «южнее» по чертежу
+        F.h(0.0)          курс «на восток чертежа» в мире
+    """
+    __slots__ = ('city', 'u', 'v', 'rot')
+
+    def __init__(self, city, x, y):
+        self.city = city
+        if city.live:
+            self.u, self.v = city.warp.inv_exact(x, y)
+            self.rot = city.warp.rot(self.u, self.v)
+        else:
+            self.u, self.v, self.rot = x, y, 0.0
+
+    def __call__(self, du=0.0, dv=0.0):
+        if not self.city.live:
+            return self.u + du, self.v + dv
+        return self.city.warp.fwd(self.u + du, self.v + dv)
+
+    def h(self, yaw=0.0):
+        return yaw + self.rot
+
+    def at(self, du, dv, yaw=0.0):
+        """Точка и курс разом: (x, y, yaw)."""
+        x, y = self(du, dv)
+        return x, y, yaw + self.rot
+
+
 class RoadNode(object):
-    __slots__ = ('i', 'j', 'x', 'y', 'hw', 'hh', 'exits', 'phase', 'rural', 'through')
+    __slots__ = ('i', 'j', 'x', 'y', 'hw', 'hh', 'exits', 'phase', 'rural', 'through', 'lx', 'ly')
+    # x, y: середина перекрёстка (после go_live — в мире);  lx, ly: она же на чертеже
     # exits: dict  'e'/'w'/'n'/'s' -> (ni, nj)
     # rural: перекрёсток за городом (без тротуаров и светофоров)
     # through: дорога просто проходит насквозь (два выезда друг напротив друга)
@@ -247,6 +295,8 @@ class City(object):
         tools/gen_terrain.py, которому как раз и нужно узнать раскладку."""
         self.seed = seed
         self.rng = Rng(seed)
+        self.live = False             # True — город «сдан»: запросы принимают координаты мира (см. go_live)
+        self.warp = None
         if terrain is None:
             if root is None:
                 from .settings import find_root
@@ -326,6 +376,116 @@ class City(object):
         self._align_doors()
         self._clear_driveways()
         self.n_chunks = self._outer_chunk_base + len(self._chunk_ids)
+        self.warp = self._make_warp()
+
+    # ------------------------------------------------------------------
+    # чертёж и мир
+    # ------------------------------------------------------------------
+    # Всё, что выше и ниже, чертит город по линейке: улицы строго по осям, дома — прямоугольники.
+    # Настоящий город получается из чертежа плавным изгибом (game/warp.py).  Геометрию гнёт сборщик
+    # сеток, столкновения считаются по чертежу, а здесь — перевод точек туда и обратно и «сдача» города.
+    def _make_warp(self):
+        waves = []
+        for (lam, beta, gamma, amp, ph) in WARP_WAVES:
+            k = 2.0 * math.pi / lam
+            b, g = math.radians(beta), math.radians(gamma)
+            waves.append((amp * math.cos(g), amp * math.sin(g), k * math.cos(b), k * math.sin(b), ph))
+        rigid = []
+        sh = self.special.get('ship')
+        for seg in self.bridges:                      # мост остаётся прямым
+            a, b, c = seg['a'] - 10.0, seg['b'] + 10.0, seg['c']
+            r1 = 30.0
+            if sh is not None and seg['kind'] == 'h' and a < sh['x1'] and abs(sh['cy'] - c) < 110.0:
+                r1 = 100.0                            # вместе с ним — причал и сухогруз у его въезда
+            rigid.append((a, c, b, c, r1, r1 + 190.0) if seg['kind'] == 'h' else (c, a, c, b, r1, r1 + 190.0))
+        lm = self.landmarks.get('airfield')
+        if lm is not None:                            # взлётная полоса — тоже
+            x0, y0, x1, y1 = lm['runway']
+            rigid.append((x0, y0 + 50.0, x1, y1 + 50.0, 125.0, 215.0))
+        t = self.terrain
+        if t.ok:
+            box = (t.x0, t.y0, t.x1, t.y1)
+        else:
+            box = (self.grid_x0 - 300.0, self.grid_y0 - 300.0, self.grid_x1 + 300.0, self.grid_y1 + 300.0)
+        return Warp(waves, rigid, box, 300.0, 'main')
+
+    def to_world(self, u, v):
+        """Точка чертежа -> точка мира."""
+        return self.warp.fwd(u, v)
+
+    def to_plan(self, x, y):
+        """Точка мира -> точка чертежа."""
+        return self.warp.inv(x, y)
+
+    def rot_at(self, x, y):
+        """На сколько повёрнут чертёж в этой точке мира (радианы): столько нужно прибавить к курсу,
+        заданному «по сторонам света чертежа»."""
+        u, v = self.warp.inv(x, y)
+        return self.warp.rot(u, v)
+
+    def off(self, x, y, du, dv):
+        """Точка мира, которая на чертеже сдвинута от (x, y) на (du, dv): «семь метров западнее вдоль улицы»."""
+        u, v = self.warp.inv_exact(x, y)
+        return self.warp.fwd(u + du, v + dv)
+
+    def frame(self, x, y):
+        """Местная система отсчёта у точки мира (см. Frame)."""
+        return Frame(self, x, y)
+
+    def in_rect(self, rect, x, y, margin=0.0):
+        """Лежит ли точка мира в прямоугольнике чертежа (x0, y0, x1, y1[, ...])."""
+        u, v = self.warp.inv(x, y) if self.live else (x, y)
+        return rect[0] - margin <= u <= rect[2] + margin and rect[1] - margin <= v <= rect[3] + margin
+
+    def go_live(self):
+        """Город построен и собран: дальше им пользуется игра, а она живёт в мире.
+
+        Точки, по которым игра ставит людей и машины (двери, стоянки, тайники, перекрёстки), переводятся
+        в мир, курсы поворачиваются.  Прямоугольники (rect, bay_rect, палуба корабля) остаются чертёжными:
+        проверять их нужно через in_rect().  Запросы вроде ground_z() с этого момента принимают мир."""
+        if self.live:
+            return
+        wp = self.warp
+        fwd = wp.fwd
+
+        def pt(p):
+            x, y = fwd(p[0], p[1])
+            return (x, y) + tuple(p[2:])
+
+        for n in self.nodes.values():
+            n.lx, n.ly = n.x, n.y
+            n.x, n.y = fwd(n.x, n.y)
+        for lm in self.landmarks.values():
+            door = lm.get('door') or lm.get('center') or lm.get('apron')
+            plan = dict(lm)
+            lm['plan'] = plan                          # как было на чертеже
+            if door is not None:
+                lm['rot'] = wp.rot(door[0], door[1])
+                if 'yaw' in lm:
+                    lm['yaw'] = wp.dir(door[0], door[1], lm['yaw'])
+            for k in LANDMARK_POINTS:
+                if k in lm and lm[k] is not None:
+                    lm[k] = pt(lm[k])
+            if 'runway' in lm:
+                r = lm['runway']
+                lm['runway'] = fwd(r[0], r[1]) + fwd(r[2], r[3])
+        for d in self.parking:
+            d['yaw'] = wp.dir(d['x'], d['y'], d['yaw'])
+            d['x'], d['y'] = fwd(d['x'], d['y'])
+        self.packages = [pt(p) for p in self.packages]
+        self.pickup_spots = [pt(p) for p in self.pickup_spots]
+        sx, sy, syaw = self.start_pos
+        self.start_pos = fwd(sx, sy) + (wp.dir(sx, sy, syaw),)
+        g = self.special.get('garage')
+        if g is not None:
+            g['plan'] = dict(g)
+            cx, cy = (g['rect'][0] + g['rect'][2]) * 0.5, (g['rect'][1] + g['rect'][3]) * 0.5
+            g['rot'] = wp.rot(cx, cy)
+            g['yaw'] = wp.dir(cx, cy, g['yaw'])
+            g['slots'] = [pt(p) for p in g['slots']]
+            g['front'] = pt(g['front'])
+        wp.forget()
+        self.live = True
 
     def landmark_building(self, name):
         """Здание особого места (по его прямоугольнику) или None."""
@@ -631,7 +791,67 @@ class City(object):
         if on_map:
             self.extra_land.append((x0, y0, x1, y1, z))
 
+    # ------------------------------------------------------------------
+    # запросы игры: координаты мира
+    # ------------------------------------------------------------------
+    # Пока город строится (live == False), мир и чертёж — одно и то же, и эти функции отвечают по чертежу:
+    # ими пользуется сам генератор и сборка сеток.  После go_live() они принимают координаты мира.
+    def ceiling(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.ceiling_l(x, y)
+
+    def street_name(self, x, y, reach=17.0):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.street_name_l(x, y, reach)
+
+    def cell_at(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.cell_at_l(x, y)
+
+    def block_at(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.block_at_l(x, y)
+
+    def where(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.where_l(x, y)
+
+    def on_road(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.on_road_l(x, y)
+
+    def in_water(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.in_water_l(x, y)
+
+    def ground_z(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.ground_z_l(x, y)
+
+    def zone_at(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.zone_at_l(x, y)
+
+    def zone_name(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.zone_name_l(x, y)
+
     def pad_at(self, x, y):
+        if self.live:
+            x, y = self.warp.inv(x, y)
+        return self.pad_at_l(x, y)
+
+    def pad_at_l(self, x, y):
         """Площадка под точкой: (x0, y0, x1, y1, z, зона) или None.  Из нескольких — самая высокая."""
         lst = self._pad_grid.get((int(x // 40.0), int(y // 40.0)))
         if not lst:
@@ -660,23 +880,23 @@ class City(object):
             t = (y - p[1]) / (p[3] - p[1])
         return s[1] + (s[2] - s[1]) * (0.0 if t < 0.0 else (1.0 if t > 1.0 else t))
 
-    def ceiling(self, x, y):
+    def ceiling_l(self, x, y):
         """Высота потолка над точкой, если она под крышей гаража или покрасочной (иначе None)."""
         for (x0, y0, x1, y1, z) in self.covered:
             if x0 <= x <= x1 and y0 <= y <= y1:
                 return z
         return None
 
-    def street_name(self, x, y, reach=17.0):
+    def street_name_l(self, x, y, reach=17.0):
         """Название улицы, на которой или рядом с которой стоит точка (None — улицы рядом нет)."""
-        kind, obj = self.where(x, y)
+        kind, obj = self.where_l(x, y)
         if kind == 'seg':
             if obj['bridge'] is not None:
                 return None                              # у мостов свои названия — как у районов
             return STREETS_Y[obj['j']] if obj['kind'] == 'h' else STREETS_X[obj['i']]
         best = None
         bd = reach
-        i, j = self.cell_at(x, y)
+        i, j = self.cell_at_l(x, y)
         for jj in (j, j + 1):
             if 0 <= jj < len(self.ys) and abs(self.ys[jj] - y) < bd and (self._seg_exists_h(i, jj) if 0 <= i < self.nx
                                                                            else False):
@@ -697,20 +917,20 @@ class City(object):
     # ------------------------------------------------------------------
     # запросы
     # ------------------------------------------------------------------
-    def cell_at(self, x, y):
+    def cell_at_l(self, x, y):
         """Индексы клетки (i, j) для точки (могут быть вне сетки: -1 / nx)."""
         i = bisect_right(self.xs, x) - 1
         j = bisect_right(self.ys, y) - 1
         return i, j
 
-    def block_at(self, x, y):
-        i, j = self.cell_at(x, y)
+    def block_at_l(self, x, y):
+        i, j = self.cell_at_l(x, y)
         b = self.block_grid.get((i, j))
         if b is not None and b.x0 <= x <= b.x1 and b.y0 <= y <= b.y1:
             return b
         return None
 
-    def where(self, x, y):
+    def where_l(self, x, y):
         """Что в точке: ('block', Block), ('seg', отрезок), ('node', узел) или (None, None)."""
         kx, i = _axis(x, self.xs, self.wx)
         if kx is None:
@@ -746,20 +966,20 @@ class City(object):
             return 'block', b
         return None, None
 
-    def on_road(self, x, y):
+    def on_road_l(self, x, y):
         """Точка на проезжей части?"""
-        return self.where(x, y)[0] in ('seg', 'node')
+        return self.where_l(x, y)[0] in ('seg', 'node')
 
-    def in_water(self, x, y):
-        kind, obj = self.where(x, y)
+    def in_water_l(self, x, y):
+        kind, obj = self.where_l(x, y)
         if kind is not None:
             return False
-        if self.pad_at(x, y) is not None:
+        if self.pad_at_l(x, y) is not None:
             return False
         return self.terrain.height(x, y) < WATER_Z
 
-    def ground_z(self, x, y):
-        kind, obj = self.where(x, y)
+    def ground_z_l(self, x, y):
+        kind, obj = self.where_l(x, y)
         if kind == 'block':
             return CURB
         if kind == 'node':
@@ -768,13 +988,13 @@ class City(object):
             if obj['bridge'] is None:
                 return 0.0
             return self.bridge_z(obj, (x if obj['kind'] == 'h' else y) - obj['a'])
-        p = self.pad_at(x, y)
+        p = self.pad_at_l(x, y)
         if p is not None:
             return p[4] if p[6] is None else self.pad_z(p, x, y)
         return self.terrain.height(x, y)
 
-    def zone_at(self, x, y):
-        kind, obj = self.where(x, y)
+    def zone_at_l(self, x, y):
+        kind, obj = self.where_l(x, y)
         if kind == 'block':
             return obj.zone
         if kind == 'seg':
@@ -794,7 +1014,7 @@ class City(object):
                 if z is not None:
                     return z
             return 'road'
-        p = self.pad_at(x, y)
+        p = self.pad_at_l(x, y)
         if p is not None and p[5]:
             return p[5]
         if self.terrain.height(x, y) < WATER_Z:
@@ -820,14 +1040,15 @@ class City(object):
             return 'I'
         return zone
 
-    def zone_name(self, x, y):
-        return ZONE_NAMES.get(self.zone_at(x, y), '')
+    def zone_name_l(self, x, y):
+        return ZONE_NAMES.get(self.zone_at_l(x, y), '')
 
     def nearest_node(self, x, y):
         best = None
         bd = 1e18
-        i0 = clamp(bisect_right(self.xs, x) - 1, 0, self.nx)
-        j0 = clamp(bisect_right(self.ys, y) - 1, 0, self.ny)
+        u, v = self.warp.inv(x, y) if self.live else (x, y)
+        i0 = clamp(bisect_right(self.xs, u) - 1, 0, self.nx)
+        j0 = clamp(bisect_right(self.ys, v) - 1, 0, self.ny)
         for i in (i0, i0 + 1):
             for j in (j0, j0 + 1):
                 n = self.nodes.get((i, j))
