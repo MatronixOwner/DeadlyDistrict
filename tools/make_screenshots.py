@@ -115,17 +115,49 @@ def main():
         if os.path.isfile(f):
             os.remove(f)
 
-    # пролог: автобус привёз Макса на конечную
+    # пролог: ограбление три года назад, погоня, заслон на мосту — и автобус, который привозит Макса на конечную
     g.new_game()
     ms = w.missions
+    pl = w.player
+
+    def intro_wait(start, extra, tmax=60.0):
+        """Дождаться в прологе реплики, которая начинается со start, и ещё extra секунд."""
+        t = 0.0
+        while ms.intro is not None and t < tmax and not w.hud.sub_plain.startswith(start):
+            g.step(1.0 / 30.0)
+            t += 1.0 / 30.0
+        assert ms.intro is not None and w.hud.sub_plain.startswith(start), 'в прологе нет реплики «%s»' % start
+        harness.run(g, extra)
+
+    intro_wait('Седой: Гони', 1.0)
+    snap('robbery')
+    # погоня: машину ведёт игрок
     t = 0.0
-    while ms.intro is not None and t < 26.2:
-        g.step(1.0 / 30.0)
-        t += 1.0 / 30.0
+    while ms.intro is not None and not ms.intro['play'] and t < 20.0:
+        harness.run(g, 0.2)
+        t += 0.2
+    it = ms.intro
+    assert it is not None and it['play'], 'погоня пролога не началась'
+    harness.run(g, 3.2, keys=('w',))
+    snap('getaway', ('w',))
+    # подъезжаем к метке на Большом мосту: там заслон
+    car, mk = it['car'], it['marker']
+    car.x, car.y, car.yaw = mk.x, mk.y - 26.0, math.pi / 2
+    car.vx = car.vy = car.speed = car.omega = 0.0
+    car.sync()
+    t = 0.0
+    while it['end'] is None and t < 10.0:
+        harness.run(g, 0.2, keys=('w',))
+        t += 0.2
+    assert it['end'] == 'bridge', 'до моста в прологе не доехали: %s' % it['end']
+    intro_wait('Мост перекрыли', 3.0)
+    snap('roadblock')
+    # три года спустя: конечная
+    intro_wait('Водитель:', 1.2)
     snap('prologue')
     harness.press(g, 'escape')
     harness.run(g, 0.5)
-    pl = w.player
+    assert ms.intro is None and w.hero_car.alive(), 'после пролога «Ласточка» должна стоять в гараже'
     # сюжет начинается со звонка брата: телефон на экране, реплики — субтитрами
     t = 0.0
     while t < 40.0 and not (ms.active is not None and w.hud.phone_on):
@@ -365,20 +397,41 @@ def main():
     for v in (moto, cyc, bmx):
         w.remove_vehicle(v)
 
-    # три машины с фототекстурами: «Кирпич», маршрутка, старый седан — в двух окрасках, носом к камере
+    # три новые машины — седан «Тень», хэтчбек «Зажигалка» и купе «Катана» — в двух окрасках, носом к камере
     row = []
     yaw = -0.25
     fx, fy = math.cos(yaw), math.sin(yaw)
     cx, cy = bx + 6.0, by
-    for kind, paint, f, l in (('brick', 1, 0.0, 0.0), ('minibus', 0, 0.3, 3.6), ('beater', 1, -0.2, -3.5),
-                              ('brick', 5, -5.6, 2.0), ('minibus', 2, -6.0, -2.2)):
+    for kind, paint, f, l in (('shade', 3, 0.0, 0.0), ('gti', 0, 0.3, 3.4), ('coupe', 9, -0.2, -3.4),
+                              ('coupe', 1, -5.4, 2.0), ('gti', 6, -5.8, -2.0)):
         v = w.spawn_vehicle(kind, cx + fx * f - fy * l, cy + fy * f + fx * l, yaw, paint=paint)
         v.keep = True
         row.append(v)
-    view(cx + math.cos(yaw - 0.5) * 11.0, cy + math.sin(yaw - 0.5) * 11.0, 2.6, cx - fx * 2.0, cy - fy * 2.0, 0.7)
+    view(cx + math.cos(yaw - 0.5) * 10.0, cy + math.sin(yaw - 0.5) * 10.0, 2.5, cx - fx * 2.0, cy - fy * 2.0, 0.6)
     snap('cars')
     for v in row:
         w.remove_vehicle(v)
+
+    # машина героя: у «Ласточки» есть салон — за стёклами видно Макса за рулём и брата рядом
+    v = w.spawn_vehicle('retro', cx, cy, yaw, paint=0)
+    v.keep = True
+    pl.teleport(cx, cy - 3.0)
+    pl.enter_vehicle(v, silent=True)
+    q = w.spawn_ped(cx, cy - 4.0, 0.0, story.person_look('bruce'))
+    q.keep = True
+    w.put_in_vehicle(q, v)
+    harness.run(g, 0.6, keys=('space', 'a'))
+    w.cam.override = (cx + fx * 3.5 - fy * 2.1, cy + fy * 3.5 + fx * 2.1, 1.5, cx + fx * 0.25, cy + fy * 0.25, 0.92)
+    nohelp(('space', 'a'))
+    w.hud.show(False)
+    harness.run(g, 0.2, keys=('space', 'a'))
+    snap('hero', ('space', 'a'))
+    w.cam.override = None
+    pl.leave_vehicle(force=True)
+    harness.run(g, 0.6)
+    w.take_out(q, 1)
+    w.remove_ped(q)
+    w.remove_vehicle(v)
 
     # такси — жёлтый кэб с шашечками: стоянка таксопарка
     lot = c.landmarks['taxi']['lot']
@@ -443,8 +496,9 @@ def main():
     assert g.state == 'play', 'меню ателье не закрылось'
     harness.run(g, 0.3)
     pl.leave_vehicle(force=True)
-    # гараж: машины стоят в клетках, ворота открыты
-    for v, sl in zip(cars, gi['slots']):
+    # гараж: в первой клетке — «Ласточка», в двух других — машины с тюнингом; ворота открыты
+    w.remove_vehicle(cars.pop())
+    for v, sl in zip(cars, gi['slots'][1:]):
         v.x, v.y, v.yaw = sl[0], sl[1], gi['yaw']
         v.vx = v.vy = v.speed = 0.0
         v.sync()
@@ -458,7 +512,9 @@ def main():
     snap('garage')
     w.cam.override = None
     w.hud.show(True)
-    w.garage.reset()
+    assert w.hero_car.v in w.garage.cars and len(w.garage.cars) == 3
+    for v in cars:                                  # «Ласточка» остаётся в гараже
+        w.remove_vehicle(v)
 
     # сюжет: ведёт бот из автотестов, снимаем нужные сцены
     def story_run(mid, stops):

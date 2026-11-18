@@ -4,6 +4,8 @@
     python tests/soak.py [секунд игрового времени] [seed]
     python tests/soak.py [секунд] [seed] --tester     то же в сборке для тестера: бот ещё и открывает меню
                                                       на F9 и жмёт в нём случайные клавиши
+    python tests/soak.py [секунд] [seed] --intro      игра начинается с пролога: бот листает сценки и как попало
+                                                      ведёт машину в погоне, а потом играет дальше — уже с сюжетом
 """
 import math
 import random
@@ -45,6 +47,57 @@ def tester_keys(g, rnd, dt, used):
     return frames[0] * dt
 
 
+def play_intro(g, rnd, dt):
+    """Пролог: в сценках бот иногда жмёт Enter, в погоне — ведёт машину как попало и жмёт всё подряд.
+    Возвращает, сколько прошло игрового времени."""
+    w = g.world
+    ms = w.missions
+    keys = ['w', 'w', 'w', 'w', 's', 'a', 'd', 'space', 'shift', 'mouse1']
+    taps = ['f', 'h', 'r', 'enter', 'b', 'e', 'q', 'c', 'n']
+    held = set()
+    t = 0.0
+    nxt = 0.0
+    end = None
+    chase = 0.0
+    while ms.intro is not None and t < 400.0:
+        it = ms.intro
+        if t >= nxt:
+            nxt = t + rnd.uniform(0.3, 1.8)
+            for k in list(held):
+                g.inp._up(k)
+            held.clear()
+            if it['play']:
+                for _ in range(rnd.randint(1, 3)):
+                    k = rnd.choice(keys)
+                    g.inp._dn(k)
+                    held.add(k)
+                if rnd.random() < 0.4:
+                    k = rnd.choice(taps)
+                    g.inp._dn(k)
+                    g.inp._up(k)
+                if rnd.random() < 0.05 and g.state == 'play':
+                    g.pause()
+                    for _ in range(3):
+                        g.step(dt)
+                    g.resume()
+            elif rnd.random() < 0.15:
+                g.inp._dn('enter')
+                g.inp._up('enter')
+        if it['play']:
+            chase += dt
+        g.step(dt)
+        t += dt
+        if ms.intro is not None and ms.intro['end']:
+            end = ms.intro['end']
+    for k in list(held):
+        g.inp._up(k)
+    if ms.intro is not None:
+        raise RuntimeError('пролог не закончился за %d с' % t)
+    print('пролог: %.0f с, из них погоня %.0f с, её конец: %s' % (t, chase, end))
+    sys.stdout.flush()
+    return t
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     total = float(args[0]) if len(args) > 0 else 300.0
@@ -57,19 +110,30 @@ def main():
     if '--tester' in sys.argv:
         from game.tester import Tester
         tester = g.tester = Tester(g)
-    w = harness.start_game(g)
+    dt = 1.0 / 30.0
+    t = 0.0
+    if '--intro' in sys.argv:
+        g.new_game()
+        w = g.world
+        try:
+            t += play_intro(g, rnd, dt)
+        except Exception:
+            traceback.print_exc()
+            print('FAILED in the prologue')
+            return 1
+    else:
+        w = harness.start_game(g, hero=True)             # «Ласточка» в гараже, как в настоящей игре
     pl = w.player
     for wid, am in ((W_BAT, None), (W_PISTOL, 500), (W_UZI, 900), (W_SHOTGUN, 200), (W_AK, 900), (W_ROCKET, 40),
                     (W_GRENADE, 40), (W_MOLOTOV, 40)):
         pl.give_weapon(wid, am, select=False)
     pl.add_money(5000)
-    dt = 1.0 / 30.0
-    t = 0.0
     held = set()
     keys = ['w', 'w', 'w', 'a', 'd', 's', 'shift', 'space', 'mouse1', 'mouse1', 'mouse3']
     taps = ['f', 'f', 'e', 'q', 'h', 'r', 'c', 't', '1', '3', '5', '7', '8', '9', 'enter']
     next_change = 0.0
     t0 = time.time()
+    t_start = t
     frames = 0
     try:
         while t < total:
@@ -159,7 +223,8 @@ def main():
     el = time.time() - t0
     if tester is not None:
         print('меню тестера: использовано строк %d — %s' % (len(used), ', '.join(sorted(used))))
-    print('SOAK OK: %.0f s game time in %.1f s (%.1fx), %.2f ms/frame' % (t, el, t / el, el / frames * 1000))
+    print('SOAK OK: %.0f s game time in %.1f s (%.1fx), %.2f ms/frame' % (
+        t - t_start, el, (t - t_start) / el, el / max(1, frames) * 1000))
     return 0
 
 

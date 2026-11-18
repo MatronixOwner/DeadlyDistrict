@@ -45,9 +45,10 @@ CREDITS_TEXT = (
     'Игра в духе классических криминальных боевиков начала 2000-х.\n'
     '\n'
     'Люди и мебель — Elbolilloduro, анимация — Mesh2Motion.\n'
-    'Машины — GGBot («PSX Style Cars»), Elbolilloduro, сборник retro3d-assets; такси — MoiDev.\n'
+    'Машины — GGBot («PSX Style Cars»), MoiDev, designersoup, boggle.\n'
+    '«Ласточка» — Bricchi Games, «Retro Car With Interior» (CC BY 4.0).\n'
     'Чоппер — Duhgless; круизер и детали тюнинга — Kenney; велосипеды — Quaternius, retro3d-assets.\n'
-    'Уличный мусор — Daniel Jurys («PSX Waste»); плашки меню — ROHHSA («Free PSX UI»).\n'
+    'Уличный мусор — Daniel Jurys («PSX Waste»).\n'
     'Оружие — Mextie, Ace Spectre, Cemckrc и другие авторы сборника retro3d-assets; Quaternius.\n'
     'Материалы города и комнат — Classic64 Asset Library (Craig Snedeker).\n'
     'Город, берега, комнаты, скутеры, автобус, вывески, звуки и музыка созданы кодом игры.\n'
@@ -55,6 +56,30 @@ CREDITS_TEXT = (
     'Движок: Panda3D.  Шрифты: Inter, Oswald, Caveat, Russo One, Dela Gothic One (OFL).\n'
     '\n'
     'Спасибо за игру! Город открыт: тайники, такси и хаос ждут.')
+
+
+# Страница «Авторы» в главном меню.  Машина героя взята по лицензии CC BY: она требует назвать автора и работу,
+# указать лицензию и сказать, что изменено, — там, где это увидит игрок.
+AUTHORS_TEXT = (
+    'МАШИНА ГЕРОЯ «ЛАСТОЧКА»\n'
+    '«Retro Car With Interior» — Bricchi Games\n'
+    'bricchi-games.itch.io/retro-car-with-interior\n'
+    'Лицензия CC BY 4.0: creativecommons.org/licenses/by/4.0\n'
+    'Изменено: формат, размер текстуры, краска отделена от кузова.\n'
+    '\n'
+    'ОСТАЛЬНЫЕ МОДЕЛИ И МАТЕРИАЛЫ\n'
+    'Машины — GGBot; «Тень» и такси — MoiDev;\n'
+    '«Зажигалка» — designersoup; «Катана» — boggle\n'
+    'Чоппер — Duhgless; круизер и детали тюнинга — Kenney\n'
+    'Велосипеды — Quaternius, сборник retro3d-assets\n'
+    'Люди и мебель — Elbolilloduro; анимация — Mesh2Motion\n'
+    'Оружие — Mextie, Ace Spectre, Cemckrc и другие; Quaternius\n'
+    'Уличный мусор — Daniel Jurys\n'
+    'Материалы города и комнат — Craig Snedeker (Classic64)\n'
+    'Шрифты — Inter, Oswald, Caveat, Russo One, Dela Gothic One\n'
+    'Движок — Panda3D\n'
+    '\n'
+    'Условия каждого набора — в файле README рядом с игрой.')
 
 
 def configure(settings, headless=False):
@@ -379,6 +404,7 @@ class Game(object):
             Item('Продолжить', self.continue_game, enabled=has_save),
             Item('Настройки', lambda: self.ui.open(self.settings_menu())),
             Item('Управление', lambda: self.ui.open(self.text_menu('Управление', CONTROLS_TEXT, 0.052))),
+            Item('Авторы', lambda: self.ui.open(self.text_menu('Авторы', AUTHORS_TEXT, 0.047))),
             Item('Выход', self.quit),
         ]
         sub = 'Версия %s — стрелки или мышь, Enter — выбрать' % __version__

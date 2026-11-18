@@ -5,6 +5,7 @@
     python main.py --tester     запуск с меню тестера (F9); настройки и сохранения — в отдельной папке
     python main.py --selftest   быстрая самопроверка без окна (для сборочного конвейера)
 """
+import math
 import os
 import sys
 import traceback
@@ -76,30 +77,70 @@ def selftest():
     for _ in range(30):
         game.step(dt)
     game.new_game()
-    for i in range(240):
-        # пролог: сначала листаем кадры клавишей Enter, потом пропускаем остаток клавишей Esc
-        key = 'enter' if i < 120 else 'escape'
-        if w.missions.intro is not None and i % 12 == 0:
-            game.inp._dn(key)
-        else:
-            game.inp._up('enter')
-            game.inp._up('escape')
-        game.step(dt)
     ms = w.missions
+    hero = w.hero_car.v
+    _need(hero is not None and hero.kind == 'retro' and hero in w.garage.cars, 'the hero car is not in the garage')
+
+    def enter_until(done, frames):
+        """Листать кадры пролога клавишей Enter, пока не выполнится условие."""
+        for i in range(frames):
+            if done():
+                break
+            if i % 12 == 0:
+                game.inp._dn('enter')
+            else:
+                game.inp._up('enter')
+            game.step(dt)
+        game.inp._up('enter')
+        game.step(dt)
+
+    # пролог: сценка у банка, потом погоня — машину ведёт игрок, в салоне видно всех троих
+    enter_until(lambda: ms.intro is None or ms.intro['play'], 600)
+    it = ms.intro
+    _need(it is not None and it['play'], 'the prologue chase did not start')
+    car = it['car']
+    _need(w.player.vehicle is car and car.cabin is not None and len(car.cabin['who']) == 3 and car.swheel is not None,
+          'the getaway car has no cabin with its crew')
+    _need(w.police.level == 3 and it['marker'] is not None, 'the prologue chase has no police or no goal')
+    game.inp._dn('w')
+    for _ in range(60):
+        game.step(dt)
+    _need(car.speed > 3.0, 'the getaway car does not drive')
+    # до моста — там заслон; дальше арест, «три года спустя», автобус
+    car.x, car.y, car.yaw = it['marker'].x, it['marker'].y - 20.0, math.pi / 2
+    car.sync()
+    for _ in range(150):
+        if it['end'] is not None:
+            break
+        game.step(dt)
+    game.inp._up('w')
+    _need(it['end'] == 'bridge', 'the prologue chase did not end on the bridge: %s' % it['end'])
+    for _ in range(45):
+        game.step(dt)
+    _need(len(it['cars']) == 3 and len(it['peds']) >= 6, 'no roadblock on the bridge')
+    enter_until(lambda: ms.intro is None, 900)
     _need(ms.intro is None, 'intro did not finish')
     _need(w.interiors.current is None and w.player.state == 'foot', 'hero is not on the street after the intro')
+    _need(w.police.level == 0 and [v for v in w.vehicles if v.kind == 'retro'] == [hero],
+          'the prologue left its props behind')
     # после пролога звонит Брюс: сюжет начинается со звонка, реплики листаются клавишей Enter
+    for i in range(300):
+        if w.hud.phone_on:
+            break
+        game.step(dt)
+    _need(ms.active is not None and ms.active.spec['id'] == 's1' and w.hud.phone_on,
+          'the story did not start with the phone call')
     for i in range(600):
-        if ms.active is not None and i % 10 == 0:
+        if not w.hud.phone_on:
+            break
+        if i % 10 == 0:
             game.inp._dn('enter')
         else:
             game.inp._up('enter')
         game.step(dt)
-        if ms.active is not None and w.player.controls and not w.hud.phone_on:
-            break
     game.inp._up('enter')
-    _need(ms.active is not None and ms.active.spec['id'] == 's1', 'the story did not start with the phone call')
-    _need(not w.hud.phone_on, 'the phone call did not end')
+    game.step(dt)
+    _need(not w.hud.phone_on and w.player.controls and ms.active is not None, 'the phone call did not end')
     game.inp._dn('w')
     for _ in range(90):
         game.step(dt)
@@ -173,7 +214,18 @@ def selftest():
     for _ in range(30):
         game.step(dt)
     kept = w.garage.state()
-    _need(len(kept) == 1 and kept[0]['kind'] == 'sedan' and kept[0].get('tune'), 'the garage did not keep the car')
+    _need(sorted(k['kind'] for k in kept) == ['retro', 'sedan'] and all(k.get('tune') for k in kept if k['kind'] == 'sedan'),
+          'the garage did not keep the car')
+    # машина героя: водитель виден в салоне, руки — на рулевом колесе
+    pl.teleport(hero.x - 1.6, hero.y)
+    pl.enter_vehicle(hero, silent=True)
+    for _ in range(10):
+        game.step(dt)
+    _need(pl.vehicle is hero and not pl.ped.node.isHidden() and hero.cabin['who'].get(pl.ped) == 0 and
+          hero._arms is pl.ped.vis, 'the driver is not visible in the hero car')
+    pl.leave_vehicle(force=True)
+    for _ in range(10):
+        game.step(dt)
     game.base.graphicsEngine.renderFrame()
     _need(not game.audio._missing, 'missing sounds: %s' % sorted(game.audio._missing))
     import game as game_pkg
@@ -235,7 +287,8 @@ def _selftest_tester_menu(game, dt):
     game.base.graphicsEngine.renderFrame()
     for name in ('arrow_down', 'enter', 'arrow_down', 'enter'):          # Телепорт -> Комнаты
         key(name)
-    _need([m.title for m in game.ui.stack] == ['Тестер', 'Телепорт', 'Комнаты'], 'tester submenus do not open')
+    _need([m.title for m in game.ui.stack] == ['Тестер', 'Телепорт', 'Комнаты'],
+          'tester submenus do not open: %s' % ' / '.join(m.title for m in game.ui.stack))
     game.base.graphicsEngine.renderFrame()
     key('f9')
     _need(not t.opened and game.state == 'play', 'F9 did not close the tester menu')
