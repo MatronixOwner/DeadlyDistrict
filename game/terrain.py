@@ -21,9 +21,53 @@ WATER_Z = -0.7          # уровень моря (то же число, что 
 C_GRASS, C_SAND, C_ROCK, C_FOREST, C_FIELD, C_SEA = 0, 1, 2, 3, 4, 5
 
 
+class Field(object):
+    """Отдельный лоскут рельефа вдали от основной карты: сетка высот, посчитанная при постройке города.
+
+    Так устроена заснеженная равнина вокруг Зимогорска — городка пролога (city.City._make_snowfield)."""
+
+    def __init__(self, x0, y0, step, nx, ny, h, kind='snow'):
+        self.x0, self.y0 = float(x0), float(y0)
+        self.step = float(step)
+        self.nx, self.ny = int(nx), int(ny)
+        self.x1 = self.x0 + (self.nx - 1) * self.step
+        self.y1 = self.y0 + (self.ny - 1) * self.step
+        self.h = h                  # высоты, м (построчно: y, затем x)
+        self.kind = kind
+
+    def height(self, x, y):
+        step = self.step
+        nx = self.nx
+        fx = (x - self.x0) / step
+        fy = (y - self.y0) / step
+        if fx < 0.0:
+            fx = 0.0
+        elif fx > nx - 1.001:
+            fx = nx - 1.001
+        if fy < 0.0:
+            fy = 0.0
+        elif fy > self.ny - 1.001:
+            fy = self.ny - 1.001
+        ix = int(fx)
+        iy = int(fy)
+        tx = fx - ix
+        ty = fy - iy
+        k = iy * nx + ix
+        h = self.h
+        h00 = h[k]
+        h11 = h[k + nx + 1]
+        if tx > ty:
+            h10 = h[k + 1]
+            return h00 + (h10 - h00) * tx + (h11 - h10) * ty
+        h01 = h[k + nx]
+        return h00 + (h11 - h01) * tx + (h01 - h00) * ty
+
+
 class Terrain(object):
 
     def __init__(self, root=None):
+        self.fields = []            # лоскуты рельефа вдали от основной карты (Field)
+        self.far_x = 1e30           # левее этой границы лоскутов нет: обычный запрос на них не смотрит
         self.ok = False
         self.x0 = self.y0 = 0.0
         self.step = 10.0
@@ -73,10 +117,25 @@ class Terrain(object):
     def y1(self):
         return self.y0 + (self.ny - 1) * self.step
 
+    def set_fields(self, fields):
+        self.fields = list(fields)
+        self.far_x = min([f.x0 for f in self.fields] or [1e30])
+
+    def field_at(self, x, y):
+        if x >= self.far_x:
+            for f in self.fields:
+                if f.x0 <= x <= f.x1 and f.y0 <= y <= f.y1:
+                    return f
+        return None
+
     def height(self, x, y):
         """Высота земли в точке (м).  За краем сетки — высота ближайшего края."""
         if not self.ok:
             return FLAT
+        if x >= self.far_x:
+            for f in self.fields:
+                if f.x0 <= x <= f.x1 and f.y0 <= y <= f.y1:
+                    return f.height(x, y)
         step = self.step
         nx = self.nx
         fx = (x - self.x0) / step

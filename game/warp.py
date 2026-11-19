@@ -53,11 +53,15 @@ class Warp(object):
     STEP = 4.0           # шаг её узлов
     N = 16               # узлов на плитку по стороне (TILE / STEP)
 
-    def __init__(self, waves, rigid=(), box=(-1e9, -1e9, 1e9, 1e9), fade=300.0, name=''):
+    def __init__(self, waves, rigid=(), box=(-1e9, -1e9, 1e9, 1e9), fade=300.0, name='', extra=()):
+        """extra: [(waves, box, fade)] — отдельные области со своими волнами далеко от основной
+        (городок пролога): области не должны перекрываться, прямых (rigid) в них нет."""
         self.name = name
         self.waves = [tuple(float(v) for v in w) for w in waves]
         self.box = tuple(float(v) for v in box)
         self.fade = float(fade)
+        self.extra = [([tuple(float(v) for v in w) for w in wv], tuple(float(v) for v in bx), float(fd))
+                      for (wv, bx, fd) in extra]
         self._tiles = {}
         self._memo = {}
         self.rigid = []
@@ -79,7 +83,7 @@ class Warp(object):
     # ------------------------------------------------------------------
     def signature(self):
         import hashlib
-        return hashlib.md5(repr((self.waves, self.rigid, self.box, self.fade)).encode()).hexdigest()[:12]
+        return hashlib.md5(repr((self.waves, self.rigid, self.box, self.fade, self.extra)).encode()).hexdigest()[:12]
 
     def _window(self, u, v):
         x0, y0, x1, y1 = self.box
@@ -92,16 +96,22 @@ class Warp(object):
         """Волны без жёстких областей."""
         x0, y0, x1, y1 = self.box
         d = max(x0 - u, u - x1, y0 - v, v - y1)
-        if d >= self.fade:
-            return u, v
+        waves, fade = self.waves, self.fade
+        if d >= fade:
+            for (waves, bx, fade) in self.extra:
+                d = max(bx[0] - u, u - bx[2], bx[1] - v, v - bx[3])
+                if d < fade:
+                    break
+            else:
+                return u, v
         sx = sy = 0.0
         sin = math.sin
-        for (ax, ay, kx, ky, ph) in self.waves:
+        for (ax, ay, kx, ky, ph) in waves:
             s = sin(kx * u + ky * v + ph)
             sx += ax * s
             sy += ay * s
         if d > 0.0:
-            k = 1.0 - _smooth(d / self.fade)
+            k = 1.0 - _smooth(d / fade)
             sx *= k
             sy *= k
         return u + sx, v + sy
@@ -239,7 +249,12 @@ class Warp(object):
         b = self.box
         f = self.fade + 80.0
         if x < b[0] - f or x > b[2] + f or y < b[1] - f or y > b[3] + f:
-            return x, y
+            for (wv, b, f) in self.extra:
+                f += 80.0
+                if b[0] - f <= x <= b[2] + f and b[1] - f <= y <= b[3] + f:
+                    break
+            else:
+                return x, y
         tx = x // 64.0
         ty = y // 64.0
         t = self._tiles.get((tx, ty))

@@ -11,7 +11,7 @@ import math
 from bisect import bisect_right
 
 from .mathutil import Rng, clamp
-from .terrain import Terrain, C_FOREST, C_ROCK, C_GRASS
+from .terrain import Terrain, Field, FLAT as TERRAIN_FLAT, C_FOREST, C_ROCK, C_GRASS
 from .warp import Warp
 
 # ---------------------------------------------------------------------------
@@ -121,8 +121,51 @@ BRIDGES = {
 }
 DOCK_W = 52.0           # ширина бетонных причалов к востоку от порта
 BEACH_W = 56.0          # ширина городского пляжа
+
+# --- городок пролога: Зимогорск ---------------------------------------------------------------------
+# Три года назад всё случилось не в Порт-Глухове, а в северном городке за тысячи километров от него.
+# Он строится той же сеткой, но далеко в стороне и на своих линиях: ни одной общей улицы с основной
+# картой, до него не доехать и его не видно.  Рельеф под ним свой — заснеженная равнина (см. _make_snowfield).
+#   зоны:  Y центр городка (два этажа, лавки), W частный сектор
+MAIN_NX, MAIN_NY = len(BLOCK_W), len(BLOCK_H)           # клеток основной карты; её линии — 0..MAIN_NX и 0..MAIN_NY
+_MAIN_LAYOUT = (list(BLOCK_W), list(BLOCK_H), list(ROAD_X_AVE), list(ROAD_Y_AVE), list(CELLS), list(SUPER),
+                list(EXTRA_SEGS))
+INTRO_GAP = (2600.0, 300.0)                             # пустая «клетка» между картами: ширина и высота
+INTRO_I0, INTRO_J0 = MAIN_NX + 1, MAIN_NY + 1           # первая клетка городка (и его первые линии)
+INTRO_W = [72, 80, 72, 72, 72, 520]                     # i = INTRO_I0 .. +5: пять кварталов и перегон тракта
+INTRO_H = [64, 72, 72, 64]                              # j = INTRO_J0 .. +3
+INTRO_X_AVE = [False, False, False, False, False, False, False]
+INTRO_Y_AVE = [False, False, True, False, False]        # главная улица — проспект Первопроходцев
+INTRO_CELLS = [             # сверху — север
+    '.WWW..',
+    'WYYYW.',
+    'WWYYW.',
+    '..WW..',
+]
+# тракт: петля от юго-восточного края городка к северо-восточному
+INTRO_SEGS = [('h', INTRO_I0 + 5, INTRO_J0 + 1), ('v', INTRO_I0 + 6, INTRO_J0 + 1), ('v', INTRO_I0 + 6, INTRO_J0 + 2),
+              ('h', INTRO_I0 + 5, INTRO_J0 + 3)]
+INTRO_MERGES = [(INTRO_I0 + 2, INTRO_J0 + 1, INTRO_I0 + 3, INTRO_J0 + 1),      # пешеходная улица напротив банка
+                (INTRO_I0 + 1, INTRO_J0 + 3, INTRO_I0 + 2, INTRO_J0 + 3)]
+INTRO_ZONES = ('Y', 'W')
+INTRO_BANK = (INTRO_I0 + 2, INTRO_J0 + 2)               # квартал с банком: фасадом на главную улицу
+BLOCK_W += [INTRO_GAP[0]] + INTRO_W
+BLOCK_H += [INTRO_GAP[1]] + INTRO_H
+ROAD_X_AVE += INTRO_X_AVE
+ROAD_Y_AVE += INTRO_Y_AVE
+EXTRA_SEGS += INTRO_SEGS
+MERGES += INTRO_MERGES
+SUPER += INTRO_MERGES
+CELLS[:] = ([('.' * INTRO_I0 + row) for row in INTRO_CELLS] + ['.' * len(BLOCK_W)] +
+            [row + '.' * (len(BLOCK_W) - len(row)) for row in CELLS])
+# волны изгиба городка (как WARP_WAVES ниже, но мельче: городок невелик)
+INTRO_WAVES = [
+    (640.0, 20.0, 110.0, 22.0, 0.5),
+    (430.0, 100.0, 10.0, 13.0, 2.0),
+    (270.0, -40.0, 50.0, 5.0, 1.1),
+]
 # на что похожа зона (жители, машины, звуки): новые зоны ведут себя как знакомые
-ZONE_STYLE = {'V': 'O', 'S': 'R', 'L': 'R', 'H': 'I', 'A': 'I'}
+ZONE_STYLE = {'V': 'O', 'S': 'R', 'L': 'R', 'H': 'I', 'A': 'I', 'Y': 'O', 'W': 'R', 'north': 'R'}
 
 ZONE_NAMES = {
     'G': 'Ржавый квартал',
@@ -146,17 +189,26 @@ ZONE_NAMES = {
     'wild': 'Предгорья',
     'bridge_north': 'Большой мост',
     'bridge_east': 'Портовый мост',
+    'Y': 'Зимогорск',
+    'W': 'Зимогорск. Частный сектор',
+    'north': 'Зимогорский тракт',
 }
 
 # Названия улиц: линии сетки с запада на восток и с юга на север.  Проспекты — широкие (см. ROAD_*_AVE).
 STREETS_X = ['Западная набережная', 'Кузнечная улица', 'Гончарная улица', 'Адмиральский проспект', 'Садовая улица',
              'Театральная улица', 'проспект Мира', 'Якорная улица', 'Портовое шоссе', 'Канатная улица',
              'Причальный проезд', 'Заводская улица', 'Нефтяное шоссе', 'Маячная улица', 'Лётная улица',
-             'Восточная улица']
+             'Восточная улица',
+             # Зимогорск
+             'улица Геологов', 'Школьная улица', 'улица Полярников', 'Снежная улица', 'Рудничная улица',
+             'Объездная улица', 'Зимогорский тракт']
 STREETS_Y = ['Морской проспект', 'Пляжная улица', 'Полицейский проспект', 'Банковская улица', 'Парковая улица',
              'Портовый проспект', 'Сосновая улица', 'Ржавая улица', 'Северная набережная',
              'Речной проспект', 'Чайная улица', 'Заречный проспект', 'Слободская улица', 'Огородная улица',
-             'Дальняя улица']
+             'Дальняя улица',
+             # Зимогорск
+             'Овражная улица', 'Зимогорский тракт', 'проспект Первопроходцев', 'Зимогорский тракт',
+             'Таёжная улица']
 # номера домов для сюжета: место -> (улица, дом)
 ADDRESS = {'safehouse': ('Сосновая', 12), 'bruce': ('Сосновая', 31), 'boss': ('Банковская', 21)}
 
@@ -184,12 +236,13 @@ LANDMARKS = {
     (8, 6): 'guns2',
     (12, 5): 'zakhar',          # лодочный сарай в Нефтегавани
     (5, 10): 'grom',            # чайная в Заречье
+    INTRO_BANK: 'heist',        # банк в Зимогорске: с него начинается пролог
 }
 
 LANDMARK_SIGNS = {
     'terminal': 'sign_safehouse', 'boss': 'sign_casino', 'vano': 'sign_garage', 'spray': 'sign_spray', 'spray2': 'sign_spray',
     'guns': 'sign_guns', 'guns2': 'sign_guns', 'rosa': 'sign_rosa', 'hospital': 'sign_hospital',
-    'police': 'sign_police', 'bank': 'sign_bank', 'prof': 'sign_club', 'taxi': 'sign_taxi',
+    'police': 'sign_police', 'bank': 'sign_bank', 'heist': 'sign_bank', 'prof': 'sign_club', 'taxi': 'sign_taxi',
     'gas': 'sign_gas', 'port': 'sign_port', 'zakhar': 'sign_boats', 'grom': 'sign_tea',
 }
 
@@ -377,10 +430,11 @@ class City(object):
             y += self.wy[j] * 0.5
             if j < self.ny:
                 y += BLOCK_H[j]
+        # края основной карты (городок пролога лежит далеко за ними)
         self.grid_x0 = self.xs[0] - self.wx[0] * 0.5
-        self.grid_x1 = self.xs[-1] + self.wx[-1] * 0.5
+        self.grid_x1 = self.xs[MAIN_NX] + self.wx[MAIN_NX] * 0.5
         self.grid_y0 = self.ys[0] - self.wy[0] * 0.5
-        self.grid_y1 = self.ys[-1] + self.wy[-1] * 0.5
+        self.grid_y1 = self.ys[MAIN_NY] + self.wy[MAIN_NY] * 0.5
         # клетки: (i, j) -> зона
         self.cells = {}
         for row, line in enumerate(CELLS):
@@ -390,6 +444,8 @@ class City(object):
                     self.cells[(i, j)] = ch
         # остров — прежний город: по нему считаются пляж и причалы
         self.isle_i1, self.isle_j1 = 9, 7
+        # всё, что восточнее этой черты (на чертеже), — городок пролога и снега вокруг него
+        self.intro_x0 = self.grid_x1 + INTRO_GAP[0] * 0.5
 
         # --- контейнеры данных -----------------------------------------
         self.blocks = []
@@ -414,10 +470,12 @@ class City(object):
         self.covered = []             # крытые места, куда можно въехать: (x0, y0, x1, y1, высота потолка)
         self.ramps = []               # наклонные площадки: индексы в self.pads
         self._chunk_ids = {}
+        self._snowy_outer = None
         self.n_chunks = 0
 
         self._make_roads()
         self._make_blocks()
+        self._make_snowfield()
         self._outer_sidewalks()
         # застройка — клетка за клеткой, в прежнем порядке: слитый квартал застраивается по своим клеткам
         # (каждая — как раньше, когда была отдельным кварталом), потом на месте улиц разбиваются бульвары
@@ -434,7 +492,9 @@ class City(object):
                     self._gen_block(b)
         self._gen_coast()
         self._gen_country()
+        self._gen_snow_country()
         self._gen_extras()
+        self._intro_places()
         self._litter()
         self._align_doors()
         self._clear_driveways()
@@ -470,7 +530,17 @@ class City(object):
             box = (t.x0, t.y0, t.x1, t.y1)
         else:
             box = (self.grid_x0 - 300.0, self.grid_y0 - 300.0, self.grid_x1 + 300.0, self.grid_y1 + 300.0)
-        return Warp(waves, rigid, box, 300.0, 'main')
+        # Зимогорск гнётся своими волнами; у края снежной равнины изгиб сходит на нет
+        extra = []
+        f = self.snowfield
+        if f is not None:
+            w2 = []
+            for (lam, beta, gamma, amp, ph) in INTRO_WAVES:
+                k = 2.0 * math.pi / lam
+                b, g = math.radians(beta), math.radians(gamma)
+                w2.append((amp * math.cos(g), amp * math.sin(g), k * math.cos(b), k * math.sin(b), ph))
+            extra.append((w2, (f.x0 + 330.0, f.y0 + 330.0, f.x1 - 330.0, f.y1 - 330.0), 300.0))
+        return Warp(waves, rigid, box, 300.0, 'main', extra)
 
     def to_world(self, u, v):
         """Точка чертежа -> точка мира."""
@@ -543,6 +613,11 @@ class City(object):
         self.pickup_spots = [pt(p) for p in self.pickup_spots]
         sx, sy, syaw = self.start_pos
         self.start_pos = fwd(sx, sy) + (wp.dir(sx, sy, syaw),)
+        it = self.special.get('intro')
+        if it is not None:
+            it['plan'] = dict(it)
+            for k in ('goal', 'block', 'town'):
+                it[k] = pt(it[k])
         g = self.special.get('garage')
         if g is not None:
             g['plan'] = dict(g)
@@ -669,7 +744,8 @@ class City(object):
         """Подпись раскладки: рельеф построен под конкретные дороги и кварталы."""
         import hashlib
         h = hashlib.md5()
-        h.update(repr((X0, Y0, BLOCK_W, BLOCK_H, ROAD_X_AVE, ROAD_Y_AVE, CELLS, SUPER, EXTRA_SEGS,
+        bw, bh, ax, ay, cells, sup, extra = _MAIN_LAYOUT     # городок пролога в подпись не входит: рельеф у него свой
+        h.update(repr((X0, Y0, bw, bh, ax, ay, cells, sup, extra,
                        sorted((k, sorted(v.items())) for k, v in BRIDGES.items()), DOCK_W, BEACH_W)).encode())
         return h.hexdigest()[:16]
 
@@ -1087,6 +1163,8 @@ class City(object):
             return p[5]
         if self.terrain.height(x, y) < WATER_Z:
             return 'sea'
+        if x > self.intro_x0:
+            return 'north'                              # снега вокруг Зимогорска
         # суша вне кварталов: чей это берег
         ix1 = self.xs[self.isle_i1 + 1] + 80.0
         iy1 = self.ys[self.isle_j1 + 1] + 80.0
@@ -1133,6 +1211,22 @@ class City(object):
                     bd = d
                     best = n
         return best
+
+    def chunk_snowy(self, chunk):
+        """Этот кусок геометрии лежит в Зимогорске?  Там всё под снегом (см. CityMesh.SNOW_SWAP)."""
+        if isinstance(chunk, tuple):                    # ('road', плитка x, плитка y)
+            return len(chunk) == 3 and (chunk[1] + 0.5) * 230.0 > self.intro_x0
+        if chunk < 0:
+            return False
+        if chunk < self._outer_chunk_base:
+            return self.blocks[chunk].zone in INTRO_ZONES
+        if self._snowy_outer is None:
+            self._snowy_outer = set(k for (tx, ty), k in self._chunk_ids.items() if (tx + 0.5) * 160.0 > self.intro_x0)
+        return chunk in self._snowy_outer
+
+    def in_north(self, x, y):
+        """Точка мира лежит в Зимогорске (городке пролога) или в снегах вокруг него?"""
+        return x > self.intro_x0
 
     def outer_chunk(self, x, y):
         """Номер «чанка» для объектов за пределами кварталов (плитка 160 x 160 м)."""
@@ -1274,7 +1368,17 @@ class City(object):
 
     def _gen_zone(self, b, R, r):
         z = b.zone
-        if z == 'P':
+        if z in INTRO_ZONES:
+            # Зимогорск: те же приёмы, что в Заречье и слободе, но тайников и находок тут не бывает —
+            # в городок пролога игрок больше не вернётся
+            n_pk, n_sp = len(self.packages), len(self.pickup_spots)
+            if z == 'Y':
+                self._gen_old(b, R, r, floors=(1, 2))
+            else:
+                self._gen_resid(b, R, r)
+            del self.packages[n_pk:]
+            del self.pickup_spots[n_sp:]
+        elif z == 'P':
             self._gen_park(b, R, r)
         elif z == 'D':
             self._gen_downtown(b, R, r)
@@ -1736,6 +1840,11 @@ class City(object):
                     bld.fac = 'fac_brick_d'
                     bld.gf_tex = 'gf_shop_c'
                     bld.h = GF_H + 2 * FLOOR_H
+                elif lm == 'heist':
+                    bld.fac = 'fac_brick_c'
+                    bld.gf_tex = 'gf_office'
+                    bld.h = GF_H + 2 * FLOOR_H
+                    bld.roof_props = []
                 self._big_sign(bld, 's', LANDMARK_SIGNS[lm])
                 self._register_landmark(lm, bld, 's', b)
 
@@ -2643,6 +2752,127 @@ class City(object):
                     dict(x=x, y=y, z=5.4, w=9.0, h=4.5, tex=r.pick(BILLBOARDS), side=side, block=oc(x, y), post=True,
                          lit=False))
         self.packages.append((self.xs[12] + 14.0, self.ys[11] + 16.0))
+
+    # ------------------------------------------------------------------
+    # Зимогорск: снега вокруг городка пролога
+    # ------------------------------------------------------------------
+    SNOW_STEP = 20.0            # шаг сетки высот снежной равнины
+    SNOW_MARGIN = 640.0         # на столько равнина шире городка и тракта
+    SNOW_FLAT = 30.0            # ближе этого к улицам и дворам земля ровная
+    SNOW_RISE = 110.0           # а на таком расстоянии сугробы и холмы набирают полную высоту
+
+    def _intro_rects(self):
+        """Прямоугольники застройки городка: кварталы, улицы, перекрёстки (чертёж)."""
+        rects = []
+        for b in self.blocks:
+            if b.zone in INTRO_ZONES:
+                rects.append((b.x0, b.y0, b.x1, b.y1))
+        for (kind, i, j), s in self.segs.items():
+            if i < INTRO_I0:
+                continue
+            hw = s['width'] * 0.5
+            rects.append((s['a'], s['c'] - hw, s['b'], s['c'] + hw) if kind == 'h' else
+                         (s['c'] - hw, s['a'], s['c'] + hw, s['b']))
+        for (i, j), n in self.nodes.items():
+            if i >= INTRO_I0:
+                rects.append((n.x - n.hw, n.y - n.hh, n.x + n.hw, n.y + n.hh))
+        return rects
+
+    def _make_snowfield(self):
+        """Рельеф вокруг Зимогорска: под улицами и дворами ровно, дальше — сугробы и пологие холмы,
+        у края равнины — гряда, за которую не заехать.  Считается здесь, а не заранее: сетка невелика."""
+        t = self.terrain
+        self.snowfield = None
+        if not t.ok:
+            return
+        rects = self._intro_rects()
+        if not rects:
+            return
+        step = self.SNOW_STEP
+        m = self.SNOW_MARGIN
+        ux0 = min(r[0] for r in rects)
+        uy0 = min(r[1] for r in rects)
+        ux1 = max(r[2] for r in rects)
+        uy1 = max(r[3] for r in rects)
+        x0 = math.floor((ux0 - m) / step) * step
+        y0 = math.floor((uy0 - m) / step) * step
+        nx = int(math.ceil((ux1 + m - x0) / step)) + 1
+        ny = int(math.ceil((uy1 + m - y0) / step)) + 1
+        x1 = x0 + (nx - 1) * step
+        y1 = y0 + (ny - 1) * step
+        flat, rise = self.SNOW_FLAT, self.SNOW_RISE
+        reach = flat + rise
+        sin, cos = math.sin, math.cos
+        h = [0.0] * (nx * ny)
+        for iy in range(ny):
+            y = y0 + iy * step
+            row = iy * nx
+            near_y = uy0 - reach < y < uy1 + reach
+            for ix in range(nx):
+                x = x0 + ix * step
+                k = 1.0
+                if near_y and ux0 - reach < x < ux1 + reach:
+                    d2 = reach * reach
+                    for (rx0, ry0, rx1, ry1) in rects:
+                        dx = rx0 - x if x < rx0 else (x - rx1 if x > rx1 else 0.0)
+                        dy = ry0 - y if y < ry0 else (y - ry1 if y > ry1 else 0.0)
+                        q = dx * dx + dy * dy
+                        if q < d2:
+                            d2 = q
+                            if q == 0.0:
+                                break
+                    k = (math.sqrt(d2) - flat) / rise
+                    k = 0.0 if k <= 0.0 else (1.0 if k >= 1.0 else k * k * (3.0 - 2.0 * k))
+                # сугробы и холмы: несколько волн разной длины
+                hill = (1.6 + 2.6 * sin(x * 0.0113 + 1.3) * cos(y * 0.0127 + 0.4) + 1.5 * sin(x * 0.0271 + y * 0.0193) +
+                        0.55 * sin(x * 0.071 - y * 0.053 + 2.0) + 2.2 * cos(x * 0.0046 - y * 0.0061))
+                if hill < 0.25:
+                    hill = 0.25
+                # гряда по краю равнины
+                e = min(x - x0, x1 - x, y - y0, y1 - y)
+                rim = 1.0 - e / 240.0
+                rim = 0.0 if rim <= 0.0 else rim * rim * (3.0 - 2.0 * rim) * 26.0
+                h[row + ix] = TERRAIN_FLAT + k * hill + rim
+        self.snowfield = Field(x0, y0, step, nx, ny, h)
+        t.set_fields([self.snowfield])
+
+    def _gen_snow_country(self):
+        """Ели и валуны на снежной равнине; лес растёт пятнами, у дорог — реже."""
+        f = self.snowfield
+        if f is None:
+            return
+        r = Rng(self.seed * 53 + 7)
+        oc = self.outer_chunk
+        step = 26.0
+        nx = int((f.x1 - f.x0) / step)
+        ny = int((f.y1 - f.y0) / step)
+        for iy in range(1, ny):
+            for ix in range(1, nx):
+                x = f.x0 + (ix + r.rangef(-0.45, 0.45)) * step
+                y = f.y0 + (iy + r.rangef(-0.45, 0.45)) * step
+                wood = math.sin(x * 0.0093 + 0.7) * math.cos(y * 0.0117 + 2.1) + 0.45 * math.sin(x * 0.031 + y * 0.027)
+                p = 0.50 if wood > 0.25 else (0.10 if wood > -0.2 else 0.025)
+                if not r.chance(p):
+                    continue
+                if self.where(x, y)[0] is not None or self._near_road(x, y, 9.0):
+                    continue
+                if r.chance(0.93):
+                    self._prop('fir', x, y, r.rangef(0, 6.28), oc(x, y), seed=r.randint(0, 9999), size=r.rangef(0.8, 1.5))
+                else:
+                    self._prop('rock', x, y, r.rangef(0, 6.28), oc(x, y), seed=r.randint(0, 9999), size=r.rangef(0.8, 1.7))
+
+    def _intro_places(self):
+        """Места пролога (точки чертежа): куда гнать и где стоит заслон."""
+        I, J = INTRO_I0, INTRO_J0
+        s1 = self.segs.get(('v', I + 6, J + 1))
+        s2 = self.segs.get(('v', I + 6, J + 2))
+        if s1 is None or s2 is None or 'heist' not in self.landmarks:
+            return
+        x = s1['c']
+        self.special['intro'] = dict(
+            goal=(x, (s1['a'] + s1['b']) * 0.5),            # метка погони: дальняя сторона петли тракта
+            block=(x, (s2['a'] + s2['b']) * 0.5),           # заслон: дальше по тракту, машины едут на север
+            town=((self.xs[I] + self.xs[I + 5]) * 0.5, (self.ys[J] + self.ys[J + 4]) * 0.5))
 
     def _near_road(self, x, y, d):
         """Ближе d метров к дороге или кварталу?"""

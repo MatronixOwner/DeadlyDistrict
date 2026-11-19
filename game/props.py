@@ -535,6 +535,34 @@ def rock(mb, night, p, rnd):
     return ('c', 0.85 * s, 0.9 * s, F_SOLID)
 
 
+def fir(mb, night, p, rnd):
+    """Ель под снегом: ствол и три-четыре яруса лап, сверху на каждом — снежная шапка (Зимогорск)."""
+    s = p.get('size', 1.0)
+    r2 = random.Random(p.get('seed', 0) * 13 + 5)
+    h = (7.5 + r2.random() * 3.0) * s
+    mb.cylinder('bark', 0, 0, 0, h * 0.3, 0.2 * s, 5, (0.62, 0.56, 0.52, 1.0), r_top=0.12 * s, cap_top=False, uv_wrap=2.0)
+    tiers = 4 if h > 9.0 else 3
+    green = (0.13 + r2.random() * 0.05, 0.26 + r2.random() * 0.06, 0.19 + r2.random() * 0.04, 1.0)
+    snow = (0.90, 0.94, 1.0, 1.0)
+    z = h * 0.16
+    for k in range(tiers):
+        t = k / float(tiers)
+        rad = (2.5 - 1.7 * t) * s * (0.9 + r2.random() * 0.2)
+        zt = z + (h - z) * (0.52 if k < tiers - 1 else 1.0)
+        # ярус: конус, тёмный понизу и заснеженный сверху
+        n = 7
+        a0 = r2.random() * 3.0
+        slope = rad / max(0.1, zt - z)
+        for i in range(n):
+            a, b = a0 + i * 2.0 * math.pi / n, a0 + (i + 1) * 2.0 * math.pi / n
+            ca, sa, cb, sb = math.cos(a), math.sin(a), math.cos(b), math.sin(b)
+            cm, sm = math.cos((a + b) * 0.5), math.sin((a + b) * 0.5)
+            mb.tri(None, (ca * rad, sa * rad, z), (cb * rad, sb * rad, z), (0.0, 0.0, zt), color=green, c1=green,
+                   c2=snow, normals=((ca, sa, slope), (cb, sb, slope), (cm, sm, slope)))
+        z += (h - z) * 0.30
+    return ('c', 0.3 * s, h * 0.6, F_SOLID | F_CAM)
+
+
 PLANE_COLORS = ((0.92, 0.92, 0.94), (0.86, 0.2, 0.16), (0.2, 0.36, 0.7), (0.95, 0.78, 0.2))
 
 
@@ -595,7 +623,7 @@ BUILDERS = {
     'newsbox': newsbox, 'mailbox': mailbox, 'cone': cone, 'busstop': busstop, 'dumpster': dumpster,
     'crate': crate, 'barrel': barrel, 'tires': tires, 'wreck': wreck, 'hoop': hoop, 'fountain': fountain,
     'statue': statue, 'gazebo': gazebo, 'pump': pump, 'umbrella': umbrella, 'lifeguard': lifeguard,
-    'crane': crane, 'bollard': bollard, 'rock': rock, 'plane': plane, 'windsock': windsock,
+    'crane': crane, 'bollard': bollard, 'rock': rock, 'fir': fir, 'plane': plane, 'windsock': windsock,
     'roadpost': roadpost, 'trashbag': trashbag, 'boxes': boxes, 'litter': litter,
 }
 

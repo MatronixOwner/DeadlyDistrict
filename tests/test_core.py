@@ -37,11 +37,18 @@ def test_road_network_connected():
     c = City()
     rn = RoadNet(c)
     assert all(l.next for l in rn.lanes)
-    # из любого перекрёстка можно доехать до любого
-    nodes = list(c.nodes.keys())
+    # из любого перекрёстка можно доехать до любого — в пределах своей карты: Зимогорск (городок пролога)
+    # стоит отдельно, дорог между ним и Порт-Глуховом нет
+    from game.city import INTRO_I0
+    nodes = [k for k in c.nodes if k[0] < INTRO_I0]
+    town = [k for k in c.nodes if k[0] >= INTRO_I0]
+    assert len(nodes) > 150 and len(town) > 20
     for b in nodes[::7]:
         assert rn.route(nodes[0], b), b
-    # граф тротуаров связен внутри каждого берега: остров, Заречье и восточный берег
+    for b in town[::3]:
+        assert rn.route(town[0], b), b
+    assert not rn.route(nodes[0], town[0])
+    # граф тротуаров связен внутри каждого берега: остров, Заречье, восточный берег — и отдельно Зимогорск
     # (по мостам и трассе пешком не ходят)
     seen = set()
     parts = []
@@ -59,7 +66,7 @@ def test_road_network_connected():
         seen |= part
         parts.append(part)
     assert sorted(len(p) for p in parts)[0] >= 20, [len(p) for p in parts]
-    assert len(parts) == 3, [len(p) for p in parts]
+    assert len(parts) == 4, [len(p) for p in parts]
 
 
 def test_lanes_drive_on_the_right():

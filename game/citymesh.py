@@ -64,6 +64,18 @@ def sign_place(b, s, canopy=()):
 
 class CityMesh(object):
 
+    # Зимогорск (городок пролога) собран из тех же деталей, что и Порт-Глухов, но лежит под снегом: в его
+    # чанках вместо летних текстур берутся зимние с той же развёрткой (tools/gen_snow.py).
+    SNOW_SWAP = {
+        'grass': 'snow', 'dirt': 'snow_dirt', 'sidewalk': 'sidewalk_snow', 'concrete': 'concrete_snow',
+        'pavers': 'pavers_snow', 'asphalt': 'asphalt_snow', 'road2': 'road2_snow', 'road4': 'road4_snow',
+        'road2_cap': 'road2_cap_snow', 'road4_cap': 'road4_cap_snow', 'roof_tiles': 'roof_snow',
+        'roof_tar': 'snow', 'roof_gravel': 'snow', 'hedge': 'hedge_snow', 'foliage_a': 'foliage_a_snow',
+        'foliage_b': 'foliage_b_snow',
+    }
+    # у этих покрытий цвет вершин был «летним» (зелёная листва, крашеная кровля): под снегом он сереет
+    SNOW_GREY = frozenset(['grass', 'dirt', 'roof_tiles', 'roof_tar', 'roof_gravel', 'hedge', 'foliage_a', 'foliage_b'])
+
     def __init__(self, city, assets, static, parent, night_parent=None, progress=None):
         self.city = city
         self.assets = assets
@@ -120,6 +132,7 @@ class CityMesh(object):
         self.terrain_root = None
         if not t.ok:
             return
+        self._snowfield()
         path = os.path.join(self.assets.root, 'assets', 'terrain', 'terrain.bam')
         try:
             root = self.assets.loader.loadModel(Filename.fromOsSpecific(path))
@@ -144,6 +157,82 @@ class CityMesh(object):
         st.add_box(x1, y0, x1 + 6.0, y1, 0.0, 99.0, flags, None)
         st.add_box(x0, y0 - 6.0, x1, y0, 0.0, 99.0, flags, None)
         st.add_box(x0, y1, x1, y1 + 6.0, 0.0, 99.0, flags, None)
+
+    def _snowfield(self):
+        """Снежная равнина вокруг Зимогорска: сетка высот города -> геометрия, по краям — невидимая стена."""
+        c = self.city
+        f = getattr(c, 'snowfield', None)
+        if f is None:
+            return
+        step, nx, ny, h = f.step, f.nx, f.ny, f.h
+        # нормали в узлах — по соседним высотам: холмы гладкие, а не гранёные
+        nrm = [None] * (nx * ny)
+        for iy in range(ny):
+            for ix in range(nx):
+                k = iy * nx + ix
+                hx = (h[k + 1] if ix + 1 < nx else h[k]) - (h[k - 1] if ix > 0 else h[k])
+                hy = (h[k + nx] if iy + 1 < ny else h[k]) - (h[k - nx] if iy > 0 else h[k])
+                sx = hx / (step * (2.0 if 0 < ix < nx - 1 else 1.0))
+                sy = hy / (step * (2.0 if 0 < iy < ny - 1 else 1.0))
+                q = 1.0 / math.sqrt(sx * sx + sy * sy + 1.0)
+                nrm[k] = (-sx * q, -sy * q, q)
+        # клетки, целиком закрытые кварталом, не рисуются
+        blocks = [(b.x0, b.y0, b.x1, b.y1) for b in c.blocks if b.x0 > c.intro_x0]
+
+        def hidden(x, y):
+            for (x0, y0, x1, y1) in blocks:
+                if x0 <= x and x + step <= x1 and y0 <= y and y + step <= y1:
+                    return True
+            return False
+        T = 7.0                                           # шаг текстуры снега, м
+        white = (1.0, 1.0, 1.0, 1.0)
+        for iy in range(ny - 1):
+            y = f.y0 + iy * step
+            for ix in range(nx - 1):
+                x = f.x0 + ix * step
+                if hidden(x, y):
+                    continue
+                k = iy * nx + ix
+                mb = self._mb(c.outer_chunk(x + step * 0.5, y + step * 0.5))
+                p00, p10 = (x, y, h[k]), (x + step, y, h[k + 1])
+                p01, p11 = (x, y + step, h[k + nx]), (x + step, y + step, h[k + nx + 1])
+                u0, v0, u1, v1 = x / T, y / T, (x + step) / T, (y + step) / T
+                hold, mb.nosplit = mb.nosplit, True
+                # диагональ 00-11 — как в Field.height
+                mb.tri('snow', p00, p10, p11, (u0, v0), (u1, v0), (u1, v1), white, (nrm[k], nrm[k + 1], nrm[k + nx + 1]))
+                mb.tri('snow', p00, p11, p01, (u0, v0), (u1, v1), (u0, v1), white, (nrm[k], nrm[k + nx + 1], nrm[k + nx]))
+                mb.nosplit = hold
+        m = 44.0
+        x0, y0, x1, y1 = f.x0 + m, f.y0 + m, f.x1 - m, f.y1 - m
+        st = self.static
+        flags = F_CAR | F_PED
+        st.add_box(x0 - 6.0, y0, x0, y1, 0.0, 99.0, flags, None)
+        st.add_box(x1, y0, x1 + 6.0, y1, 0.0, 99.0, flags, None)
+        st.add_box(x0, y0 - 6.0, x1, y0, 0.0, 99.0, flags, None)
+        st.add_box(x0, y1, x1, y1 + 6.0, 0.0, 99.0, flags, None)
+
+    def _snow_state(self, apply_state):
+        """state_fn для чанков Зимогорска: те же ключи, зимние текстуры."""
+        swap = self.SNOW_SWAP
+
+        def fn(np_, key):
+            if isinstance(key, tuple):
+                name = swap.get(key[0])
+                apply_state(np_, (name, key[1]) if name is not None else key)
+            else:
+                apply_state(np_, swap.get(key, key))
+        return fn
+
+    def _snow_tint(self, mb):
+        """Цвет вершин «летних» покрытий -> серый той же яркости (снег не бывает зелёным)."""
+        for key, vals in mb.groups.items():
+            name = key[0] if isinstance(key, tuple) else key
+            if name not in self.SNOW_GREY or not vals:
+                continue
+            for o in range(6, len(vals), 12):
+                g = max(vals[o], vals[o + 1], vals[o + 2])
+                g = 255 if g > 204 else int(g * 1.25)
+                vals[o] = vals[o + 1] = vals[o + 2] = g
 
     def _warp_model(self, root):
         """Готовая модель (рельеф) сделана по чертежу: изогнуть её вершины вместе с городом."""
@@ -1119,16 +1208,26 @@ class CityMesh(object):
     # ------------------------------------------------------------------
     def _finish(self):
         apply_state = self.assets.apply_state
+        snow_state = self._snow_state(apply_state)
+        snowy = self.city.chunk_snowy
         for chunk, mb in self._mbs.items():
             if mb.empty():
                 continue
-            np_ = mb.build('chunk-%s' % str(chunk), apply_state)
+            if snowy(chunk):
+                self._snow_tint(mb)
+                np_ = mb.build('chunk-%s' % str(chunk), snow_state)
+            else:
+                np_ = mb.build('chunk-%s' % str(chunk), apply_state)
             np_.reparentTo(self.root)
             self.chunk_nodes[chunk] = np_
         for chunk, mb in self._brks.items():
             if mb.empty():
                 continue
-            np_ = mb.build('brk-%s' % str(chunk), apply_state)
+            if snowy(chunk):
+                self._snow_tint(mb)
+                np_ = mb.build('brk-%s' % str(chunk), snow_state)
+            else:
+                np_ = mb.build('brk-%s' % str(chunk), apply_state)
             np_.reparentTo(self.root)
         for chunk, mb in self._nights.items():
             if mb.empty():
