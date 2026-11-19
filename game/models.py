@@ -129,7 +129,8 @@ HOLD = {
     'knife': dict(at=(0.0, 0.004, 0.005), tilt=55.0),
     'bat': dict(at=(0.0, 0.0, 0.03), tilt=32.0, fingers='hold', r=0.030),
     'grenade': dict(at=(0.0, 0.0, 0.0), tilt=0.0, fingers='hold', r=0.040),
-    'molotov': dict(at=(0.0, 0.05, 0.0), tilt=0.0, axis='-y', fingers='hold', r=0.037),
+    # бутылку держат за середину, горлышком с фитилём вверх-вперёд: tilt < 0 — горлышко отклонено к запястью
+    'molotov': dict(at=(0.0, 0.075, 0.0), tilt=-45.0, axis='-y', fingers='hold', r=0.037),
 }
 FINGERS = tuple('%s_%02d_r' % (f, i) for f in ('thumb', 'index', 'middle', 'ring', 'pinky') for i in (1, 2, 3))
 # откуда снята поза пальцев: (клип, кадр)
