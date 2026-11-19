@@ -5,7 +5,8 @@
 MeshBuilder копит треугольники, сгруппированные по ключу (обычно это имя
 текстуры), и одним вызовом превращает их в узлы Panda3D.
 
-Формат вершины: позиция(3f) + нормаль(3f) + цвет(4 байта RGBA) + UV(2f).
+Формат вершины: позиция(3f) + нормаль(3f) + цвет(4 байта RGBA) + UV(2f) — 36 байт; в groups они лежат
+уже упакованными, подряд (bytearray на каждый ключ).
 Затенение — плоское (нормаль на грань), как на PS1/PS2.
 """
 import math
@@ -16,6 +17,9 @@ from panda3d.core import (Geom, GeomNode, GeomTriangles, GeomVertexData,
 
 _VSTRUCT = '3f3f4B2f'
 _VSIZE = struct.calcsize('<' + _VSTRUCT)        # 36
+# Треугольник пакуется в байты сразу, как только добавлен: 108 байт вместо 36 чисел Python (около 900 байт).
+# Город — это четыре миллиона вершин; списками чисел они занимали при загрузке больше гигабайта памяти.
+_PACK_TRI = struct.Struct('<' + _VSTRUCT * 3).pack
 
 _format_ok = None
 
@@ -69,14 +73,14 @@ class MeshBuilder(object):
 
     def mark(self):
         """Запомнить текущее число вершин в каждой группе."""
-        return dict((k, len(v) // 12) for k, v in self.groups.items())
+        return dict((k, len(v) // _VSIZE) for k, v in self.groups.items())
 
     def ranges_since(self, mark):
         """Диапазоны вершин, добавленных после mark(): [(key, start, count)]."""
         out = []
         for k, v in self.groups.items():
             n0 = mark.get(k, 0)
-            n1 = len(v) // 12
+            n1 = len(v) // _VSIZE
             if n1 > n0:
                 out.append((k, n0, n1 - n0))
         return out
@@ -111,7 +115,7 @@ class MeshBuilder(object):
         return not any(self.groups.values())
 
     def vertex_count(self):
-        return sum(len(v) for v in self.groups.values()) // 12
+        return sum(len(v) for v in self.groups.values()) // _VSIZE
 
     # ------------------------------------------------------------------
     def tri(self, key, p0, p1, p2, uv0=(0.0, 0.0), uv1=(1.0, 0.0), uv2=(1.0, 1.0),
@@ -234,10 +238,10 @@ class MeshBuilder(object):
         col2 = col0 if c2 is None else _c8(c2)
         g = self.groups.get(key)
         if g is None:
-            g = self.groups[key] = []
-        g.extend((p0[0], p0[1], p0[2], n0[0], n0[1], n0[2], col0[0], col0[1], col0[2], col0[3], uv0[0], uv0[1],
-                  p1[0], p1[1], p1[2], n1[0], n1[1], n1[2], col1[0], col1[1], col1[2], col1[3], uv1[0], uv1[1],
-                  p2[0], p2[1], p2[2], n2[0], n2[1], n2[2], col2[0], col2[1], col2[2], col2[3], uv2[0], uv2[1]))
+            g = self.groups[key] = bytearray()
+        g += _PACK_TRI(p0[0], p0[1], p0[2], n0[0], n0[1], n0[2], col0[0], col0[1], col0[2], col0[3], uv0[0], uv0[1],
+                       p1[0], p1[1], p1[2], n1[0], n1[1], n1[2], col1[0], col1[1], col1[2], col1[3], uv1[0], uv1[1],
+                       p2[0], p2[1], p2[2], n2[0], n2[1], n2[2], col2[0], col2[1], col2[2], col2[3], uv2[0], uv2[1])
 
     # ------------------------------------------------------------------
     # изгиб: поворот нормалей и разрезание длинных граней
@@ -612,34 +616,34 @@ class MeshBuilder(object):
             self.tri(key, top, layers[2][i], layers[2][j], color=color)
 
     # ------------------------------------------------------------------
-    def build(self, name='mesh', state_fn=None, dynamic=False):
-        """Собрать NodePath.  state_fn(node_path, key) настраивает текстуру и т.п."""
+    def build(self, name='mesh', state_fn=None, dynamic=False, release=False):
+        """Собрать NodePath.  state_fn(node_path, key) настраивает текстуру и т.п.
+        release=True — сборщик больше не понадобится: накопленные вершины отдаются сразу, по мере сборки
+        (у города их сотни мегабайт)."""
         root = NodePath(name)
         usage = Geom.UHDynamic if dynamic else Geom.UHStatic
         fmt = GeomVertexFormat.getV3n3c4t2()
         fast = _check_format()
         for key in sorted(self.groups.keys(), key=lambda k: str(k)):
             vals = self.groups[key]
-            n = len(vals) // 12
+            n = len(vals) // _VSIZE
             if n == 0:
                 continue
             vdata = GeomVertexData(str(key), fmt, usage)
             if fast:
                 vdata.uncleanSetNumRows(n)
-                data = struct.pack('<' + _VSTRUCT * n, *vals)
-                vdata.modifyArrayHandle(0).copyDataFrom(data)
+                vdata.modifyArrayHandle(0).copyDataFrom(vals)
             else:                                   # запасной медленный путь
                 vdata.setNumRows(n)
                 wv = GeomVertexWriter(vdata, 'vertex')
                 wn = GeomVertexWriter(vdata, 'normal')
                 wc = GeomVertexWriter(vdata, 'color')
                 wt = GeomVertexWriter(vdata, 'texcoord')
-                for i in range(n):
-                    o = i * 12
-                    wv.addData3(vals[o], vals[o + 1], vals[o + 2])
-                    wn.addData3(vals[o + 3], vals[o + 4], vals[o + 5])
-                    wc.addData4(vals[o + 6] / 255.0, vals[o + 7] / 255.0, vals[o + 8] / 255.0, vals[o + 9] / 255.0)
-                    wt.addData2(vals[o + 10], vals[o + 11])
+                for v in struct.iter_unpack('<' + _VSTRUCT, bytes(vals)):
+                    wv.addData3(v[0], v[1], v[2])
+                    wn.addData3(v[3], v[4], v[5])
+                    wc.addData4(v[6] / 255.0, v[7] / 255.0, v[8] / 255.0, v[9] / 255.0)
+                    wt.addData2(v[10], v[11])
             prim = GeomTriangles(usage)
             prim.addNextVertices(n)
             prim.closePrimitive()
@@ -651,6 +655,10 @@ class MeshBuilder(object):
             self.built[key] = gn
             if state_fn is not None:
                 state_fn(np_, key)
+            if release:
+                self.groups[key] = b''
+        if release:
+            self.groups = {}
         return root
 
 

@@ -232,7 +232,8 @@ class CityMesh(object):
             name = key[0] if isinstance(key, tuple) else key
             if name not in self.SNOW_GREY or not vals:
                 continue
-            for o in range(6, len(vals), 12):
+            # вершина — 36 байт; цвет (R, G, B, A) лежит в ней с 24-го байта (см. meshbuilder.py)
+            for o in range(24, len(vals), 36):
                 g = max(vals[o], vals[o + 1], vals[o + 2])
                 g = 255 if g > 204 else int(g * 1.25)
                 vals[o] = vals[o + 1] = vals[o + 2] = g
@@ -1218,9 +1219,9 @@ class CityMesh(object):
                 continue
             if snowy(chunk):
                 self._snow_tint(mb)
-                np_ = mb.build('chunk-%s' % str(chunk), snow_state)
+                np_ = mb.build('chunk-%s' % str(chunk), snow_state, release=True)
             else:
-                np_ = mb.build('chunk-%s' % str(chunk), apply_state)
+                np_ = mb.build('chunk-%s' % str(chunk), apply_state, release=True)
             np_.reparentTo(self.root)
             self.chunk_nodes[chunk] = np_
         for chunk, mb in self._brks.items():
@@ -1228,14 +1229,14 @@ class CityMesh(object):
                 continue
             if snowy(chunk):
                 self._snow_tint(mb)
-                np_ = mb.build('brk-%s' % str(chunk), snow_state)
+                np_ = mb.build('brk-%s' % str(chunk), snow_state, release=True)
             else:
-                np_ = mb.build('brk-%s' % str(chunk), apply_state)
+                np_ = mb.build('brk-%s' % str(chunk), apply_state, release=True)
             np_.reparentTo(self.root)
         for chunk, mb in self._nights.items():
             if mb.empty():
                 continue
-            np_ = mb.build('night-%s' % str(chunk), apply_state)
+            np_ = mb.build('night-%s' % str(chunk), apply_state, release=True)
             np_.reparentTo(self.night_root)
         for (br, mb, r1, night, r2) in self._pending_break:
             for (key, start, count) in r1:

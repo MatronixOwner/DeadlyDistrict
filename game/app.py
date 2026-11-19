@@ -5,8 +5,8 @@ import os
 import sys
 import time
 
-from panda3d.core import (loadPrcFileData, WindowProperties, Filename, TextNode, CardMaker, TransparencyAttrib,
-                          AntialiasAttrib, ClockObject, PandaNode)
+from panda3d.core import (loadPrcFileData, WindowProperties, Filename, AntialiasAttrib, ClockObject,
+                          TransformState, RenderState)
 
 from . import GAME_TITLE, __version__
 from . import settings as settings_mod
@@ -171,6 +171,7 @@ class Game(object):
         self.credits_pending = False
         self._errors_row = 0
         self._errors_total = 0
+        self._gc_n = 0
         self._set_icon()
         try:
             base.render.setAntialias(AntialiasAttrib.MMultisample)
@@ -1233,6 +1234,14 @@ class Game(object):
         self.gfx.update(dt)
         self.ui.update(dt)
         inp.end_frame()
+        if self.headless:
+            # Без окна (проверки, самопроверка сборки) кадры не рисуются, а кэш состояний движок чистит
+            # как раз при отрисовке кадра.  За долгий прогон он вырастал на гигабайты: чистим его сами
+            self._gc_n += 1
+            if self._gc_n >= 60:
+                self._gc_n = 0
+                TransformState.garbageCollect()
+                RenderState.garbageCollect()
 
     def run(self):
         self.base.run()
