@@ -817,7 +817,8 @@ def test_gfx_details_menu(game, world):
         if not g.gfx.supported:
             # видеокарта без шейдеров (так идут и эти проверки): меню честно говорит, что настройка не работает
             assert di['Тени от солнца'].value() == 'недоступно'
-            assert 'недоступны' in di['Шейдеры: свет в каждой точке'].value()
+            assert di['Шейдеры: свет в каждой точке'].value() == 'недоступны'
+            assert 'не умеет шейдеры' in d.text
         harness.press(g, 'escape')
         assert g.ui.stack[-1].title == 'Графика'
         assert g.ui.stack[-1].text == G.PRESET_HINTS[G.PRESET_CUSTOM] or not g.gfx.supported

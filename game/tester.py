@@ -41,6 +41,7 @@ PLACES = (
     ('Заправка', 'gas'),
     ('Склад в Порту', 'port'),
     ('Аэродром: ворота', 'airfield'),
+    ('Зимогорск: банк из пролога', 'heist'),
 )
 
 # Номер сборки для тестера: растёт с каждой новой сборкой, виден в строке сведений и в главном меню.
@@ -415,8 +416,11 @@ class Tester(object):
         return self._say(u'время: %s' % sky.clock_text())
 
     def shift_weather(self, d):
-        sky = self.game.world.sky
+        w = self.game.world
+        sky = w.sky
         names = [n for n, p in WEATHERS]
+        if w.city.in_north(*w.player.pos()):
+            names.append('snow')                    # снег идёт только в Зимогорске
         i = names.index(sky.weather) if sky.weather in names else 0
         sky.set_weather(names[(i + d) % len(names)])
         sky._apply(0.0)

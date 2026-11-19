@@ -646,7 +646,7 @@ class Game(object):
             di = [
                 Item('Шейдеры: свет в каждой точке',
                      value=lambda: (('Да' if s.get('gfx_shaders') else 'Нет') if shaders_work()
-                                    else 'недоступны на этой видеокарте'), change=custom('gfx_shaders')),
+                                    else 'недоступны'), change=custom('gfx_shaders')),
                 Item('Тени от солнца', value=need(pick('gfx_shadows', gfx_mod.SHADOW_NAMES)),
                      change=custom('gfx_shadows', [0, 1, 2, 3])),
                 Item('Свет фонарей и фар', value=need(pick('gfx_lights', gfx_mod.LIGHT_NAMES)),
@@ -662,8 +662,12 @@ class Game(object):
                      change=custom('draw_distance', [0, 1, 2])),
                 Item('Назад', details_back),
             ]
+            note = None
+            if not shaders_work():
+                note = ('Эта видеокарта не умеет шейдеры. Работают сглаживание MSAA (после перезапуска), '
+                        'чёткость текстур и дальность прорисовки.')
             self.ui.open(Menu(self.ui, 'Подробные настройки', di, back=details_back, top=0.42, spacing=0.105,
-                              scale=0.068, wide=True))
+                              scale=0.068, wide=True, text=note))
 
         def details_back():
             s.save()

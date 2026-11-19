@@ -305,6 +305,59 @@ def test_antialiasing_note_matches_what_the_window_was_opened_with(tmp_path, mon
     assert g.settings.get('screen') == S.SCREEN_BORDERLESS and g.settings.get('width') == 3840
 
 
+def test_safe_launch_forces_minimum_graphics(tmp_path, monkeypatch):
+    """Запуск с ключом --safe («Безопасный запуск.bat»): окно открывается уже с набором «Минимум» — без шейдеров,
+    — что бы ни стояло в настройках; подбор набора под видеокарту после этого не включается."""
+    import json
+    import main
+    from game import app, gfx as G, settings as S
+    monkeypatch.setenv('DD_USER_DIR', str(tmp_path))
+    monkeypatch.setattr(S, 'dpi_aware', lambda: None)
+    monkeypatch.setattr(S, 'desktop_size', lambda: (1920, 1080))
+    with open(tmp_path / 'settings.json', 'w', encoding='utf-8') as f:
+        json.dump({'cfg': S.CFG_VERSION, 'gfx_cfg': 1, 'gfx_preset': G.PRESET_ULTRA, 'gfx_shaders': True, 'gfx_shadows': 3,
+                   'gfx_bloom': True, 'gfx_ssao': True, 'msaa': 4, 'draw_distance': 2, 'fps_limit': 120}, f)
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_configure(settings, headless=False):
+        seen['shaders'] = settings.get('gfx_shaders')
+        seen['msaa'] = app.window_msaa(settings)
+        raise Stop()                                          # окно не открываем
+
+    monkeypatch.setattr(app, 'configure', fake_configure)
+    # ключ в командной строке превращается в переменную окружения до создания игры
+    monkeypatch.setattr(sys, 'argv', ['main.py', '--safe'])
+    monkeypatch.setenv('DD_SAFE_GFX', '')                     # пустая — как будто её нет; после проверки исчезнет
+    def no_game(self):
+        raise SystemExit(0)                                   # до окна дело не доходит
+
+    monkeypatch.setattr(app.Game, '__init__', no_game)
+    try:
+        main.main()
+    except SystemExit:
+        pass
+    assert os.environ.get('DD_SAFE_GFX') == '1'
+    monkeypatch.undo()
+    # сама игра: настройки заменены «Минимумом» ещё до открытия окна
+    monkeypatch.setenv('DD_USER_DIR', str(tmp_path))
+    monkeypatch.setenv('DD_SAFE_GFX', '1')
+    monkeypatch.setattr(S, 'dpi_aware', lambda: None)
+    monkeypatch.setattr(S, 'desktop_size', lambda: (1920, 1080))
+    monkeypatch.setattr(app, 'configure', fake_configure)
+    g = app.Game.__new__(app.Game)
+    try:
+        g.__init__()
+    except Stop:
+        pass
+    st = g.settings
+    assert seen == {'shaders': False, 'msaa': 0}
+    assert st.get('gfx_preset') == G.PRESET_MIN and G.detect_preset(st) == G.PRESET_MIN
+    assert st.get('gfx_cfg') == 2 and st.get('fps_limit') == 120          # прочие настройки не тронуты
+
+
 # ---------------------------------------------------------------------------
 # большой мир: три берега, мосты, рельеф
 # ---------------------------------------------------------------------------

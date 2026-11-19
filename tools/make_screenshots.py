@@ -3,6 +3,14 @@
 
     python tools/make_screenshots.py
     python tools/make_screenshots.py --tester     только снимок меню тестера (docs/tester.jpg)
+    python tools/make_screenshots.py --gfx        только сравнение наборов качества графики (docs/gfx_*.jpg)
+
+Обычный программный рендер (TinyDisplay) шейдеров не умеет: снимки выходят в наборе «Минимум».  Чтобы снять
+игру с шейдерами — «Среднее», как она выглядит на видеокарте, — нужен OpenGL без окна:
+
+    DD_TEST_DISPLAY=p3headlessgl python tools/make_screenshots.py
+
+Годится программная Mesa (llvmpipe), но с ней один кадр рисуется секунд десять, а все снимки — около часа.
 
 Нужен pillow.  Настоящая видеокарта рисует чётче: здесь нет сглаживания краёв и анизотропной фильтрации.
 """
@@ -78,30 +86,73 @@ def main():
             if nc >= cars and np_ >= peds:
                 break
 
-    def chase(car, y_line, x_end, tmax=50.0, cruise=17.0):
-        """Ехать по улице на восток, держась полосы, пока полиция не сядет на хвост."""
+    def chase(car, goal, tmax=70.0, cruise=17.0):
+        """Ехать по улицам к перекрёстку goal, пока полиция не сядет на хвост на прямом участке.
+        Улицы города изогнуты, поэтому машина идёт не «по оси», а от перекрёстка к перекрёстку."""
+        nodes = w.city.nodes
+        start = min(nodes, key=lambda k: math.hypot(nodes[k].x - car.x, nodes[k].y - car.y))
+        pts = [(nodes[k].x, nodes[k].y) for k in w.roadnet.route(start, goal)]
+        i = 1 if len(pts) > 1 else 0
         t = 0.0
-        while t < tmax and car.x < x_end:
-            steer = -(car.y - y_line) * 0.10 - ((car.yaw + math.pi) % (2.0 * math.pi) - math.pi) * 1.2
+        while t < tmax and pts:
+            while i < len(pts) - 1 and math.hypot(pts[i][0] - car.x, pts[i][1] - car.y) < 13.0:
+                i += 1
+            tx, ty = pts[i]
+            if i == len(pts) - 1 and math.hypot(tx - car.x, ty - car.y) < 13.0:
+                break
+            d = (math.atan2(ty - car.y, tx - car.x) - car.yaw + math.pi) % (2.0 * math.pi) - math.pi
+            fx, fy = math.cos(car.yaw), math.sin(car.yaw)
             ahead = 1e9
             for v in w.vehicles:
-                if v is not car and not v.removed and 0.0 < v.x - car.x < 30.0 and abs(v.y - car.y) < 2.2:
-                    ahead = min(ahead, v.x - car.x)
+                if v is not car and not v.removed and not getattr(v, 'police', False):
+                    a = (v.x - car.x) * fx + (v.y - car.y) * fy
+                    if 0.0 < a < 30.0 and abs((v.y - car.y) * fx - (v.x - car.x) * fy) < 2.2:
+                        ahead = min(ahead, a)
             keys = []
-            if ahead < 9.0 + car.speed * 0.9:
-                keys.append('s' if car.speed > 3.0 else 'space')
-            elif car.speed < cruise:
+            sp = math.hypot(car.vx, car.vy)
+            if ahead < 9.0 + sp * 0.9:
+                keys.append('s' if sp > 3.0 else 'space')
+            elif sp < (cruise if abs(d) < 0.25 else 9.0):
                 keys.append('w')
-            if steer > 0.04:
+            elif sp > cruise + 4.0:
+                keys.append('s')
+            if d > 0.05:
                 keys.append('a')
-            elif steer < -0.04:
+            elif d < -0.05:
                 keys.append('d')
             harness.run(g, 0.2, keys=tuple(keys))
             t += 0.2
-            if w.police.seen and any(not u.removed and not u.dead and 6.0 < car.x - u.x < 30.0 and abs(u.y - car.y) < 8.0
-                                     for u in w.police.units):
-                return True
+            if abs(d) < 0.12 and sp > 9.0 and w.police.seen:
+                for u in w.police.units:
+                    if u.removed or u.dead:
+                        continue
+                    back = (car.x - u.x) * fx + (car.y - u.y) * fy
+                    if 6.0 < back < 30.0 and abs((u.y - car.y) * fx - (u.x - car.x) * fy) < 8.0:
+                        return True
         return False
+
+    def cruise(car, seconds, speed=15.0):
+        """Ехать по своей полосе: улицы изогнуты, и «прямо» — значит вдоль полосы, а не по оси мира."""
+        t = 0.0
+        while t < seconds:
+            lane, s, dist = w.roadnet.nearest_lane(car.x, car.y, 30.0)
+            keys = ['w'] if math.hypot(car.vx, car.vy) < speed else []
+            if lane is not None:
+                tx, ty, _ = lane.pos(min(lane.length, s + 10.0))
+                d = (math.atan2(ty - car.y, tx - car.x) - car.yaw + math.pi) % (2.0 * math.pi) - math.pi
+                if d > 0.04:
+                    keys.append('a')
+                elif d < -0.04:
+                    keys.append('d')
+            harness.run(g, 0.1, keys=tuple(keys))
+            t += 0.1
+
+    def pview(u, v, z, tu, tv, tz, hud=False):
+        """Свободная камера, заданная по чертежу города (улицы в мире изогнуты)."""
+        c_ = w.city
+        x, y = c_.to_world(u, v)
+        tx, ty = c_.to_world(tu, tv)
+        view(x, y, z, tx, ty, tz, hud)
 
     def view(x, y, z, tx, ty, tz, hud=False):
         """Свободная камера (без героя в кадре).  Сам герой ждёт на ближайшем к камере тротуаре:
@@ -122,7 +173,8 @@ def main():
         if os.path.isfile(f):
             os.remove(f)
 
-    # пролог: ограбление три года назад, погоня, заслон на мосту — и автобус, который привозит Макса на конечную
+    # пролог: ограбление три года назад в заснеженном Зимогорске, погоня, заслон на тракте — и автобус,
+    # который привозит Макса на конечную
     g.new_game()
     ms = w.missions
     pl = w.player
@@ -147,17 +199,17 @@ def main():
     assert it is not None and it['play'], 'погоня пролога не началась'
     harness.run(g, 3.2, keys=('w',))
     snap('getaway', ('w',))
-    # подъезжаем к метке на Большом мосту: там заслон
+    # подъезжаем к метке на Зимогорском тракте: там заслон
     car, mk = it['car'], it['marker']
-    car.x, car.y, car.yaw = mk.x, mk.y - 26.0, math.pi / 2
+    car.x, car.y, car.yaw = w.city.frame(mk.x, mk.y).at(0.0, -26.0, math.pi / 2)
     car.vx = car.vy = car.speed = car.omega = 0.0
     car.sync()
     t = 0.0
     while it['end'] is None and t < 10.0:
         harness.run(g, 0.2, keys=('w',))
         t += 0.2
-    assert it['end'] == 'bridge', 'до моста в прологе не доехали: %s' % it['end']
-    intro_wait('Мост перекрыли', 3.0)
+    assert it['end'] == 'tract', 'до заслона в прологе не доехали: %s' % it['end']
+    intro_wait('Тракт перекрыли', 3.0)
     snap('roadblock')
     # три года спустя: конечная
     intro_wait('Водитель:', 1.2)
@@ -219,20 +271,24 @@ def main():
     w.sky.set_time(10.5)
     w.sky.time_scale = 0.0
     b = w.city.block_grid[(1, 3)]
-    view(b.x0 - 6, b.y0 - 6, 1.7, b.x0 + 12, b.y0 + 10, 7.5)
+    pview(b.x0 - 6, b.y0 - 6, 1.7, b.x0 + 12, b.y0 + 10, 7.5)
     snap('oldtown')
-    view(-300, -330, 110, 60, -20, 30)
+    pview(-300, -330, 110, 60, -20, 30)
     snap('skyline')
     w.sky.set_time(23.5)
-    view(-300, -330, 110, 60, -20, 30)
+    pview(-300, -330, 110, 60, -20, 30)
     snap('night')
+    # улицы города изогнуты: вид сверху на Старый город и Сосновку
+    w.sky.set_time(13.0)
+    pview(-420.0, -260.0, 190.0, -200.0, -40.0, 0.0)
+    snap('streets')
     # материк: Заречье за проливом, холмы и трасса
     w.sky.set_time(17.6)
-    view(250.0, 560.0, 70.0, -40.0, 900.0, 0.0)
+    pview(250.0, 560.0, 70.0, -40.0, 900.0, 0.0)
     snap('mainland')
     w.sky.set_time(11.0)
     lm = w.city.landmarks['zakhar']
-    view(lm['door'][0] - 46.0, lm['door'][1] - 58.0, 26.0, lm['door'][0] + 30.0, lm['door'][1] + 40.0, 0.0)
+    view(*w.city.frame(*lm['door']).cam(-46.0, -58.0, 26.0, 30.0, 40.0, 0.0))
     snap('harbour')
     w.cam.override = None
     w.hud.show(True)
@@ -245,12 +301,13 @@ def main():
     # улица у парка: герой, прохожие и машины.  Ждём кадра, где в поле зрения есть и те и другие
     w.sky.set_time(12.3)
     b = w.city.block_grid[(4, 2)]
-    pl.teleport(8.0, b.y1 - 1.7, 0.0)
+    F = w.city.plan_frame(8.0, b.y1 - 1.7)
+    pl.teleport(*F.at(0.0, 0.0, 0.0))
     harness.run(g, 6.0)
-    w.cam.yaw = 2.3
+    w.cam.yaw = F.h(2.3)
     w.cam.pitch = -0.1
     w.cam.snap()
-    lively(2.3)
+    lively(F.h(2.3))
     harness.run(g, 1.6, keys=('w', 'a'))
     nohelp()
     snap('street')
@@ -270,25 +327,32 @@ def main():
     # за рулём
     x, y, yaw = lane.pos(5.0)
     car = w.spawn_vehicle('sports', x, y, yaw, paint=0)
-    pl.teleport(x, y - 3)
+    pl.teleport(*harness.side(x, y, yaw, right=3.0))
     pl.enter_vehicle(car, silent=True)
     w.cam.yaw = yaw
-    harness.run(g, 4.5, keys=('w',))
+    cruise(car, 4.5)
     nohelp()
     snap('drive', ('w',))
 
     # Большой мост: с материка в город
     seg = next(sg for sg in w.city.bridges if sg['bridge']['name'] == 'north')
-    lanes = [l for l in w.roadnet.lanes_near(seg['c'], (seg['a'] + seg['b']) * 0.5, 0.0, 40.0)
-             if l.turn is None and l.y1 < l.y0 and abs(l.length - (seg['b'] - seg['a'])) < 1.0]
+    BF = w.city.plan_frame(seg['c'], (seg['a'] + seg['b']) * 0.5)        # середина моста
+    mx, my = BF()
+    south = BF.h(-math.pi / 2)
+
+    def heads_south(l):
+        return math.cos(math.atan2(l.y1 - l.y0, l.x1 - l.x0) - south) > 0.95
+
+    lanes = [l for l in w.roadnet.lanes_near(mx, my, 0.0, 60.0) if l.turn is None and heads_south(l) and l.length > 80.0]
+    lanes.sort(key=lambda l: -l.length)
     bl = lanes[0]
     for v in list(w.vehicles):
-        if v is not car and not v.keep and abs(v.x - seg['c']) < 12.0 and seg['a'] - 40.0 < v.y < seg['b'] + 40.0:
+        if v is not car and not v.keep and math.hypot(v.x - mx, v.y - my) < bl.length * 0.5 + 60.0:
             w.remove_vehicle(v)
-    car.x, car.y, car.yaw = bl.x0, bl.y0 - 40.0, -1.5708
-    car.vx, car.vy, car.speed = 0.0, -14.0, 14.0
+    car.x, car.y, car.yaw = bl.pos(40.0)
+    car.vx, car.vy, car.speed = math.cos(car.yaw) * 14.0, math.sin(car.yaw) * 14.0, 14.0
     car.sync()
-    w.cam.yaw = -1.5708
+    w.cam.yaw = car.yaw
     w.cam.snap()
     w.sky.set_time(16.5)
     harness.run(g, 3.2, keys=('w',))
@@ -305,7 +369,8 @@ def main():
     w.sky.set_time(22.5)
     w.police.set_level(3)
     pl.invincible = True
-    if not chase(car, y, 420.0):
+    far = max(w.city.nodes, key=lambda k: (w.city.nodes[k].x - car.x) if not w.city.in_north(w.city.nodes[k].x, w.city.nodes[k].y) and abs(w.city.nodes[k].y - car.y) < 60.0 else -1e9)
+    if not chase(car, far):
         print('внимание: полиция не догнала, кадр «chase» без погони')
     w.cam.free_t = 0.0
     w.cam.yaw = car.yaw + 2.6
@@ -332,7 +397,7 @@ def main():
     w.sky.set_time(13.0)
     w.sky.time_scale = 0.0
     ap = c.landmarks['airfield']['apron']
-    bx, by = ap[0] - 60.0, ap[1] - 8.0
+    bx, by = c.frame(*ap)(-60.0, -8.0)
 
     # чоппер «Ворон» крупно, с ездоком и пассажиром.  Камера — спереди сбоку
     from game.defs import random_look
@@ -397,27 +462,28 @@ def main():
 
     # такси — жёлтый кэб с шашечками: стоянка таксопарка
     lot = c.landmarks['taxi']['lot']
-    pl.teleport(lot[0] + 2.0, lot[1] + 9.0)
+    pl.teleport(*c.frame(*lot)(2.0, 9.0))
     harness.run(g, 1.0)
     for v in list(w.vehicles):
         if math.hypot(v.x - lot[0], v.y - lot[1]) < 30.0 and v is not pl.vehicle:
             w.remove_vehicle(v)
     row = []
+    TF = c.frame(*lot)                              # разметка стоянки повёрнута вместе с улицей
     for dx, dyaw in ((-6.8, 0.0), (-3.4, 0.0), (0.0, 0.0), (5.2, math.pi - 0.5)):
-        v = w.spawn_vehicle('taxi', lot[0] + dx, lot[1] + (1.6 if dyaw else 0.0), math.pi / 2 + dyaw)
+        v = w.spawn_vehicle('taxi', *TF.at(dx, 1.6 if dyaw else 0.0, math.pi / 2 + dyaw))
         v.keep = True
         row.append(v)
     w.sky.set_time(16.5)
-    view(lot[0] + 6.4, lot[1] + 8.6, 2.1, lot[0] - 1.6, lot[1] + 0.4, 0.75)
+    view(*TF.cam(6.4, 8.6, 2.1, -1.6, 0.4, 0.75))
     snap('taxi')
     for v in row:
         w.remove_vehicle(v)
 
     # мусор у контейнера во дворе и остов машины на пустыре; под предметами и вдоль стен — мягкие тени
     w.sky.set_time(11.0)
-    view(-49.6, -117.6, 2.3, -55.8, -121.6, 0.45)
+    pview(-49.6, -117.6, 2.3, -55.8, -121.6, 0.45)
     snap('yard')
-    view(-404.5, 191.5, 2.1, -396.0, 198.2, 0.55)
+    pview(-404.5, 191.5, 2.1, -396.0, 198.2, 0.55)
     snap('lot')
     w.cam.override = None
     w.hud.show(True)
@@ -426,25 +492,25 @@ def main():
     gi = c.special['garage']
     gx0, gy0, gx1, gy1 = gi['rect']
     fx, fy = gi['front']
-    pl.teleport(fx - 6.0, fy - 3.0)
+    GF = c.frame(fx, fy)                            # всё у гаража — в его осях: улица здесь изогнута
+    pl.teleport(*GF(-6.0, -3.0))
     harness.run(g, 1.0)
     tunes = [('sports', 0, {'spoiler': 3, 'rims': 3, 'neon': 1, 'bumper': 1, 'susp': 1, 'exhaust': 2, 'xenon': 2}),
              ('sedan', 2, {'spoiler': 2, 'rims': 2, 'neon': 3, 'roof': 1, 'susp': 3}),
              ('suv', 4, {'spoiler': 1, 'rims': 4, 'neon': 2, 'roof': 2, 'bumper': 1})]
     cars = []
     for i, (kind, paint, tune) in enumerate(tunes):
-        v = w.spawn_vehicle(kind, fx - 8.0 + i * 5.5, fy - 7.5, math.pi / 2 + 0.5, paint=paint)
+        v = w.spawn_vehicle(kind, *GF.at(-8.0 + i * 5.5, -7.5, math.pi / 2 + 0.5), paint=paint)
         v.keep = True                               # иначе игра уберёт «ничью» машину, пока герой далеко
         v.apply_tune(tune)
         cars.append(v)
     w.sky.set_time(21.6)
-    mx = fx - 2.5
-    view(mx - 5.0, fy - 17.0, 3.0, mx, fy - 7.0, 0.7)
+    view(*GF.cam(-7.5, -17.0, 3.0, -2.5, -7.0, 0.7))
     snap('tuned')
     w.cam.override = None
     w.hud.show(True)
     w.sky.set_time(12.0)
-    pl.teleport(cars[0].x, cars[0].y - 3.0)
+    pl.teleport(*harness.side(cars[0].x, cars[0].y, cars[0].yaw, right=3.0))
     pl.enter_vehicle(cars[0], silent=True)
     harness.run(g, 1.0)
     g.open_tuning(cars[0], 'spray')
@@ -460,15 +526,17 @@ def main():
     pl.leave_vehicle(force=True)
     # гараж: в первой клетке — «Ласточка», в двух других — машины с тюнингом; ворота открыты
     w.remove_vehicle(cars.pop())
-    for v, sl in zip(cars, gi['slots'][1:]):
-        v.x, v.y, v.yaw = sl[0], sl[1], gi['yaw']
+    for v, sl in zip(cars, w.garage.slots[1:]):
+        v.x, v.y, v.yaw = sl[0], sl[1], w.garage.yaw
         v.vx = v.vy = v.speed = 0.0
         v.sync()
-    pl.teleport(fx + 3.6, fy + 5.0)
+    pl.teleport(*GF(3.6, 5.0))
     harness.run(g, 2.0)
-    view(fx - 5.0, fy - 2.5, 2.7, (gx0 + gx1) / 2 + 0.6, (gy0 + gy1) / 2, 1.2, hud=True)
-    pl.teleport(fx + 3.6, fy + 5.0)                 # ворота открыты, пока герой рядом
-    pl.ped.yaw = math.pi / 2
+    gcx, gcy = c.to_world((gx0 + gx1) / 2 + 0.6, (gy0 + gy1) / 2)
+    cxy = GF(-5.0, -2.5)
+    view(cxy[0], cxy[1], 2.7, gcx, gcy, 1.2, hud=True)
+    pl.teleport(*GF(3.6, 5.0))                      # ворота открыты, пока герой рядом
+    pl.ped.yaw = GF.h(math.pi / 2)
     harness.run(g, 1.5)
     nohelp()
     snap('garage')
@@ -517,7 +585,7 @@ def main():
         pier = c.special['piers'][0]
         px0, py0, px1, py1 = pier['x0'], pier['y0'], pier['x1'], pier['y1']
         sx, sy = px0 + 26.0, (py0 + py1) / 2            # здесь бандиты держат Брюса на коленях
-        w.cam.override = (sx - 4.6, sy - 3.6, 2.0, sx + 0.8, sy + 0.1, 0.85)
+        w.cam.override = c.plan_frame(sx, sy).cam(-4.6, -3.6, 2.0, 0.8, 0.1, 0.85)
         harness.run(g, 1.2)                             # герой ещё в пути: бандиты стоят над пленником
         w.hud.help_t = 0.01
         harness.run(g, 0.05)
@@ -530,7 +598,7 @@ def main():
 
     def shot_ship():
         sh = c.special['ship']
-        w.cam.override = (500.0, -14.0, 13.0, 552.0, 15.0, 3.6)
+        w.cam.override = c.to_world(500.0, -14.0) + (13.0,) + c.to_world(552.0, 15.0) + (3.6,)
         harness.run(g, 0.3)
         nohelp()
         snap('ship')
@@ -606,8 +674,116 @@ def tester_shot():
     print('снимок: tester ->', DOCS, '|', t.line.getText())
 
 
+def gfx_shots():
+    """Наборы качества графики для README: один и тот же кадр на «Минимуме», «Среднем» и «Ультре»
+    (docs/gfx_min.jpg, gfx_med.jpg, gfx_ultra.jpg), ночная улица и ночной дождь на «Ультре».
+
+    Нужен OpenGL (DD_TEST_DISPLAY=p3headlessgl).  На «Ультре» сглаживание здесь — FXAA, а не MSAA 4×, как
+    в самом наборе: программная Mesa рисует кадр с MSAA десятки минут, а на снимке разницы почти не видно."""
+    from game import gfx as G
+    random.seed(int(os.environ.get('DD_SHOT_SEED', '5')))
+    g = harness.make_game(1280, 720)
+    if not g.gfx.supported:
+        sys.exit('шейдеры недоступны: запустите с DD_TEST_DISPLAY=p3headlessgl (нужен OpenGL без окна)')
+    s = g.settings
+    G.set_preset(s, G.PRESET_MIN)                   # пока сцена расставляется, рисуем по-простому: так быстрее
+    g.gfx.apply()
+    w = harness.start_game(g)
+    c = w.city
+    pl = w.player
+    harness.quiet(w)
+
+    def snap(name, preset):
+        G.set_preset(s, preset)
+        if preset == G.PRESET_ULTRA:
+            s.set('msaa', 1)
+        g.gfx.apply()
+        w.hud.help_t = 0.01
+        w.hud.title_t = 0.01
+        w.hud.big_t = 0.01
+        for _ in range(2):
+            g.base.graphicsEngine.renderFrame()
+            harness.run(g, 1.0 / 30.0)
+        png = os.path.join(TMP, name + '.png')
+        harness.shot(g, png)
+        bad = [sh for sh in g.gfx._shaders if sh.getErrorFlag()]
+        assert not bad and (g.gfx.active or preset == G.PRESET_MIN), 'шейдеры не собрались: %s' % name
+        Image.open(png).convert('RGB').save(os.path.join(DOCS, name + '.jpg'), quality=90)
+        print('снимок:', name, flush=True)
+
+    # день: проспект в Деловом центре, «Ласточка» и такси — тени, блеск кузова, затенение под машинами
+    w.sky.set_weather('clear')
+    w.sky.set_time(16.5)
+    w.sky.time_scale = 0.0
+    F = c.plan_frame(20.0, -181.0)
+    pl.teleport(*F.at(0.0, 0.0, 0.0))
+    w.cam.face(*F.at(0.0, 0.0, 0.0))
+    for kind, du, dv, yaw, paint in (('retro', 3.5, -2.6, 0.5, 1), ('taxi', 7.0, 3.0, -0.3, 0)):
+        v = w.spawn_vehicle(kind, *F.at(du, dv, yaw), paint=paint)
+        v.keep = True
+    harness.run(g, 2.0)
+    z = c.ground_z(*F())
+    w.cam.override = F.cam(-3.5, -1.5, z + 1.5, 4.0, -1.0, z + 0.6)
+    harness.run(g, 0.3)
+    for name, preset in (('gfx_min', G.PRESET_MIN), ('gfx_med', G.PRESET_MED), ('gfx_ultra', G.PRESET_ULTRA)):
+        snap(name, preset)
+    w.cam.override = None
+    # ночь в Старом городе: фонари, фары «Ласточки», маячки патрульной машины, свечение огней
+    G.set_preset(s, G.PRESET_MIN)
+    g.gfx.apply()
+    w.sky.set_time(23.5)
+    b = c.block_grid[(1, 3)]
+    lane, s0, _ = w.roadnet.nearest_lane(*c.to_world(b.x0 + 30.0, b.y0 - 8.0), 40.0)
+    x, y, yaw = lane.pos(min(lane.length - 30.0, max(8.0, s0)))
+    car = w.spawn_vehicle('retro', x, y, yaw, paint=1)
+    car.keep = True
+    pl.teleport(*harness.side(x, y, yaw, right=3.0))
+    harness.run(g, 0.3)
+    pl.enter_vehicle(car, silent=True)
+    harness.run(g, 1.0)
+    cop = w.spawn_vehicle('police', *harness.side(x, y, yaw, right=-3.4, fwd=22.0), yaw + math.pi + 0.35)
+    cop.keep = True
+    cop.siren = True
+    cop.set_lights(True)
+    w.cam.yaw = yaw
+    w.cam.snap()
+    harness.run(g, 0.6)
+    snap('gfx_night', G.PRESET_ULTRA)
+    # та же улица под дождём: мокрый асфальт и лужи отражают огни
+    G.set_preset(s, G.PRESET_MIN)
+    g.gfx.apply()
+    cop.siren = False
+    w.sky.set_weather('rain')
+    harness.run(g, 1.5)
+    snap('gfx_rain', G.PRESET_ULTRA)
+    # меню «Графика»: набор качества, ограничение кадров, счётчик кадров — и подробные настройки
+    w.sky.set_weather('clear')
+    w.sky.set_time(12.0)
+    if pl.vehicle is not None:
+        pl.leave_vehicle(force=True)
+    harness.run(g, 1.5)
+    g.pause()
+    g.ui.open(g.settings_menu())
+    harness.press(g, 'enter')                       # «Графика и экран»
+    for name in ('gfx_menu', 'gfx_details'):
+        harness.run(g, 0.2)
+        png = os.path.join(TMP, name + '.png')
+        harness.shot(g, png)
+        Image.open(png).convert('RGB').save(os.path.join(DOCS, name + '.jpg'), quality=90)
+        print('снимок:', name, flush=True)
+        m = g.ui.stack[-1]
+        m.sel = [it.label for it in m.items].index('Подробные настройки') if name == 'gfx_menu' else m.sel
+        if name == 'gfx_menu':
+            harness.press(g, 'enter')
+    g.ui.close_all()
+    g.resume()
+    print('снимки графики ->', DOCS)
+
+
 if __name__ == '__main__':
     if '--tester' in sys.argv:
         tester_shot()
+    elif '--gfx' in sys.argv:
+        gfx_shots()
     else:
         main()
