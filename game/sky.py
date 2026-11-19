@@ -62,6 +62,7 @@ class Sky(object):
         self.weather_t = 150.0
         self.time_scale = 1.0
         self.fog_color = (0.6, 0.75, 0.9)
+        self.zen_color = (0.22, 0.48, 0.88)
         dd = DRAW_DIST[int(clamp(world.settings.get('draw_distance'), 0, 2))]
         self.fog_start, self.far = dd
         set_lens_range(base, self.far)
@@ -315,6 +316,7 @@ class Sky(object):
             amb = _mix(amb, (amb[0] * 0.95, amb[1] * 0.96, amb[2] * 1.0), ck)
             sun = _mix(sun, (sun[0] * 0.35, sun[1] * 0.36, sun[2] * 0.4), ck)
         self.fog_color = hor
+        self.zen_color = zen
         base = self.base
         ind = self.indoor
         if (ind is not None) != self._indoor_on:

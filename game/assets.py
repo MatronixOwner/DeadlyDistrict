@@ -4,9 +4,14 @@ import os
 
 from panda3d.core import (Filename, Texture, SamplerState, TransparencyAttrib, ColorBlendAttrib,
                           DepthOffsetAttrib, CullFaceAttrib, TextureStage, getModelPath, LColor,
-                          DynamicTextFont, TextNode, CardMaker, NodePath)
+                          DynamicTextFont, TextNode, CardMaker, NodePath, LVecBase4)
 
 from . import settings
+
+
+# то, что под дождём становится мокрым и блестит (шейдер сцены, gfx.py)
+WET = frozenset(('asphalt', 'road2', 'road4', 'road2_cap', 'road4_cap', 'sidewalk', 'pavers', 'parking', 'concrete',
+                 'manhole', 'roof_metal', 'planks'))
 
 
 class Assets(object):
@@ -112,6 +117,14 @@ class Assets(object):
         if name is not None:
             clamp = mode in ('add_c', 'decal_c', 'blend_c', 'unlit_c')
             np_.setTexture(self.tex(name, clamp=clamp, smooth=(mode in ('add', 'add_c', 'decal_c'))))
+            if name == 'shadow':
+                # пятно-тень под машиной, человеком, деревом: когда от солнца ложатся настоящие тени,
+                # шейдер сцены его гасит (gfx.py; без шейдеров эта пометка ничего не значит)
+                np_.setShaderInput('u_mat', LVecBase4(0.0, 0.0, 0.0, 1.0))
+            elif name == 'lightpool':
+                np_.setShaderInput('u_mat', LVecBase4(0.0, 0.0, 1.0, 0.0))      # пятно света под фонарём
+            elif name in WET:
+                np_.setShaderInput('u_mat', LVecBase4(0.0, 1.0, 0.0, 0.0))      # под дождём блестит
         if mode is None:
             return
         if mode == 'a':

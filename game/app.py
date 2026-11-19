@@ -11,9 +11,9 @@ from panda3d.core import (loadPrcFileData, WindowProperties, Filename, TextNode,
 from . import GAME_TITLE, __version__
 from . import settings as settings_mod
 from . import audio as audio_mod
-from .settings import (Settings, DRAW_DIST, TRAFFIC_LEVELS, SCREEN_WINDOW, SCREEN_BORDERLESS, SCREEN_EXCLUSIVE,
+from . import gfx as gfx_mod
+from .settings import (Settings, TRAFFIC_LEVELS, SCREEN_WINDOW, SCREEN_BORDERLESS, SCREEN_EXCLUSIVE,
                        SCREEN_NAMES, MSAA_LEVELS)
-from .sky import set_lens_range
 
 RESOLUTIONS = [(1024, 576), (1280, 720), (1366, 768), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)]
 
@@ -81,10 +81,19 @@ AUTHORS_TEXT = (
     'Условия каждого набора — в файле README рядом с игрой.')
 
 
+def window_msaa(settings):
+    """Сколько выборок сглаживания просить у самого окна.
+
+    С шейдерами сцена рисуется в отдельный буфер, сглаживание делает он (gfx.py), и его можно менять на
+    лету.  Без шейдеров сглаживает окно — а его выборки задаются один раз, при открытии."""
+    n = int(settings.get('msaa'))
+    return n if (n >= 2 and not settings.get('gfx_shaders')) else 0
+
+
 def configure(settings, headless=False):
     s = settings
     mode = int(s.get('screen'))
-    msaa = int(s.get('msaa'))
+    msaa = window_msaa(s)
     prc = [
         'window-title %s' % GAME_TITLE,
         'win-size %d %d' % (int(s.get('width')), int(s.get('height'))),
@@ -96,8 +105,8 @@ def configure(settings, headless=False):
         'win-origin %s' % ('-2 -2' if mode == SCREEN_WINDOW else '0 0'),
         'sync-video %d' % (1 if s.get('vsync') else 0),
         'textures-power-2 none',
-        'framebuffer-multisample %d' % (1 if msaa > 0 else 0),
-        'multisamples %d' % max(0, msaa),
+        'framebuffer-multisample %d' % (1 if msaa >= 2 else 0),
+        'multisamples %d' % msaa,
         'show-frame-rate-meter 0',
         'model-cache-dir',
         'audio-library-name p3openal_audio',
@@ -128,7 +137,7 @@ class Game(object):
         if base is None and not headless:
             self._choose_screen()          # может поменять и сглаживание, поэтому — до запоминания
         # с какими значениями открыто окно: по ним меню пишет «после перезапуска»
-        self._boot = (int(self.settings.get('msaa')), bool(self.settings.get('vsync')))
+        self._boot = (window_msaa(self.settings), bool(self.settings.get('vsync')))
         if base is None:
             configure(self.settings, headless)
             from direct.showbase.ShowBase import ShowBase
@@ -172,6 +181,13 @@ class Game(object):
         w = self.world
         w.sky = Sky(w)
         self._loading_progress(0.88, 'Настраиваем приборы…')
+        w.hud = None
+        # первый запуск этой версии: набор качества графики подбирается по видеокарте
+        first = opened_here and not headless and int(self.settings.get('gfx_cfg')) < 1
+        self.gfx = gfx_mod.Gfx(self, first)
+        if first:
+            self.settings.set('gfx_cfg', 1)
+            self.settings.save()
         w.hud = Hud(w)
         w.missions = Missions(w)
         self.ui = MenuUI(self)
@@ -515,13 +531,6 @@ class Game(object):
         def yn(key):
             return lambda: 'Да' if s.get(key) else 'Нет'
 
-        def ch_draw(d):
-            s.set('draw_distance', int(min(2, max(0, int(s.get('draw_distance')) + d))))
-            dd = DRAW_DIST[int(s.get('draw_distance'))]
-            w.sky.fog_start, w.sky.far = dd
-            set_lens_range(self.base, w.sky.far)
-            w.sky._apply(0.0)
-
         def ch_traffic(d):
             s.set('traffic', int(min(2, max(0, int(s.get('traffic')) + d))))
             lv = TRAFFIC_LEVELS[int(s.get('traffic'))]
@@ -574,15 +583,94 @@ class Game(object):
             s.set('smooth_textures', not s.get('smooth_textures'))
             self.assets.set_smooth(s.get('smooth_textures'))
 
+        gfx = self.gfx
+
+        def shaders_work():
+            return gfx.supported and not gfx.failed
+
         def msaa_text():
             n = int(s.get('msaa'))
-            t = 'Выкл' if n <= 0 else '%d×' % n
-            return t + (' (после перезапуска)' if n != self._boot[0] else '')
+            t = gfx_mod.aa_name(n)
+            if shaders_work() and s.get('gfx_shaders'):
+                return t                                 # с шейдерами сглаживание переключается на лету
+            if n == 1:
+                return t + ' (нужны шейдеры)'
+            return t + (' (после перезапуска)' if window_msaa(s) != self._boot[0] else '')
 
-        def ch_msaa(d):
-            n = int(s.get('msaa'))
-            i = MSAA_LEVELS.index(n) if n in MSAA_LEVELS else 2
-            s.set('msaa', MSAA_LEVELS[(i + d) % len(MSAA_LEVELS)])
+        def preset_hint():
+            p = int(s.get('gfx_preset')) % 4
+            t = gfx_mod.PRESET_HINTS[p]
+            if not shaders_work() and p in (gfx_mod.PRESET_MED, gfx_mod.PRESET_ULTRA):
+                t = 'Эта видеокарта не умеет шейдеры: игра выглядит как на «Минимуме».'
+            return t
+
+        def ch_preset(d):
+            gfx_mod.set_preset(s, (int(s.get('gfx_preset')) + (d or 1)) % 4, self.desktop())
+            gfx.apply()
+            m = self.ui.current()
+            if m is not None:
+                m.text = preset_hint()
+
+        def custom(key, values=None):
+            """Настройка качества, изменённая вручную: набор становится «Пользовательские»."""
+            def f(d=1):
+                cur = s.get(key)
+                if values is None:
+                    s.set(key, not cur)
+                else:
+                    i = values.index(cur) if cur in values else 0
+                    s.set(key, values[(i + (d or 1)) % len(values)])
+                s.set('gfx_preset', gfx_mod.detect_preset(s))
+                gfx.apply()
+            return f
+
+        def need(fn):
+            """Значение настройки, которой нужны шейдеры."""
+            def f():
+                if not shaders_work():
+                    return 'недоступно'
+                if not s.get('gfx_shaders'):
+                    return 'Выкл (нужны шейдеры)'
+                return fn()
+            return f
+
+        def pick(key, names):
+            return lambda: names[int(s.get(key)) % len(names)]
+
+        def ch_fps(d):
+            lim = gfx_mod.FPS_LIMITS
+            n = int(s.get('fps_limit'))
+            i = lim.index(n) if n in lim else 0
+            s.set('fps_limit', lim[(i + (d or 1)) % len(lim)])
+            gfx.apply_fps_limit()
+
+        def details():
+            di = [
+                Item('Шейдеры: свет в каждой точке',
+                     value=lambda: (('Да' if s.get('gfx_shaders') else 'Нет') if shaders_work()
+                                    else 'недоступны на этой видеокарте'), change=custom('gfx_shaders')),
+                Item('Тени от солнца', value=need(pick('gfx_shadows', gfx_mod.SHADOW_NAMES)),
+                     change=custom('gfx_shadows', [0, 1, 2, 3])),
+                Item('Свет фонарей и фар', value=need(pick('gfx_lights', gfx_mod.LIGHT_NAMES)),
+                     change=custom('gfx_lights', [0, 1, 2])),
+                Item('Блеск машин, мокрый асфальт', value=need(yn('gfx_gloss')), change=custom('gfx_gloss')),
+                Item('Вода с рябью и бликами', value=need(yn('gfx_water')), change=custom('gfx_water')),
+                Item('Свечение ярких мест', value=need(yn('gfx_bloom')), change=custom('gfx_bloom')),
+                Item('Затенение в углах', value=need(yn('gfx_ssao')), change=custom('gfx_ssao')),
+                Item('Сглаживание краёв', value=msaa_text, change=custom('msaa', list(MSAA_LEVELS))),
+                Item('Дальность прорисовки', value=pick('draw_distance', ('Близко', 'Средне', 'Далеко')),
+                     change=custom('draw_distance', [0, 1, 2])),
+                Item('Назад', details_back),
+            ]
+            self.ui.open(Menu(self.ui, 'Подробные настройки', di, back=details_back, top=0.42, spacing=0.105,
+                              scale=0.068, wide=True))
+
+        def details_back():
+            s.save()
+            self.ui.close()
+            m = self.ui.current()
+            if m is not None:
+                m.text = preset_hint()
 
         def vsync_text():
             on = bool(s.get('vsync'))
@@ -618,22 +706,24 @@ class Game(object):
 
         def graphics():
             gi = [
+                Item('Качество графики', value=pick('gfx_preset', gfx_mod.PRESET_NAMES), change=ch_preset),
+                Item('Подробные настройки', details),
                 Item('Режим экрана', value=lambda: SCREEN_NAMES[int(s.get('screen')) % 3], change=ch_screen),
                 Item('Разрешение', value=res_text, change=ch_res),
+                Item('Вертикальная синхронизация', value=vsync_text, change=toggle('vsync')),
+                Item('Ограничение частоты кадров', value=lambda: '%d кадров/с' % int(s.get('fps_limit')),
+                     change=ch_fps),
+                Item('Счётчик кадров', value=yn('show_fps'), change=toggle('show_fps')),
                 Item('Текстуры', value=lambda: 'Сглаженные' if s.get('smooth_textures') else 'Чёткие',
                      change=ch_tex),
-                Item('Сглаживание краёв', value=msaa_text, change=ch_msaa),
-                Item('Вертикальная синхронизация', value=vsync_text, change=toggle('vsync')),
-                Item('Дальность прорисовки',
-                     value=lambda: ('Близко', 'Средне', 'Далеко')[int(s.get('draw_distance'))], change=ch_draw),
-                Item('Счётчик кадров', value=yn('show_fps'), change=toggle('show_fps')),
                 Item('Назад', gfx_back),
             ]
             self.ui.open(Menu(self.ui, 'Графика', gi, back=gfx_back, top=0.42, spacing=0.105, scale=0.068,
-                              wide=True))
+                              wide=True, text=preset_hint()))
 
         items = [
-            Item('Графика и экран', graphics, value=lambda: SCREEN_NAMES[int(s.get('screen')) % 3].lower()),
+            Item('Графика и экран', graphics,
+                 value=lambda: gfx_mod.PRESET_NAMES[int(s.get('gfx_preset')) % 4].lower()),
             Item('Громкость звуков', value=pct('sfx_volume'), change=ch_vol('sfx_volume')),
             Item('Громкость музыки', value=pct('music_volume'), change=ch_vol('music_volume')),
             Item('Песни для «Астрахань FM»', open_music, value=music_count),
@@ -1130,6 +1220,7 @@ class Game(object):
         else:
             # пауза / магазин: мир стоит
             w.hud.layout()
+        self.gfx.update(dt)
         self.ui.update(dt)
         inp.end_frame()
 

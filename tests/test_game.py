@@ -506,8 +506,9 @@ def test_graphics_settings_menu(game, world):
     m = g.ui.stack[-1]
     assert m.title == 'Графика'
     labels = [it.label for it in m.items]
-    assert labels[:5] == ['Режим экрана', 'Разрешение', 'Текстуры', 'Сглаживание краёв',
-                          'Вертикальная синхронизация']
+    assert labels == ['Качество графики', 'Подробные настройки', 'Режим экрана', 'Разрешение',
+                      'Вертикальная синхронизация', 'Ограничение частоты кадров', 'Счётчик кадров', 'Текстуры',
+                      'Назад']
     tex = g.assets.tex('fac_brick_a')
     assert tex.getMagfilter() == SamplerState.FTNearest and tex.getAnisotropicDegree() == 16
     items = {it.label: it for it in m.items}
@@ -516,11 +517,11 @@ def test_graphics_settings_menu(game, world):
     assert items['Текстуры'].value() == 'Сглаженные'
     items['Текстуры'].change(1)
     assert tex.getMagfilter() == SamplerState.FTNearest
-    before = int(s.get('msaa'))
-    items['Сглаживание краёв'].change(1)
-    assert int(s.get('msaa')) != before and 'перезапуска' in items['Сглаживание краёв'].value()
-    items['Сглаживание краёв'].change(-1)
-    assert int(s.get('msaa')) == before and 'перезапуска' not in items['Сглаживание краёв'].value()
+    # счётчик кадров включается кнопкой (что он появляется на экране — ниже, когда меню закрыто)
+    assert s.get('show_fps') is False and world.hud.fps_text.getText() == ''
+    assert items['Счётчик кадров'].value() == 'Нет'
+    items['Счётчик кадров'].change(1)
+    assert s.get('show_fps') is True and items['Счётчик кадров'].value() == 'Да'
     # режим экрана: без настоящего окна запрос к системе ничего не меняет, но и не роняет игру
     from game import settings as S
     keep = (s.get('screen'), s.get('width'), s.get('height'))
@@ -558,6 +559,307 @@ def test_graphics_settings_menu(game, world):
     harness.press(g, 'escape')
     g.ui.close_all()
     g.resume()
+    # счётчик кадров на экране: число и «FPS» в углу; выключили — пропал
+    harness.run(g, 0.7)
+    txt = world.hud.fps_text.getText()
+    assert txt.endswith(' FPS') and txt.split()[0].isdigit()
+    s.set('show_fps', False)
+    harness.run(g, 0.1)
+    assert world.hud.fps_text.getText() == ''
+
+
+# ----------------------------------------------------------------------
+# качество графики
+# ----------------------------------------------------------------------
+def _gfx_keep(s):
+    from game import gfx as G
+    keys = G.GFX_KEYS + ('gfx_preset', 'fps_limit')
+    return dict((k, s.get(k)) for k in keys)
+
+
+def _gfx_restore(g, keep):
+    for k, v in keep.items():
+        g.settings.set(k, v)
+    g.gfx.apply()
+
+
+def test_gfx_presets(game):
+    """Наборы «Минимум / Среднее / Ультра» записывают готовые значения; правка руками — «Пользовательские»."""
+    from game import gfx as G
+    from game.settings import DEFAULTS, DRAW_DIST
+    g = game
+    s = g.settings
+    keep = _gfx_keep(s)
+    try:
+        assert set(G.PRESETS) == {G.PRESET_MIN, G.PRESET_MED, G.PRESET_ULTRA}
+        for p, vals in G.PRESETS.items():
+            assert set(vals) == set(G.GFX_KEYS)                 # каждый набор задаёт каждую настройку
+            for k, v in vals.items():
+                assert type(v) is type(DEFAULTS[k]), k          # иначе настройка не переживёт сохранение
+        # «Минимум» — совсем без шейдеров: для компьютеров, где их нет или они слишком медленные
+        lo = G.PRESETS[G.PRESET_MIN]
+        assert lo['gfx_shaders'] is False and lo['gfx_shadows'] == 0 and lo['msaa'] == 0 and lo['draw_distance'] == 0
+        # «Ультра» включает всё, «Среднее» — без дорогой обработки кадра
+        hi, mid = G.PRESETS[G.PRESET_ULTRA], G.PRESETS[G.PRESET_MED]
+        assert all(hi[k] for k in ('gfx_shaders', 'gfx_bloom', 'gfx_ssao', 'gfx_gloss', 'gfx_water'))
+        assert hi['gfx_shadows'] == 3 and hi['gfx_lights'] == 2 and hi['draw_distance'] == 2
+        assert mid['gfx_shaders'] and not mid['gfx_bloom'] and not mid['gfx_ssao'] and 0 < mid['gfx_shadows'] < 3
+        # настройки по умолчанию — это «Среднее»
+        assert DEFAULTS['gfx_preset'] == G.PRESET_MED
+        assert all(DEFAULTS[k] == v for k, v in mid.items())
+        for p in (G.PRESET_MIN, G.PRESET_MED, G.PRESET_ULTRA):
+            G.set_preset(s, p)
+            g.gfx.apply()
+            assert s.get('gfx_preset') == p and G.detect_preset(s) == p
+            assert all(s.get(k) == v for k, v in G.PRESETS[p].items())
+            # дальность прорисовки меняется сразу
+            assert (g.world.sky.fog_start, g.world.sky.far) == DRAW_DIST[G.PRESETS[p]['draw_distance']]
+            harness.run(g, 0.1)
+        # «Пользовательские» ничего не трогают
+        before = dict((k, s.get(k)) for k in G.GFX_KEYS)
+        G.set_preset(s, G.PRESET_CUSTOM)
+        assert s.get('gfx_preset') == G.PRESET_CUSTOM and all(s.get(k) == v for k, v in before.items())
+        s.set('gfx_bloom', False)
+        assert G.detect_preset(s) == G.PRESET_CUSTOM
+        s.set('gfx_bloom', True)
+        assert G.detect_preset(s) == G.PRESET_ULTRA
+        # на экране 4K «Ультра» берёт FXAA вместо MSAA — и всё равно остаётся «Ультрой»
+        G.set_preset(s, G.PRESET_ULTRA, (3840, 2160))
+        assert s.get('msaa') == 1 and G.detect_preset(s) == G.PRESET_ULTRA
+        G.set_preset(s, G.PRESET_ULTRA, (1920, 1080))
+        assert s.get('msaa') == 4
+    finally:
+        _gfx_restore(g, keep)
+
+
+def test_gfx_first_run_guess():
+    """Первый запуск: набор — по видеокарте, ограничение кадров — по частоте монитора."""
+    from game import gfx as G
+    assert G.guess_preset('NVIDIA Corporation / GeForce RTX 3060/PCIe/SSE2') == G.PRESET_ULTRA
+    assert G.guess_preset('NVIDIA / GeForce GTX 1050 Ti') == G.PRESET_ULTRA
+    assert G.guess_preset('ATI / AMD Radeon RX 6600 XT') == G.PRESET_ULTRA
+    assert G.guess_preset('Intel / Intel(R) UHD Graphics 620') == G.PRESET_MED
+    assert G.guess_preset('NVIDIA / GeForce GT 710') == G.PRESET_MED
+    assert G.guess_preset('ATI / AMD Radeon(TM) RX Vega 11 Graphics') == G.PRESET_MED      # встроенная
+    assert G.guess_preset('Mesa/X.org / llvmpipe (LLVM 10.0.0, 256 bits)') == G.PRESET_MIN
+    assert G.guess_preset('Microsoft / GDI Generic') == G.PRESET_MIN
+    assert G.guess_preset('NVIDIA / GeForce RTX 4090', supported=False) == G.PRESET_MIN
+    assert G.FPS_LIMITS == (60, 120, 180, 240)
+    assert [G.guess_fps_limit(h) for h in (60, 59, 75, 144, 165, 240, 360)] == [60, 60, 120, 180, 180, 240, 240]
+
+
+def test_gfx_details_menu(game, world):
+    """«Подробные настройки»: каждая настройка качества меняется отдельно, набор становится «Пользовательские»."""
+    from game import gfx as G
+    g = game
+    s = g.settings
+    keep = _gfx_keep(s)
+    g.pause()
+    try:
+        g.ui.open(g.settings_menu())
+        harness.press(g, 'enter')                               # «Графика и экран»
+        m = g.ui.stack[-1]
+        items = {it.label: it for it in m.items}
+        G.set_preset(s, G.PRESET_MED)
+        g.gfx.apply()
+        assert items['Качество графики'].value() == 'Среднее'
+        # стрелки перебирают наборы по кругу; подпись под заголовком объясняет выбранный
+        seen = []
+        for _ in range(4):
+            items['Качество графики'].change(1)
+            seen.append(items['Качество графики'].value())
+            assert g.ui.stack[-1].text and isinstance(g.ui.stack[-1].text, str)
+        assert seen == ['Ультра', 'Пользовательские', 'Минимум', 'Среднее']
+        items['Качество графики'].change(-1)
+        assert s.get('gfx_preset') == G.PRESET_MIN and s.get('gfx_shaders') is False
+        items['Качество графики'].change(1)
+        assert s.get('gfx_preset') == G.PRESET_MED and s.get('gfx_shaders') is True
+        # ограничение частоты кадров: 60 / 120 / 180 / 240
+        s.set('fps_limit', 60)
+        got = []
+        for _ in range(4):
+            items['Ограничение частоты кадров'].change(1)
+            got.append(int(s.get('fps_limit')))
+        assert got == [120, 180, 240, 60]
+        assert '60' in items['Ограничение частоты кадров'].value()
+        items['Ограничение частоты кадров'].change(-1)
+        assert s.get('fps_limit') == 240
+        # подробные настройки
+        m.sel = [it.label for it in m.items].index('Подробные настройки')
+        harness.press(g, 'enter')
+        d = g.ui.stack[-1]
+        assert d.title == 'Подробные настройки'
+        labels = [it.label for it in d.items]
+        assert labels == ['Шейдеры: свет в каждой точке', 'Тени от солнца', 'Свет фонарей и фар',
+                          'Блеск машин, мокрый асфальт', 'Вода с рябью и бликами', 'Свечение ярких мест',
+                          'Затенение в углах', 'Сглаживание краёв', 'Дальность прорисовки', 'Назад']
+        di = {it.label: it for it in d.items}
+        for it in d.items:
+            if it.value is not None:
+                assert isinstance(it.value(), str) and it.value()
+        di['Тени от солнца'].change(1)
+        assert s.get('gfx_shadows') == 3 and s.get('gfx_preset') == G.PRESET_CUSTOM
+        di['Тени от солнца'].change(-1)
+        assert s.get('gfx_shadows') == 2 and s.get('gfx_preset') == G.PRESET_MED       # снова как в наборе
+        di['Свечение ярких мест'].change(1)
+        assert s.get('gfx_bloom') is True and s.get('gfx_preset') == G.PRESET_CUSTOM
+        aa = []
+        for _ in range(5):
+            di['Сглаживание краёв'].change(1)
+            aa.append(int(s.get('msaa')))
+        assert aa == [2, 4, 8, 0, 1]
+        s.set('msaa', 1)
+        assert di['Сглаживание краёв'].value().startswith('FXAA')
+        s.set('msaa', 4)
+        assert di['Сглаживание краёв'].value().startswith('MSAA 4×')
+        di['Дальность прорисовки'].change(1)
+        assert s.get('draw_distance') == 2 and di['Дальность прорисовки'].value() == 'Далеко'
+        assert world.sky.far == 940.0
+        if not g.gfx.supported:
+            # видеокарта без шейдеров (так идут и эти проверки): меню честно говорит, что настройка не работает
+            assert di['Тени от солнца'].value() == 'недоступно'
+            assert 'недоступны' in di['Шейдеры: свет в каждой точке'].value()
+        harness.press(g, 'escape')
+        assert g.ui.stack[-1].title == 'Графика'
+        assert g.ui.stack[-1].text == G.PRESET_HINTS[G.PRESET_CUSTOM] or not g.gfx.supported
+        assert items['Качество графики'].value() == 'Пользовательские'
+    finally:
+        g.ui.close_all()
+        g.resume()
+        _gfx_restore(g, keep)
+
+
+def test_gfx_fps_limit_applies(game):
+    """Ограничение кадров и правда держит частоту: часы движка не дают кадрам идти чаще заданного."""
+    import time
+    from panda3d.core import ClockObject
+    g = game
+    s = g.settings
+    clock = ClockObject.getGlobalClock()
+    mode0, keep = clock.getMode(), s.get('fps_limit')
+    g.gfx.apply_fps_limit()
+    assert clock.getMode() == mode0                             # проверки идут без окна: кадры не тормозим
+    g.headless = False
+    try:
+        for n in (60, 120, 180, 240):
+            s.set('fps_limit', n)
+            g.gfx.apply_fps_limit()
+            assert clock.getMode() == ClockObject.MLimited and g.gfx.fps_applied == n
+            clock.tick()
+            t0 = time.perf_counter()
+            frames = max(6, n // 10)
+            for _ in range(frames):
+                clock.tick()                                    # «кадр» без работы: быстрее заданного не выйдет
+            took = time.perf_counter() - t0
+            assert 0.8 * frames / n < took < 3.0 * frames / n + 0.05, (n, took)
+        s.set('fps_limit', 77)                                  # мусор в файле настроек: берём 60
+        g.gfx.apply_fps_limit()
+        assert g.gfx.fps_applied == 60
+    finally:
+        g.headless = True
+        clock.setMode(mode0)
+        s.set('fps_limit', keep)
+
+
+def test_gfx_without_shaders_is_safe(game, world):
+    """Нет шейдеров (старая видеокарта, запасной рендерер) — любой набор качества рисует по-старому."""
+    from game import gfx as G
+    g = game
+    if g.gfx.supported:
+        pytest.skip('эта проверка — для рендерера без шейдеров')
+    s = g.settings
+    keep = _gfx_keep(s)
+    try:
+        for p in (G.PRESET_ULTRA, G.PRESET_MED, G.PRESET_MIN):
+            G.set_preset(s, p)
+            g.gfx.apply()
+            assert g.gfx.active is False and g.gfx.cfg['on'] is False and not g.gfx.cascades and not g.gfx.post
+            assert g.base.render.getShader() is None
+            harness.run(g, 0.2)
+        assert g.gfx.failed is False                            # «не умеет» — не то же, что «сломалось»
+    finally:
+        _gfx_restore(g, keep)
+
+
+def test_shader_sources():
+    """Тексты шейдеров: только латиница (комментарии вырезаны), директивы парные, все варианты собираются в текст."""
+    import re
+    from game import shaders as S
+    from game import gfx as G
+    combos = []
+    for lv in G.SHADOW_LEVELS:
+        for lights in G.LIGHT_COUNTS:
+            for gloss in (0, 1):
+                for hdr in (0, 1):
+                    combos.append(dict(SHADOWS=1 if lv else 0, CASCADES=2 if (lv and lv['far']) else 1,
+                                       PCF=lv['pcf'] if lv else 1, LIGHTS=lights, GLOSS=gloss, HDR=hdr))
+    texts = []
+    for c in combos:
+        texts += [S.source(S.SCENE_VERT, **c), S.source(S.SCENE_FRAG, **c)]
+    texts += [S.source(t) for t in (S.SHADOW_VERT, S.SHADOW_FRAG, S.POST_VERT, S.BRIGHT_FRAG, S.BLUR_FRAG,
+                                    S.AOBLUR_FRAG, S.FXAA_FRAG)]
+    texts += [S.source(S.WATER_VERT, HDR=h) for h in (0, 1)] + [S.source(S.WATER_FRAG, HDR=h) for h in (0, 1)]
+    texts += [S.source(S.SSAO_FRAG, SSAO_TAPS=12)]
+    texts += [S.source(S.COMPOSITE_FRAG, BLOOM=b, SSAO=a) for b in (0, 1) for a in (0, 1)]
+    for t in texts:
+        assert t.startswith('#version 120\n')
+        assert all(ord(ch) < 128 for ch in t)                   # строгий драйвер не примет кириллицу
+        assert '//' not in t
+        assert len(re.findall(r'^#if', t, re.M)) == len(re.findall(r'^#endif', t, re.M))
+        assert t.count('{') == t.count('}') and t.count('(') == t.count(')')
+        assert 'void main()' in t
+    # всё, что шейдер сцены ждёт от игры, игра ему передаёт (иначе — чёрный экран на настоящей видеокарте)
+    import inspect
+    src = inspect.getsource(G)
+    full = S.SCENE_VERT + S.SCENE_FRAG + S.WATER_FRAG
+    for name in sorted(set(re.findall(r'uniform\s+\w+\s+(u_\w+)', full))):
+        assert name in src, name
+
+
+@pytest.mark.skipif(os.environ.get('DD_TEST_DISPLAY') != 'p3headlessgl', reason='нужен OpenGL (DD_TEST_DISPLAY=p3headlessgl)')
+def test_gfx_shaders_compile_and_draw(game, world):
+    """С настоящим OpenGL: каждый набор качества собирает свои шейдеры без ошибок и рисует не чёрный кадр."""
+    from panda3d.core import PNMImage
+    from game import gfx as G
+    g = game
+    assert g.gfx.supported
+    s = g.settings
+    keep = _gfx_keep(s)
+    w = world
+    hour, wth = w.sky.hour, w.sky.weather
+    try:
+        w.sky.set_weather('clear')
+        w.sky.set_time(13.0)
+        seen = {}
+        for p in (G.PRESET_MIN, G.PRESET_MED, G.PRESET_ULTRA):
+            G.set_preset(s, p)
+            g.gfx.apply()
+            harness.run(g, 0.3)
+            for _ in range(2):
+                g.base.graphicsEngine.renderFrame()
+            harness.run(g, 0.3)                                 # здесь игра сама проверяет, собрались ли шейдеры
+            assert g.gfx.failed is False
+            assert g.gfx.active is (p != G.PRESET_MIN)
+            assert not [sh for sh in g.gfx._shaders if sh.getErrorFlag()]
+            if p == G.PRESET_ULTRA:
+                c = g.gfx.cfg
+                assert c['shadows'] == 3 and len(g.gfx.cascades) == 2 and c['bloom'] and c['ssao'] and c['post']
+            img = PNMImage()
+            g.base.win.getScreenshot(img)
+            n = 0
+            tot = 0.0
+            for x in range(8, img.getXSize(), 37):
+                for y in range(8, img.getYSize(), 29):
+                    tot += img.getBright(x, y)
+                    n += 1
+            seen[p] = tot / n
+        # день, ясно: кадр не чёрный и не выбеленный ни в одном наборе, и наборы не расходятся по яркости вдвое
+        assert all(0.15 < v < 0.9 for v in seen.values()), seen
+        assert max(seen.values()) < 2.0 * min(seen.values()), seen
+    finally:
+        w.sky.set_weather(wth)
+        w.sky.set_time(hour)
+        _gfx_restore(g, keep)
 
 
 # ----------------------------------------------------------------------

@@ -70,6 +70,11 @@ def model(mb, name, color=(1.0, 1.0, 1.0, 1.0), x=0.0, y=0.0, z=0.0, yaw=0.0, ti
 
 
 def glow(night, x, y, z, size, color=LAMP_COLOR):
+    lights = getattr(night, 'lights', None)
+    if lights is not None:
+        # огонь светит не только «звёздочкой»: с шейдерами он освещает всё вокруг (gfx.Gfx.set_world_lights)
+        wx, wy, wz = night.world_point((x, y, z))
+        lights.append((wx, wy, wz, size, color[0], color[1], color[2]))
     h = size * 0.5
     night.quad(GLOW, (x - h, y, z - h), (x + h, y, z - h), (x + h, y, z + h), (x - h, y, z + h), color=color)
     night.quad(GLOW, (x, y - h, z - h), (x, y + h, z - h), (x, y + h, z + h), (x, y - h, z + h), color=color)

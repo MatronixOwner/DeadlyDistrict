@@ -3,7 +3,7 @@
 import math
 import random
 
-from panda3d.core import NodePath, LPoint3, LVector3, LQuaternion
+from panda3d.core import NodePath, LPoint3, LVector3, LQuaternion, LVecBase4
 
 from .meshbuilder import MeshBuilder
 from .mathutil import clamp, approach, wrap_angle, angle_diff, yaw_to_h, damp, DEG
@@ -666,6 +666,12 @@ class Vehicle(object):
         return self.paint % len(pal)
 
     def _new_body(self, wreck=False):
+        np_ = self._make_body(wreck)
+        # лак блестит и отражает небо, под дождём — ещё сильнее (шейдер сцены, gfx.py); остов матовый
+        np_.setShaderInput('u_mat', LVecBase4(0.12 if wreck else 0.62, 1.0, 0.0, 0.0))
+        return np_
+
+    def _make_body(self, wreck=False):
         """Кузов: готовая модель, перекрашенная в цвет машины; если её нет — собранный из плоскостей."""
         w = self.world
         if self.spec.bike:

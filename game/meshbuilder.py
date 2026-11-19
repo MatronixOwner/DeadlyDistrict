@@ -96,6 +96,17 @@ class MeshBuilder(object):
     def clear_xform(self):
         self._xf = None
 
+    def world_point(self, p):
+        """Где в мире окажется точка p, если построить в ней вершину (для огней: см. props.glow)."""
+        xf = self._xf
+        if xf is not None:
+            tx, ty, tz, c, s, sc = xf
+            return (tx + (p[0] * c - p[1] * s) * sc, ty + (p[0] * s + p[1] * c) * sc, tz + p[2] * sc)
+        if self.warp is not None:
+            x, y = self.warp.fwd(p[0], p[1])
+            return (x, y, p[2])
+        return (p[0], p[1], p[2])
+
     def empty(self):
         return not any(self.groups.values())
 

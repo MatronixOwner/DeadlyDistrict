@@ -82,6 +82,8 @@ class CityMesh(object):
         self.static = static
         self.root = parent.attachNewNode('city')
         self.night_root = (night_parent or parent).attachNewNode('city_night')
+        self.lights = []                 # ночные огни: (x, y, z, размер, r, g, b) — в мире
+        self.on_break = None             # функция(сломанный предмет): фонарь сбили — его свет гаснет
         self._mbs = {}
         self._brks = {}
         self._nights = {}
@@ -115,6 +117,7 @@ class CityMesh(object):
         m = self._nights.get(chunk)
         if m is None:
             m = self._nights[chunk] = MeshBuilder(self.city.warp)
+            m.lights = self.lights
         return m
 
     def _road_chunk(self, x, y):
@@ -1297,6 +1300,8 @@ class CityMesh(object):
         if not br.alive:
             return False
         br.alive = False
+        if self.on_break is not None:
+            self.on_break(br)
         for (gn, start, count) in br.ranges:
             erase_vertices(gn, start, count)
         if br.col is not None:
