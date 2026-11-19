@@ -531,6 +531,19 @@ class RoadNet(object):
                 self._ped_edge(m, r)
             for (p, q) in ((rs, re), (re, rn), (rn, rw), (rw, rs)):
                 self._ped_edge(p, q)
+        # бульвары внутри слитых кварталов: по ним ходят так же, как по тротуарам
+        for wk in c.special.get('walks', ()):
+            b = c.blocks[wk['block']]
+            if wk['axis'] == 'y':
+                x = wk['c']
+                chain = [on_side(b, 's', x, b.y0 + ins)] + [self._ped_node(x, m, b.id) for m in wk['mids']] + \
+                        [on_side(b, 'n', x, b.y1 - ins)]
+            else:
+                y = wk['c']
+                chain = [on_side(b, 'w', b.x0 + ins, y)] + [self._ped_node(m, y, b.id) for m in wk['mids']] + \
+                        [on_side(b, 'e', b.x1 - ins, y)]
+            for k in range(len(chain) - 1):
+                self._ped_edge(chain[k], chain[k + 1])
         # рёбра вдоль сторон кварталов
         for (bid, side), lst in sides.items():
             if side in ('s', 'n'):

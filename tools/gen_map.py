@@ -125,6 +125,15 @@ def main():
         rect(x0, y0, x1, y1, (120, 120, 118))
     for b in c.blocks:
         rect(b.x0, b.y0, b.x1, b.y1, ZONE_COL.get(b.zone, (110, 110, 110)))
+    # пешеходные бульвары внутри слитых кварталов: светлая дорожка, в жилых районах — по газону
+    for (x0, y0, x1, y1, zone) in c.special.get('boulevards', ()):
+        green = c.zone_style(zone) == 'R'
+        rect(x0, y0, x1, y1, (96, 132, 86) if green else (158, 152, 140))
+        if green:
+            if x1 - x0 > y1 - y0:
+                rect(x0, (y0 + y1) * 0.5 - 2.4, x1, (y0 + y1) * 0.5 + 2.4, (168, 160, 146))
+            else:
+                rect((x0 + x1) * 0.5 - 2.4, y0, (x0 + x1) * 0.5 + 2.4, y1, (168, 160, 146))
     # покрытия внутри кварталов, заметные на карте: взлётная полоса, асфальт
     for (x0, y0, x1, y1, tex, tile, color, block, z, rot) in c.ground:
         if tex == 'asphalt' and (x1 - x0) * (y1 - y0) > 400.0:

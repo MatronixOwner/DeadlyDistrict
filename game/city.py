@@ -73,7 +73,45 @@ ROAD_Y_AVE = [True, False, True, False, False, True, False, False, True,
               True, False, True, False, False, False]
 # большие кварталы из нескольких клеток: (i0, j0, i1, j1)
 PARK_I0, PARK_I1, PARK_J0, PARK_J1 = 4, 5, 3, 4               # парк занимает 2x2 клетки
-SUPER = [(PARK_I0, PARK_J0, PARK_I1, PARK_J1), (12, 6, 14, 7)]
+# Слитые кварталы: соседние клетки одной зоны, между которыми улицу убрали.  На её месте — пешеходный
+# бульвар, а перекрёстки на его концах стали Т-образными: улицы города больше не идут сплошной решёткой
+# от края до края.  Убирать можно только улицы (не проспекты) и только между клетками одной зоны; сюжетное
+# место (LANDMARKS) может стоять лишь в нижнем ряду слитого квартала — его дверь выходит на южную улицу.
+MERGES = [
+    # остров
+    (1, 7, 2, 7),       # трущобы: двойной квартал у северной набережной
+    (0, 6, 1, 6),
+    (3, 7, 4, 7),       # Сосновка: бульвар между домами
+    (4, 6, 5, 6),
+    (7, 6, 7, 7),       # заводской двор
+    (8, 6, 8, 7),
+    (9, 5, 9, 6),       # портовые склады
+    (8, 4, 9, 4),
+    (9, 2, 9, 3),
+    (3, 5, 4, 5),       # центр: пешеходная улица к северу от парка
+    (2, 3, 2, 4),       # ... к западу от банка
+    (3, 3, 3, 4),       # ... за банком
+    (6, 4, 7, 4),       # ... у клуба
+    (7, 2, 7, 3),       # ... к востоку от парка
+    (3, 2, 5, 2),       # ... к югу от парка: три клетки подряд
+    (0, 2, 0, 3),       # старый город
+    (0, 4, 1, 4),
+    (0, 5, 1, 5),
+    (1, 2, 2, 2),
+    (1, 0, 2, 1),       # набережная: курортная площадь (2 x 2)
+    (3, 0, 4, 0),
+    (3, 1, 4, 1),
+    (5, 0, 5, 1),
+    (6, 0, 7, 0),
+    (6, 1, 7, 1),
+    # Заречье
+    (3, 12, 4, 12),
+    (5, 11, 5, 12),
+    (6, 11, 7, 11),
+    (4, 13, 5, 13),
+    (3, 9, 4, 9),
+]
+SUPER = [(PARK_I0, PARK_J0, PARK_I1, PARK_J1), (12, 6, 14, 7)] + MERGES
 # дороги вне кварталов: трасса вокруг залива и два моста
 #   ('h', i, j) — отрезок от узла (i, j) к (i + 1, j);  ('v', i, j) — от узла (i, j) к (i, j + 1)
 EXTRA_SEGS = [('h', 9, 11), ('h', 10, 11), ('h', 11, 11), ('v', 12, 10), ('v', 12, 9), ('v', 12, 8)]
@@ -168,7 +206,7 @@ NIGHT_FACADES = set([
 
 
 class Block(object):
-    __slots__ = ('id', 'i', 'j', 'i1', 'j1', 'x0', 'y0', 'x1', 'y1', 'zone')
+    __slots__ = ('id', 'i', 'j', 'i1', 'j1', 'x0', 'y0', 'x1', 'y1', 'zone', 'merged')
 
     def interior(self):
         return (self.x0 + SIDEWALK, self.y0 + SIDEWALK, self.x1 - SIDEWALK, self.y1 - SIDEWALK)
@@ -381,8 +419,19 @@ class City(object):
         self._make_roads()
         self._make_blocks()
         self._outer_sidewalks()
-        for b in self.blocks:
-            self._gen_block(b)
+        # застройка — клетка за клеткой, в прежнем порядке: слитый квартал застраивается по своим клеткам
+        # (каждая — как раньше, когда была отдельным кварталом), потом на месте улиц разбиваются бульвары
+        for j in range(self.ny):
+            for i in range(self.nx):
+                b = self.block_grid.get((i, j))
+                if b is None:
+                    continue
+                if b.merged:
+                    self._gen_cell(b, i, j)
+                    if (i, j) == (b.i1, b.j1):
+                        self._gen_boulevards(b)
+                elif (i, j) == (b.i, b.j):
+                    self._gen_block(b)
         self._gen_coast()
         self._gen_country()
         self._gen_extras()
@@ -738,6 +787,7 @@ class City(object):
                 b.y0 = self.ys[b.j] + self.wy[b.j] * 0.5
                 b.y1 = self.ys[b.j1 + 1] - self.wy[b.j1 + 1] * 0.5
                 b.zone = zone
+                b.merged = sb in MERGES             # слитый квартал: клетки застраиваются по отдельности
                 self.blocks.append(b)
                 for ii in range(b.i, b.i1 + 1):
                     for jj in range(b.j, b.j1 + 1):
@@ -1190,16 +1240,39 @@ class City(object):
 
     # ------------------------------------------------------------------
     def _block_seed(self, b):
-        """Число, от которого зависит застройка квартала.  У кварталов острова оно такое же, каким было,
+        return self._cell_seed(b.i, b.j)
+
+    def _cell_seed(self, i, j):
+        """Число, от которого зависит застройка клетки.  У клеток острова оно такое же, каким было,
         когда город состоял из одного острова 10 x 8: там всё выверено, и вид меняться не должен."""
-        if b.i <= self.isle_i1 and b.j <= self.isle_j1:
-            k = b.j * 10 + b.i
+        if i <= self.isle_i1 and j <= self.isle_j1:
+            k = j * 10 + i
             return k - (k > 35) - (k > 44) - (k > 45)       # три клетки парка своих номеров не имели
-        return 500 + b.j * 37 + b.i
+        return 500 + j * 37 + i
+
+    def _cell_rect(self, i, j):
+        """Клетка между линиями дорог — какой она была бы отдельным кварталом: (x0, y0, x1, y1)."""
+        return (self.xs[i] + self.wx[i] * 0.5, self.ys[j] + self.wy[j] * 0.5,
+                self.xs[i + 1] - self.wx[i + 1] * 0.5, self.ys[j + 1] - self.wy[j + 1] * 0.5)
+
+    def _gen_cell(self, b, i, j):
+        """Одна клетка слитого квартала: застраивается так же, как когда была отдельным кварталом."""
+        x0, y0, x1, y1 = self._cell_rect(i, j)
+        R = (x0 + SIDEWALK, y0 + SIDEWALK, x1 - SIDEWALK, y1 - SIDEWALK)
+        r = Rng(self.seed * 1000 + self._cell_seed(i, j) * 17 + 5)
+        hold = (b.i, b.j)
+        b.i, b.j = i, j                     # застройщики смотрят на номер клетки (сюжетные места, ряд у моря)
+        try:
+            self._gen_zone(b, R, r)
+        finally:
+            b.i, b.j = hold
 
     def _gen_block(self, b):
         r = Rng(self.seed * 1000 + self._block_seed(b) * 17 + 5)
-        R = b.interior()
+        self._gen_zone(b, b.interior(), r)
+        self._gen_street_furniture(b, r)
+
+    def _gen_zone(self, b, R, r):
         z = b.zone
         if z == 'P':
             self._gen_park(b, R, r)
@@ -1219,7 +1292,140 @@ class City(object):
             self._gen_airfield(b, R, r)
         else:
             self._gen_beach(b, R, r)
+
+    # ------------------------------------------------------------------
+    # БУЛЬВАРЫ: пешеходные улицы внутри слитых кварталов
+    # ------------------------------------------------------------------
+    def _gen_boulevards(self, b):
+        r = Rng(self.seed * 77 + (b.i * 31 + b.j) * 131 + 9)
+        sw = SIDEWALK
+        X0, Y0, X1, Y1 = b.interior()
+        vg = [(self.xs[i] - self.wx[i] * 0.5 - sw, self.xs[i] + self.wx[i] * 0.5 + sw) for i in range(b.i + 1, b.i1 + 1)]
+        hg = [(self.ys[j] - self.wy[j] * 0.5 - sw, self.ys[j] + self.wy[j] * 0.5 + sw) for j in range(b.j + 1, b.j1 + 1)]
+        walks = self.special.setdefault('walks', [])
+        strips = self.special.setdefault('boulevards', [])
+        # продольные полосы — во всю высоту квартала, поперечные — кусками между ними (без наложений)
+        for (gx0, gx1) in vg:
+            self._boulevard(b, r, gx0, Y0, gx1, Y1, 'y', [((a + c) * 0.5, c - a) for (a, c) in hg])
+            strips.append((gx0, Y0, gx1, Y1, b.zone))
+            walks.append(dict(block=b.id, axis='y', c=(gx0 + gx1) * 0.5, mids=[(a + c) * 0.5 for (a, c) in hg]))
+        cuts = [X0] + [v for g in vg for v in g] + [X1]
+        for (gy0, gy1) in hg:
+            for k in range(0, len(cuts), 2):
+                self._boulevard(b, r, cuts[k], gy0, cuts[k + 1], gy1, 'x', [])
+                strips.append((cuts[k], gy0, cuts[k + 1], gy1, b.zone))
+            walks.append(dict(block=b.id, axis='x', c=(gy0 + gy1) * 0.5, mids=[(a + c) * 0.5 for (a, c) in vg]))
+        # перекрёсток двух бульваров — площадь с фонтаном
+        for (gx0, gx1) in vg:
+            for (gy0, gy1) in hg:
+                cx, cy = (gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5
+                self._prop('fountain', cx, cy, 0.0, b.id)
+                for (dx, dy, yaw) in ((0, 6.5, -math.pi / 2), (0, -6.5, math.pi / 2), (6.5, 0, math.pi), (-6.5, 0, 0.0)):
+                    self._prop('bench', cx + dx, cy + dy, yaw, b.id)
         self._gen_street_furniture(b, r)
+
+    def _boulevard(self, b, r, x0, y0, x1, y1, axis, skip):
+        """Пешеходная улица на месте убранной: покрытие, деревья в два ряда, фонари, скамейки.
+
+        axis — вдоль какой оси она идёт; skip — [(середина, ширина)] участков вдоль оси, где её пересекает
+        другой бульвар (там площадь, деревья не нужны)."""
+        zs = self.zone_style(b.zone)
+        along_x = axis == 'x'
+        L = (x1 - x0) if along_x else (y1 - y0)
+        W = (y1 - y0) if along_x else (x1 - x0)
+        if L < 6.0 or W < 6.0:
+            return
+        ox, oy = (x0, (y0 + y1) * 0.5) if along_x else ((x0 + x1) * 0.5, y0)
+
+        def P(t, s):
+            """t — вдоль бульвара от его начала, s — поперёк от оси (влево от хода — плюс)."""
+            return (ox + t, oy + s) if along_x else (ox - s, oy + t)
+
+        def free(t, pad=3.0):
+            return all(abs(t - (m - (x0 if along_x else y0))) > w * 0.5 + pad for (m, w) in skip)
+        yaw_in = (math.pi / 2, -math.pi / 2) if along_x else (math.pi, 0.0)        # куда смотрит скамейка: к оси
+        lamp_yaw = 0.0 if along_x else math.pi / 2
+        path = None
+        if zs in ('D', 'O', 'B'):
+            col = {'D': (1.0, 1.0, 1.0), 'O': (0.96, 0.92, 0.86), 'B': (1.0, 0.96, 0.9)}[zs]
+            self._ground(x0, y0, x1, y1, 'pavers', b.id, color=col)
+            tree, t_step, t_off = ('palm' if zs == 'B' else 'tree'), 11.0, W * 0.5 - 4.2
+        elif zs == 'R':
+            self._ground(x0, y0, x1, y1, 'grass', b.id, tile=6.0)
+            path = 2.4
+            tree, t_step, t_off = 'tree', 9.5, W * 0.5 - 4.0
+        elif zs == 'G':
+            self._ground(x0, y0, x1, y1, 'dirt', b.id, tile=5.0)
+            tree = None
+        else:
+            self._ground(x0, y0, x1, y1, 'concrete', b.id, tile=5.0, color=(0.74, 0.74, 0.74))
+            tree = None
+        if path is not None:                                # дорожка посреди газона
+            a, c = P(0.0, -path), P(L, path)
+            self.ground.append((min(a[0], c[0]), min(a[1], c[1]), max(a[0], c[0]), max(a[1], c[1]), 'pavers',
+                                (3.0, 3.0), (0.94, 0.92, 0.88), b.id, CURB + 0.02, 0))
+        if tree is not None:
+            n = max(1, int(L // t_step))
+            for k in range(n):
+                t = (k + 0.5) * L / n
+                if not free(t):
+                    continue
+                for sgn in (-1.0, 1.0):
+                    px, py = P(t + r.rangef(-0.6, 0.6), sgn * t_off)
+                    if tree == 'palm':
+                        self._prop('palm', px, py, 0.0, b.id, seed=r.randint(0, 9999), size=r.rangef(0.95, 1.2))
+                    else:
+                        self._prop('tree', px, py, 0.0, b.id, seed=r.randint(0, 9999), size=r.rangef(0.85, 1.15),
+                                   pit=zs != 'R')
+            # фонари по оси, между ними — скамейки лицом к оси; кое-где урны, в центре и у моря — зонтики кафе
+            lane = (path + 1.0) if path is not None else W * 0.5 - 7.4
+            m = max(1, int(L // 24.0))
+            for k in range(m):
+                t = (k + 0.5) * L / m
+                if free(t, 1.0):
+                    px, py = P(t, lane if k % 2 else -lane)
+                    self._prop('lamp', px, py, lamp_yaw, b.id, park=True)
+            nb = max(1, int(L // 13.0))
+            for k in range(nb):
+                t = (k + 0.5) * L / nb + 3.0
+                if t > L - 3.0 or not free(t):
+                    continue
+                q = r.random()
+                side = 1 if r.chance(0.5) else -1
+                px, py = P(t, side * (lane - 0.2))
+                if q < 0.55:
+                    self._prop('bench', px, py, yaw_in[0] if side > 0 else yaw_in[1], b.id)
+                elif q < 0.72:
+                    self._prop('bin', px, py, 0.0, b.id)
+                elif q < 0.9 and zs == 'B':
+                    px, py = P(t, side * (W * 0.5 - 2.0))
+                    self._prop('umbrella', px, py, r.rangef(0, 6.28), b.id, color=r.randint(0, 5))
+        elif zs == 'G':
+            # пустырь-проход: хлам, бочка с огнём, брошенная машина
+            if free(L * 0.5, 6.0):
+                px, py = P(L * 0.5 + r.rangef(-6, 6), r.rangef(-2.5, 2.5))
+                self._prop('wreck', px, py, r.rangef(0, 6.28), b.id)
+            for _ in range(max(3, int(L // 12.0))):
+                t = r.rangef(4.0, L - 4.0)
+                if free(t):
+                    px, py = P(t, r.rangef(-W * 0.5 + 2.0, W * 0.5 - 2.0))
+                    kind = r.pick(['crate', 'tires', 'barrel', 'barrel', 'tires'])
+                    if kind == 'barrel':
+                        self._prop('barrel', px, py, 0.0, b.id, fire=r.chance(0.5))
+                    else:
+                        self._prop(kind, px, py, r.rangef(0, 6.28), b.id)
+            px, py = P(L * 0.25, W * 0.5 - 1.5)
+            self._prop('lamp', px, py, lamp_yaw, b.id, park=True)
+        else:
+            # заводской двор: ящики вдоль заборов, фонари по концам
+            for _ in range(max(3, int(L // 10.0))):
+                t = r.rangef(5.0, L - 5.0)
+                if free(t):
+                    px, py = P(t, r.pick((-1.0, 1.0)) * (W * 0.5 - r.rangef(1.6, 3.0)))
+                    self._prop(r.pick(['crate', 'crate', 'barrel', 'tires']), px, py, r.rangef(0, 6.28), b.id)
+            for t in (L * 0.2, L * 0.8):
+                px, py = P(t, 0.0)
+                self._prop('lamp', px, py, lamp_yaw, b.id, park=True)
 
     @staticmethod
     def _lots(R, nx, ny):
