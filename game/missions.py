@@ -1193,6 +1193,9 @@ def m_p4(m):
     m.ms.finale = True
 
 
+TAXI_KERB = 8.0             # пассажир такси ждёт не дальше стольких метров от середины полосы (посадка — с 9 м)
+
+
 def m_taxi(m):
     """Подработка: таксист."""
     w = m.w
@@ -1219,7 +1222,7 @@ def m_taxi(m):
     m.help('Подработка в такси: вози пассажиров по адресам. T — закончить смену.', 7.0)
     while True:
         m.counter('Пассажиров: %d' % fares)
-        x, y = m.ms.place_near(pl.pos(), 90.0, 240.0, seed=random.randrange(1 << 20))
+        x, y = m.ms.place_near(pl.pos(), 90.0, 240.0, seed=random.randrange(1 << 20), road=TAXI_KERB)
         zone = c.zone_style(c.zone_at(x, y))
         fare = m.npc(x, y, 0.0, random_look(random, zone if zone in 'DOGRIB' and len(zone) == 1 else 'D'))
         fare.keep = True
@@ -1250,7 +1253,8 @@ def m_taxi(m):
                 dest = (dx, dy, d)
                 break
         if dest is None:
-            dx, dy = m.ms.place_near(pl.pos(), 200.0, 400.0, seed=random.randrange(1 << 20))
+            dx, dy = m.ms.place_near(pl.pos(), 200.0, 400.0, seed=random.randrange(1 << 20), road=TAXI_KERB)
+            (dx, dy), _, _ = m.ms.roadside(dx, dy)          # адрес — на проезжей части: туда везут на машине
             dest = (dx, dy, math.hypot(dx - cab.x, dy - cab.y))
         dx, dy, dist = dest
         m.set_timer(18.0 + dist / 8.0, 'Пассажир опоздал и ушёл, не заплатив.')
@@ -1585,8 +1589,11 @@ class Missions(object):
                 return nx, ny
         return x, y
 
-    def place_near(self, pos, dmin, dmax, seed=0, zone=None):
-        """Точка на тротуаре на расстоянии dmin..dmax от pos."""
+    def place_near(self, pos, dmin, dmax, seed=0, zone=None, road=None):
+        """Точка на тротуаре на расстоянии dmin..dmax от pos.
+
+        road — не дальше стольких метров от проезжей части: дорожки есть и в глубине парка, на пляже, посреди
+        бульвара, а пассажир такси должен ждать там, куда можно подъехать."""
         rn = self.w.roadnet
         r = random.Random(seed)
         nodes = [n for n in rn.ped_nodes
@@ -1598,6 +1605,11 @@ class Missions(object):
         if not nodes:
             n = rn.nearest_ped_node(pos[0] + dmin, pos[1], 400.0)
             return (n.x, n.y) if n is not None else (pos[0] + dmin, pos[1])
+        if road is not None:
+            for _ in range(40):
+                n = nodes[int(r.random() * len(nodes))]
+                if rn.nearest_lane(n.x, n.y, road)[0] is not None:
+                    return n.x, n.y
         n = nodes[int(r.random() * len(nodes))]
         return n.x, n.y
 

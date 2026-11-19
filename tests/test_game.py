@@ -392,6 +392,35 @@ def test_taxi_job(game, world):
     assert w.missions.active is None
 
 
+def test_taxi_fare_waits_by_the_road(game, world):
+    """Пассажир такси ждёт у проезжей части.  Дорожки для пешеходов есть и в глубине парка, на пляже, посреди
+    бульвара — до 70 м от ближайшей полосы; пассажира там не подобрать, а посадка идёт с 9 метров."""
+    from game import missions as M
+    w = world
+    ms = w.missions
+    rn = w.roadnet
+    c = w.city
+    far = [n for n in rn.ped_nodes if n.block >= 0 and rn.nearest_lane(n.x, n.y, 13.0)[0] is None]
+    assert len(far) > 50, 'в городе есть дорожки вдали от дорог: проверка не пустая'
+    park = c.to_world(-15.0, -4.0)                 # середина парка: вокруг — дорожки в 40–70 м от дорог
+    assert sum(1 for n in far if math.hypot(n.x - park[0], n.y - park[1]) < 100.0) > 10
+    spots = [park] + [c.landmarks[k]['road'] for k in ('taxi', 'safehouse', 'bank', 'port', 'rosa')]
+    seen = 0
+    for (px, py) in spots:
+        for seed in range(60):
+            x, y = ms.place_near((px, py), 90.0, 240.0, seed=seed, road=M.TAXI_KERB)
+            lane, s, d = rn.nearest_lane(x, y, 60.0)
+            assert lane is not None and d <= M.TAXI_KERB, (px, py, seed, d)
+            assert 90.0 <= math.hypot(x - px, y - py) <= 240.0
+            seen += 1
+    assert seen == 360
+    # без этого условия среди тех же точек попадаются дальние (иначе проверка ничего не проверяет)
+    plain = [ms.place_near(park, 0.0, 240.0, seed=seed) for seed in range(200)]
+    assert any(rn.nearest_lane(x, y, 13.0)[0] is None for (x, y) in plain)
+    near = [ms.place_near(park, 0.0, 240.0, seed=seed, road=M.TAXI_KERB) for seed in range(200)]
+    assert all(rn.nearest_lane(x, y, M.TAXI_KERB)[0] is not None for (x, y) in near)
+
+
 def test_broken_mission_script_does_not_crash(game, world):
     """Ошибка внутри сценария задания срывает задание, но не роняет игру."""
     w = world
