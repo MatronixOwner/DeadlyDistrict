@@ -3,7 +3,9 @@
 
     python tools/make_screenshots.py
     python tools/make_screenshots.py --tester     только снимок меню тестера (docs/tester.jpg)
-    python tools/make_screenshots.py --gfx        только сравнение наборов качества графики (docs/gfx_*.jpg)
+    python tools/make_screenshots.py --gfx        только сравнение наборов качества графики и меню «Графика»
+                                                  (docs/gfx_*.jpg); нужен OpenGL, см. ниже
+    python tools/make_screenshots.py --gfx --menu из этого набора — только два снимка меню
 
 Обычный программный рендер (TinyDisplay) шейдеров не умеет: снимки выходят в наборе «Минимум».  Чтобы снять
 игру с шейдерами — «Среднее», как она выглядит на видеокарте, — нужен OpenGL без окна:
@@ -693,7 +695,11 @@ def gfx_shots():
     pl = w.player
     harness.quiet(w)
 
+    menu_only = '--menu' in sys.argv                # только два снимка меню (остальные кадры рисуются полчаса)
+
     def snap(name, preset):
+        if menu_only:
+            return
         G.set_preset(s, preset)
         if preset == G.PRESET_ULTRA:
             s.set('msaa', 1)
@@ -762,6 +768,12 @@ def gfx_shots():
     if pl.vehicle is not None:
         pl.leave_vehicle(force=True)
     harness.run(g, 1.5)
+    # В меню — настоящая «Ультра», какой её увидит игрок (сглаживание MSAA 4×); кадр под меню при этом
+    # нарисован, как и остальные, с FXAA: настройки изменены уже после того, как графика их прочла
+    G.set_preset(s, G.PRESET_ULTRA)
+    s.set('msaa', 1)
+    g.gfx.apply()
+    G.set_preset(s, G.PRESET_ULTRA)
     g.pause()
     g.ui.open(g.settings_menu())
     harness.press(g, 'enter')                       # «Графика и экран»
