@@ -599,6 +599,7 @@ def test_gfx_presets(game):
         # «Минимум» — совсем без шейдеров: для компьютеров, где их нет или они слишком медленные
         lo = G.PRESETS[G.PRESET_MIN]
         assert lo['gfx_shaders'] is False and lo['gfx_shadows'] == 0 and lo['msaa'] == 0 and lo['draw_distance'] == 0
+        assert lo['gfx_aniso'] == 0
         # «Ультра» включает всё, «Среднее» — без дорогой обработки кадра
         hi, mid = G.PRESETS[G.PRESET_ULTRA], G.PRESETS[G.PRESET_MED]
         assert all(hi[k] for k in ('gfx_shaders', 'gfx_bloom', 'gfx_ssao', 'gfx_gloss', 'gfx_water'))
@@ -612,8 +613,9 @@ def test_gfx_presets(game):
             g.gfx.apply()
             assert s.get('gfx_preset') == p and G.detect_preset(s) == p
             assert all(s.get(k) == v for k, v in G.PRESETS[p].items())
-            # дальность прорисовки меняется сразу
+            # дальность прорисовки и фильтрация текстур меняются сразу
             assert (g.world.sky.fog_start, g.world.sky.far) == DRAW_DIST[G.PRESETS[p]['draw_distance']]
+            assert g.assets.tex('fac_brick_a').getAnisotropicDegree() == (2 if p == G.PRESET_MIN else 16)
             harness.run(g, 0.1)
         # «Пользовательские» ничего не трогают
         before = dict((k, s.get(k)) for k in G.GFX_KEYS)
@@ -646,6 +648,93 @@ def test_gfx_first_run_guess():
     assert G.guess_preset('NVIDIA / GeForce RTX 4090', supported=False) == G.PRESET_MIN
     assert G.FPS_LIMITS == (60, 120, 180, 240)
     assert [G.guess_fps_limit(h) for h in (60, 59, 75, 144, 165, 240, 360)] == [60, 60, 120, 180, 180, 240, 240]
+
+
+def test_gfx_autotune_steps_down(game, world):
+    """Первый запуск: набор качества выбран по названию видеокарты, а потом проверяется замером кадров.
+    Мало кадров — набор понижается на ступень, и так до «Минимума»; хватает — остаётся как есть."""
+    from game import gfx as G
+    g = game
+    s = g.settings
+    gf = g.gfx
+    from game.settings import TRAFFIC_LEVELS
+    keep = _gfx_keep(s)
+    keep['gfx_cfg'] = s.get('gfx_cfg')
+    keep['traffic'] = s.get('traffic')
+    assert keep['traffic'] == 1
+    clock0 = gf._clock
+    now = [100.0]
+    gf._clock = lambda: now[0]
+
+    def play(fps, seconds):
+        """Столько секунд игра идёт с такой частотой кадров."""
+        for _ in range(int(seconds * fps)):
+            now[0] += 1.0 / fps
+            gf.update(1.0 / fps)
+
+    def begin(preset):
+        G.set_preset(s, preset)
+        s.set('gfx_cfg', 1)
+        gf.apply()
+        gf._tune = dict(skip=G.TUNE_SKIP, t=0.0, n=0, last=None, slow=0)
+
+    try:
+        # 60 кадров в секунду: «Ультра» остаётся, замер окончен
+        begin(G.PRESET_ULTRA)
+        play(60, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        assert gf._tune is None and s.get('gfx_preset') == G.PRESET_ULTRA and s.get('gfx_cfg') == 2
+        # 35 кадров: для «Ультры» мало (нужно 45), для «Среднего» достаточно
+        begin(G.PRESET_ULTRA)
+        play(35, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        assert s.get('gfx_preset') == G.PRESET_MED and gf._tune is not None
+        assert G.detect_preset(s) == G.PRESET_MED and 'понижено' in world.hud.help_text.getText()
+        play(35, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        assert gf._tune is None and s.get('gfx_preset') == G.PRESET_MED and s.get('gfx_cfg') == 2
+        # 15 кадров: вниз до «Минимума», то есть до рисования без шейдеров…
+        begin(G.PRESET_ULTRA)
+        play(15, 2 * (G.TUNE_SKIP + G.TUNE_TIME) + 1.0)
+        assert gf._tune is not None and s.get('gfx_preset') == G.PRESET_MIN and s.get('gfx_shaders') is False
+        assert gf.active is False and s.get('traffic') == 1
+        # …а раз кадров мало и там, убавляется движение на улицах: его считает процессор
+        play(15, G.TUNE_SKIP + G.TUNE_TIME + 1.0)
+        assert gf._tune is None and s.get('traffic') == 0 and s.get('gfx_preset') == G.PRESET_MIN
+        assert (world.traffic.max_cars, world.crowd.max_peds) == TRAFFIC_LEVELS[0]
+        assert 'прохожих' in world.hud.help_text.getText()
+        s.set('traffic', 1)
+        g.apply_traffic()
+        assert (world.traffic.max_cars, world.crowd.max_peds) == TRAFFIC_LEVELS[1]
+        # подгрузка (один долгий кадр) замер не портит: он просто начинается заново
+        begin(G.PRESET_MED)
+        play(60, G.TUNE_SKIP + 2.0)
+        now[0] += 1.5
+        gf.update(0.1)
+        play(60, 3.0)
+        assert gf._tune is not None and s.get('gfx_preset') == G.PRESET_MED         # ещё считает
+        play(60, G.TUNE_TIME)
+        assert gf._tune is None and s.get('gfx_preset') == G.PRESET_MED
+        # игра еле идёт (кадр в секунду): конца замера не ждём
+        begin(G.PRESET_MED)
+        play(1, 6.0)
+        assert s.get('gfx_preset') == G.PRESET_MIN
+        # на паузе кадры не считаются
+        begin(G.PRESET_MED)
+        g.pause()
+        play(10, 20.0)
+        assert s.get('gfx_preset') == G.PRESET_MED and gf._tune is not None
+        g.resume()
+        # игрок сам поменял настройку — подбор отменяется и больше не включится
+        gf.apply(user=True)
+        assert gf._tune is None and s.get('gfx_cfg') == 2
+        play(10, 20.0)
+        assert s.get('gfx_preset') == G.PRESET_MED
+    finally:
+        gf._clock = clock0
+        gf._tune = None
+        g.ui.close_all()
+        if g.state == 'pause':
+            g.resume()
+        _gfx_restore(g, keep)
+        g.apply_traffic()
 
 
 def test_gfx_details_menu(game, world):
@@ -692,7 +781,8 @@ def test_gfx_details_menu(game, world):
         labels = [it.label for it in d.items]
         assert labels == ['Шейдеры: свет в каждой точке', 'Тени от солнца', 'Свет фонарей и фар',
                           'Блеск машин, мокрый асфальт', 'Вода с рябью и бликами', 'Свечение ярких мест',
-                          'Затенение в углах', 'Сглаживание краёв', 'Дальность прорисовки', 'Назад']
+                          'Затенение в углах', 'Сглаживание краёв', 'Чёткость текстур вдали',
+                          'Дальность прорисовки', 'Назад']
         di = {it.label: it for it in d.items}
         for it in d.items:
             if it.value is not None:
@@ -715,6 +805,15 @@ def test_gfx_details_menu(game, world):
         di['Дальность прорисовки'].change(1)
         assert s.get('draw_distance') == 2 and di['Дальность прорисовки'].value() == 'Далеко'
         assert world.sky.far == 940.0
+        # чёткость текстур вдали (анизотропная фильтрация) меняется сразу, у уже загруженных текстур
+        tex = g.assets.tex('fac_brick_a')
+        assert di['Чёткость текстур вдали'].value() == 'Высокая' and tex.getAnisotropicDegree() == 16
+        di['Чёткость текстур вдали'].change(-1)
+        assert s.get('gfx_aniso') == 1 and tex.getAnisotropicDegree() == 8
+        di['Чёткость текстур вдали'].change(-1)
+        assert di['Чёткость текстур вдали'].value() == 'Низкая' and tex.getAnisotropicDegree() == 2
+        di['Чёткость текстур вдали'].change(-1)
+        assert s.get('gfx_aniso') == 2 and tex.getAnisotropicDegree() == 16
         if not g.gfx.supported:
             # видеокарта без шейдеров (так идут и эти проверки): меню честно говорит, что настройка не работает
             assert di['Тени от солнца'].value() == 'недоступно'
@@ -910,6 +1009,48 @@ def _after_intro(g, w, errors):
     harness.run(g, 4.0)
     assert ms.active is not None and ms.active.spec['id'] == 's1'
     assert w.hud.phone_on
+
+
+def test_enter_in_a_phone_call_only_turns_lines(game):
+    """Пока идёт телефонный разговор, Enter листает реплики, а не сажает героя в машину, что стоит рядом
+    (иначе он угонял бы чужую машину посреди звонка); клавиша F дверцу открывает и в это время."""
+    g = game
+    w = harness.start_game(g, story=True)
+    ms, pl = w.missions, w.player
+    harness.quiet(w, peds=True)
+    t = 0.0
+    while not w.hud.phone_on and t < 15.0:
+        harness.run(g, 0.2)
+        t += 0.2
+    assert w.hud.phone_on and ms.active is not None and pl.state == 'foot' and pl.controls
+    x, y = pl.pos()
+    car = w.spawn_vehicle('sedan', *harness.side(x, y, pl.ped.yaw, right=2.4), pl.ped.yaw)
+    harness.run(g, 0.2)
+    lines = set()
+    n = 0
+    while w.hud.phone_on and n < 40:
+        harness.run(g, 0.45)
+        lines.add(w.hud.sub_plain)
+        harness.press(g, 'enter')
+        harness.run(g, 0.1)
+        n += 1
+        assert pl.vehicle is None and pl.state == 'foot', n          # герой так и стоит на улице
+    assert not w.hud.phone_on and len(lines) >= 3 and n < 30         # Enter листал реплики: разговор кончился быстро
+    assert ms.active is not None and pl.controls
+    # разговор окончен — Enter снова «сесть в машину»
+    harness.run(g, 1.0)
+    harness.press(g, 'enter')
+    harness.run(g, 2.5)
+    assert pl.vehicle is car and pl.state == 'car'
+    # и новый звонок, пока герой за рулём: Enter не высаживает его, F — высаживает
+    w.hud.phone_on = True
+    harness.press(g, 'enter')
+    harness.run(g, 1.5)
+    assert pl.vehicle is car
+    harness.press(g, 'f')
+    harness.run(g, 2.5)
+    assert pl.vehicle is None
+    w.hud.phone_on = False
 
 
 def _to_chase(g):

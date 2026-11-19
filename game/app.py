@@ -134,6 +134,10 @@ class Game(object):
         self.headless = headless
         self._win_todo = []                # отложенные шаги смены режима экрана: (через сколько кадров, что)
         opened_here = base is None
+        if base is None and not headless and os.environ.get('DD_SAFE_GFX'):
+            # запуск с ключом --safe: графика «Минимум» — на случай, если с шейдерами игра не открывается
+            gfx_mod.set_preset(self.settings, gfx_mod.PRESET_MIN)
+            self.settings.set('gfx_cfg', 2)
         if base is None and not headless:
             self._choose_screen()          # может поменять и сглаживание, поэтому — до запоминания
         # с какими значениями открыто окно: по ним меню пишет «после перезапуска»
@@ -154,6 +158,7 @@ class Game(object):
         from .input import Input
         self.assets = Assets(base.loader)
         self.assets.smooth_textures = bool(self.settings.get('smooth_textures'))
+        self.assets.aniso = gfx_mod.ANISO_LEVELS[int(min(2, max(0, int(self.settings.get('gfx_aniso')))))]
         self.audio = Audio(base, self.assets, self.settings)
         self.inp = Input(base)
         self.state = 'loading'
@@ -182,12 +187,8 @@ class Game(object):
         w.sky = Sky(w)
         self._loading_progress(0.88, 'Настраиваем приборы…')
         w.hud = None
-        # первый запуск этой версии: набор качества графики подбирается по видеокарте
-        first = opened_here and not headless and int(self.settings.get('gfx_cfg')) < 1
-        self.gfx = gfx_mod.Gfx(self, first)
-        if first:
-            self.settings.set('gfx_cfg', 1)
-            self.settings.save()
+        # настоящее окно: на первом запуске этой версии набор качества графики подбирается под видеокарту
+        self.gfx = gfx_mod.Gfx(self, opened_here and not headless)
         w.hud = Hud(w)
         w.missions = Missions(w)
         self.ui = MenuUI(self)
@@ -505,7 +506,6 @@ class Game(object):
     def settings_menu(self):
         from .menu import Menu, Item
         s = self.settings
-        w = self.world
 
         def pct(key):
             return lambda: '%d%%' % int(round(float(s.get(key)) * 100))
@@ -533,9 +533,7 @@ class Game(object):
 
         def ch_traffic(d):
             s.set('traffic', int(min(2, max(0, int(s.get('traffic')) + d))))
-            lv = TRAFFIC_LEVELS[int(s.get('traffic'))]
-            w.traffic.max_cars = lv[0]
-            w.crowd.max_peds = lv[1]
+            self.apply_traffic()
 
         def res_list():
             dw, dh = self.desktop()
@@ -606,7 +604,7 @@ class Game(object):
 
         def ch_preset(d):
             gfx_mod.set_preset(s, (int(s.get('gfx_preset')) + (d or 1)) % 4, self.desktop())
-            gfx.apply()
+            gfx.apply(user=True)
             m = self.ui.current()
             if m is not None:
                 m.text = preset_hint()
@@ -621,7 +619,7 @@ class Game(object):
                     i = values.index(cur) if cur in values else 0
                     s.set(key, values[(i + (d or 1)) % len(values)])
                 s.set('gfx_preset', gfx_mod.detect_preset(s))
-                gfx.apply()
+                gfx.apply(user=True)
             return f
 
         def need(fn):
@@ -658,6 +656,8 @@ class Game(object):
                 Item('Свечение ярких мест', value=need(yn('gfx_bloom')), change=custom('gfx_bloom')),
                 Item('Затенение в углах', value=need(yn('gfx_ssao')), change=custom('gfx_ssao')),
                 Item('Сглаживание краёв', value=msaa_text, change=custom('msaa', list(MSAA_LEVELS))),
+                Item('Чёткость текстур вдали', value=pick('gfx_aniso', gfx_mod.ANISO_NAMES),
+                     change=custom('gfx_aniso', [0, 1, 2])),
                 Item('Дальность прорисовки', value=pick('draw_distance', ('Близко', 'Средне', 'Далеко')),
                      change=custom('draw_distance', [0, 1, 2])),
                 Item('Назад', details_back),
@@ -735,6 +735,12 @@ class Game(object):
             Item('Назад', back),
         ]
         return Menu(self.ui, 'Настройки', items, back=back, top=0.44, spacing=0.105, scale=0.068, wide=True)
+
+    def apply_traffic(self):
+        """Настройка «Плотность движения»: сколько машин и прохожих держать на улицах."""
+        lv = TRAFFIC_LEVELS[int(min(2, max(0, int(self.settings.get('traffic')))))]
+        self.world.traffic.max_cars = lv[0]
+        self.world.crowd.max_peds = lv[1]
 
     # ------------------------------------------------------------------
     # экран

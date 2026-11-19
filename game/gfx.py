@@ -16,6 +16,7 @@
 """
 import math
 import re
+import time
 
 from panda3d.core import (Shader, Texture, SamplerState, FrameBufferProperties, WindowProperties, GraphicsPipe,
                           GraphicsOutput, OrthographicLens, Camera, NodePath, LMatrix4, LVecBase4, LVecBase3,
@@ -36,11 +37,11 @@ PRESET_HINTS = (
 # настройки, которые задаёт набор качества
 PRESETS = {
     PRESET_MIN: dict(gfx_shaders=False, gfx_shadows=0, gfx_bloom=False, gfx_ssao=False, gfx_gloss=False,
-                     gfx_lights=0, gfx_water=False, msaa=0, draw_distance=0),
+                     gfx_lights=0, gfx_water=False, gfx_aniso=0, msaa=0, draw_distance=0),
     PRESET_MED: dict(gfx_shaders=True, gfx_shadows=2, gfx_bloom=False, gfx_ssao=False, gfx_gloss=True,
-                     gfx_lights=1, gfx_water=True, msaa=1, draw_distance=1),
+                     gfx_lights=1, gfx_water=True, gfx_aniso=2, msaa=1, draw_distance=1),
     PRESET_ULTRA: dict(gfx_shaders=True, gfx_shadows=3, gfx_bloom=True, gfx_ssao=True, gfx_gloss=True,
-                       gfx_lights=2, gfx_water=True, msaa=4, draw_distance=2),
+                       gfx_lights=2, gfx_water=True, gfx_aniso=2, msaa=4, draw_distance=2),
 }
 GFX_KEYS = tuple(sorted(PRESETS[PRESET_ULTRA]))
 
@@ -52,6 +53,8 @@ SHADOW_LEVELS = (
     dict(size=2048, span=88.0, pcf=4, far=None),
     dict(size=4096, span=110.0, pcf=16, far=(2048, 540.0)),
 )
+ANISO_NAMES = ('Низкая', 'Средняя', 'Высокая')
+ANISO_LEVELS = (2, 8, 16)                   # степень анизотропной фильтрации текстур
 LIGHT_NAMES = ('Выкл', 'Немного', 'Много')
 LIGHT_COUNTS = (0, 6, 12)
 AA_LEVELS = (0, 1, 2, 4, 8)                 # 1 — FXAA (по готовой картинке), 2–8 — MSAA
@@ -62,6 +65,13 @@ LIGHT_REACH = 70.0                          # дальше этого фонар
 SHADOW_DEPTH = 500.0                        # на таком расстоянии от середины карты теней стоит «солнце»
 SUN_GAIN = 1.32                             # с шейдерами солнце ярче, а рассеянный свет слабее и холоднее:
 AMB_GAIN = 0.84                             # тени читаются, как в ясный день
+# Первый запуск: набор качества выбран по названию видеокарты, то есть наугад, — поэтому он проверяется
+# делом.  Несколько секунд считаем кадры; если их меньше нужного, набор понижается на ступень.
+TUNE_SKIP = 3.0                             # секунд после смены набора не считаем: шейдеры и текстуры ещё грузятся
+TUNE_TIME = 4.0                             # столько секунд длится замер
+# сколько кадров в секунду нужно, чтобы набор остался.  На «Минимуме» упрощать графику уже некуда —
+# там убавляется движение на улицах: его считает процессор, и на старом компьютере мешает именно оно
+TUNE_FPS = {PRESET_ULTRA: 45.0, PRESET_MED: 27.0, PRESET_MIN: 24.0}
 SHADOW_DARK = 0.84                          # насколько тень гасит прямой свет солнца (1 — полностью)
 LOOK = (1.0, 1.12, 1.07, 1.0)               # выдержка, насыщенность, контраст, тонирование
 
@@ -255,15 +265,24 @@ class Gfx(object):
         self._lamps = []                    # отобранные фонари: [огонь, яркость]
         self._lamps_t = 0.0
         self._lfocus = NO_FOCUS
+        self._clock = time.perf_counter
+        self._tune = None                   # замер кадров после первого запуска (см. _autotune)
         self._load_lights()
         self._probe()
-        if first:
+        s = self.settings
+        if first and int(s.get('gfx_cfg')) < 1:
+            # первый запуск этой версии: набор качества подбирается по видеокарте…
             self.first_run()
-        elif not self.supported and not game.headless and self.settings.get('gfx_shaders'):
+            s.set('gfx_cfg', 1)
+            s.save()
+        elif not self.supported and not game.headless and s.get('gfx_shaders'):
             # шейдеров на этом компьютере нет (сменили видеокарту или драйвер): записываем «Минимум»,
             # чтобы сглаживание и прочее дальше настраивались по-старому
-            set_preset(self.settings, PRESET_MIN)
-            self.settings.save()
+            set_preset(s, PRESET_MIN)
+            s.save()
+        if first and int(s.get('gfx_cfg')) == 1:
+            # …а потом проверяется замером (если игру закрыли раньше, чем он кончился, — при следующем запуске)
+            self._tune = dict(skip=TUNE_SKIP, t=0.0, n=0, last=None, slow=0)
         self.apply()
         self.apply_fps_limit()
 
@@ -312,9 +331,13 @@ class Gfx(object):
                     lights=LIGHT_COUNTS[int(max(0, min(2, int(s.get('gfx_lights')))))] if on else 0,
                     water=on and bool(s.get('gfx_water')) and not self._no_water)
 
-    def apply(self):
-        """Привести графику в соответствие с настройками (можно звать на лету, из меню)."""
+    def apply(self, user=False):
+        """Привести графику в соответствие с настройками (можно звать на лету, из меню).
+        user — настройку поменял сам игрок: автоматический подбор набора больше не нужен."""
+        if user:
+            self._tune_done()
         self.apply_draw_distance()
+        self.apply_textures()
         want = self._want()
         if want == self.cfg:
             return
@@ -339,6 +362,12 @@ class Gfx(object):
             sky.fog_start, sky.far = dd
             set_lens_range(self.base, sky.far)
             sky._apply(0.0)
+
+    def apply_textures(self):
+        deg = ANISO_LEVELS[int(max(0, min(2, int(self.settings.get('gfx_aniso')))))]
+        assets = self.game.assets
+        if assets.aniso != deg:
+            assets.set_aniso(deg)
 
     def apply_fps_limit(self):
         """Ограничение частоты кадров.  Без окна (проверки) кадры идут как можно быстрее."""
@@ -547,6 +576,8 @@ class Gfx(object):
     # каждый кадр
     # ------------------------------------------------------------------
     def update(self, dt):
+        if self._tune is not None:
+            self._autotune()
         if not self.active:
             return
         if self.game.state in ('play', 'menu'):
@@ -577,6 +608,75 @@ class Gfx(object):
         self.apply()
         self._hint('Часть эффектов эта видеокарта не поддерживает: они выключены.')
         return True
+
+    def _tune_done(self):
+        self._tune = None
+        s = self.settings
+        if int(s.get('gfx_cfg')) < 2:
+            s.set('gfx_cfg', 2)
+            if not self.game.headless:
+                s.save()
+
+    def _autotune(self):
+        """Замер кадров после первого запуска: мало кадров — набор качества понижается на ступень."""
+        tn = self._tune
+        game = self.game
+        now = self._clock()
+        last, tn['last'] = tn['last'], now
+        if last is None:
+            return
+        d = now - last
+        ok = game.state in ('menu', 'play')
+        if ok and not game.headless:
+            try:
+                ok = bool(self.base.win.getProperties().getForeground())    # свёрнутое окно рисуется кое-как
+            except Exception:
+                pass
+        s = self.settings
+        p = int(s.get('gfx_preset'))
+        need = TUNE_FPS.get(p)
+        if need is None or detect_preset(s) != p or (p == PRESET_MIN and int(s.get('traffic')) <= 0):
+            self._tune_done()               # настройки уже свои или убавлять больше нечего
+            return
+        slow = False
+        if not ok:
+            tn['slow'] = 0
+        elif d > 0.4:
+            # кадр дольше 0,4 с — это либо подгрузка (тогда замер начинается заново), либо игра и правда
+            # еле идёт: несколько таких кадров подряд — и ждать конца замера незачем
+            tn['slow'] += 1
+            slow = tn['slow'] >= 4
+        else:
+            tn['slow'] = 0
+        if not slow:
+            if not ok or d > 0.4:
+                tn['skip'] = max(tn['skip'], 1.0)
+                tn['t'] = 0.0
+                tn['n'] = 0
+                return
+            if tn['skip'] > 0.0:
+                tn['skip'] -= d
+                return
+            tn['t'] += d
+            tn['n'] += 1
+            if tn['t'] < TUNE_TIME:
+                return
+            if tn['n'] / tn['t'] >= need:
+                self._tune_done()           # набор этой видеокарте по силам
+                return
+        if p == PRESET_MIN:
+            s.set('traffic', int(s.get('traffic')) - 1)
+            game.apply_traffic()
+            text = 'Мало кадров в секунду: машин и прохожих на улицах стало меньше. Вернуть можно в настройках.'
+        else:
+            set_preset(s, p - 1, game.desktop())
+            self.apply()
+            text = ('Мало кадров в секунду: качество графики понижено до «%s». Вернуть можно в настройках.'
+                    % PRESET_NAMES[p - 1])
+        if not game.headless:
+            s.save()
+        tn.update(skip=TUNE_SKIP, t=0.0, n=0, slow=0)
+        self._hint(text)
 
     def _hint(self, text):
         try:

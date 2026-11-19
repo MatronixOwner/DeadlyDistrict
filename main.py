@@ -3,6 +3,7 @@
 
     python main.py              обычный запуск
     python main.py --tester     запуск с меню тестера (F9); настройки и сохранения — в отдельной папке
+    python main.py --safe       запуск с графикой «Минимум» (без шейдеров): если с ними игра не открывается
     python main.py --selftest   быстрая самопроверка без окна (для сборочного конвейера)
 """
 import math
@@ -371,6 +372,8 @@ def main():
             code = 1
         sys.stdout.flush()
         os._exit(code)
+    if '--safe' in sys.argv:
+        os.environ['DD_SAFE_GFX'] = '1'
     try:
         from game.app import Game
         game = Game()

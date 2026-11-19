@@ -27,6 +27,7 @@ class Assets(object):
         self._fonts = {}
         self.missing = []
         self.smooth_textures = False        # настройка «Текстуры: чёткие / сглаженные»
+        self.aniso = 16                     # настройка «Чёткость текстур вдали»: степень анизотропной фильтрации
         self._filtered = []                 # (текстура, всегда ли сглаживать) — для смены настройки на лету
 
     # ------------------------------------------------------------------
@@ -69,7 +70,13 @@ class Assets(object):
         soft = smooth or self.smooth_textures
         t.setMagfilter(SamplerState.FTLinear if soft else SamplerState.FTNearest)
         t.setMinfilter(SamplerState.FTLinearMipmapLinear)
-        t.setAnisotropicDegree(16)
+        t.setAnisotropicDegree(self.aniso)
+
+    def set_aniso(self, degree):
+        """Настройка «Чёткость текстур вдали» (анизотропная фильтрация) — применяется сразу."""
+        self.aniso = int(degree)
+        for (t, smooth) in self._filtered:
+            self._filter(t, smooth)
 
     def set_smooth(self, on):
         """Настройка «Текстуры: чёткие / сглаженные» — применяется сразу ко всем загруженным текстурам."""
