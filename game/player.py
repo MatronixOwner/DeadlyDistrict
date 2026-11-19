@@ -538,8 +538,16 @@ class Player(object):
             self.no_enter_t -= dt
             if inp.hit('f') and not self.indoors:
                 self._try_enter()
-        elif (inp.hit('f') or inp.hit('enter')) and not self.indoors:
+        elif (inp.hit('f') or self._enter_key(inp)) and not self.indoors:
             self._try_enter()
+
+    def _enter_key(self, inp):
+        """Enter как «сесть в машину / выйти».  Пока идёт телефонный разговор, Enter листает его реплики:
+        дверцу в это время открывает только F — иначе герой запрыгивал бы в чужую машину посреди звонка."""
+        hud = self.w.hud
+        if hud is not None and hud.phone_on:
+            return False
+        return inp.hit('enter')
 
     def _fire(self, inp):
         if self.fire_cd > 0.0:
@@ -775,7 +783,7 @@ class Player(object):
         # выход
         if self.no_enter_t > 0.0:
             self.no_enter_t -= dt
-        if inp.hit('f') or (inp.hit('enter') and self.no_enter_t <= 0.0):
+        if inp.hit('f') or (self.no_enter_t <= 0.0 and self._enter_key(inp)):
             self.exit_wish = not self.lock_in
         if self.exit_wish:
             if thr > 0.0:

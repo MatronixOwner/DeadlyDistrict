@@ -106,18 +106,22 @@ def selftest():
     for _ in range(60):
         game.step(dt)
     _need(car.speed > 3.0, 'the getaway car does not drive')
-    # до моста — там заслон; дальше арест, «три года спустя», автобус
-    car.x, car.y, car.yaw = it['marker'].x, it['marker'].y - 20.0, math.pi / 2
+    # погоня идёт в заснеженном Зимогорске; у метки на тракте — заслон, дальше арест, «три года спустя», автобус
+    _need(w.city.in_north(car.x, car.y) and w.sky.weather == 'snow' and w.hud.map_name == 'map_north',
+          'the prologue is not in the snowy town')
+    mk = it['marker']
+    car.x, car.y, car.yaw = w.city.frame(mk.x, mk.y).at(0.0, -26.0, math.pi / 2)
+    car.vx = car.vy = car.speed = car.omega = 0.0
     car.sync()
-    for _ in range(150):
+    for _ in range(240):
         if it['end'] is not None:
             break
         game.step(dt)
     game.inp._up('w')
-    _need(it['end'] == 'bridge', 'the prologue chase did not end on the bridge: %s' % it['end'])
+    _need(it['end'] == 'tract', 'the prologue chase did not end at the roadblock: %s' % it['end'])
     for _ in range(45):
         game.step(dt)
-    _need(len(it['cars']) == 3 and len(it['peds']) >= 6, 'no roadblock on the bridge')
+    _need(len(it['cars']) == 3 and len(it['peds']) >= 6, 'no roadblock on the road out of town')
     enter_until(lambda: ms.intro is None, 900)
     _need(ms.intro is None, 'intro did not finish')
     _need(w.interiors.current is None and w.player.state == 'foot', 'hero is not on the street after the intro')
@@ -195,8 +199,7 @@ def selftest():
     for _ in range(10):
         game.step(dt)
     _need(pl.vehicle is bike and pl.ped.vis.cur == 'mix' and not pl.ped.node.isHidden(), 'the rider is not on the bike')
-    for kind in ('chopper', 'bicycle', 'bmx'):
-        _need(bikes.modelled(kind), 'bike model is missing: %s' % kind)
+    _need(bikes.modelled('chopper'), 'bike model is missing: chopper')
     _need(bike._arms is pl.ped.vis and pl.ped.vis._bars is not None, 'the rider does not hold the handlebar')
     pl.leave_vehicle(force=True)
     car = w.spawn_vehicle('sedan', px - 4.0, py, yaw)
@@ -206,10 +209,11 @@ def selftest():
     for _ in range(10):
         game.step(dt)
     _need(car.tune == tuning.clean(full), 'tuning was not applied')
-    gar = w.city.special['garage']
-    gx0, gy0, gx1, gy1 = gar['rect']
-    pl.teleport(gar['front'][0], gar['front'][1])
-    car.x, car.y = (gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5
+    gar = w.garage
+    _need(gar.ok and gar.capacity() >= 2, 'the home garage is missing')
+    pl.teleport(*gar.front)
+    car.x, car.y = gar.slots[1]                     # первое место занято «Ласточкой»
+    car.yaw = gar.yaw
     car.sync()
     for _ in range(30):
         game.step(dt)

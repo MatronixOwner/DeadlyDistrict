@@ -65,6 +65,9 @@ void main() {
 """
 
 TONEMAP = r"""
+// Длина 1 без риска деления на ноль: у нулевого вектора normalize() даёт «не число», и такая точка
+// расползается по кадру чёрным пятном, как только включено свечение.
+vec3 snorm(vec3 v) { return v * inversesqrt(max(dot(v, v), 1e-8)); }
 // Яркость выше «колена» плавно сжимается к белому, а не обрезается: солнечная стена и блик на капоте
 // остаются светлыми, но не выгорают в ровное белое пятно.  Ниже колена картинка не меняется.
 vec3 tonemap(vec3 c) {
@@ -251,7 +254,7 @@ void main() {
 #if GLOSS
                 if (gloss > 0.01) {
                     float as = 1.0 - q * 0.0625;
-                    vec3 H = normalize(Ld + V);
+                    vec3 H = snorm(Ld + V);
                     spec += u_lcol[i].rgb * (cone * as * as * gloss * 0.40 * pow(max(dot(N, H), 0.0), 36.0 + 90.0 * gloss));
                 }
 #endif
@@ -265,12 +268,12 @@ void main() {
         if (gloss > 0.01) {
             // блик солнца и отражение неба: чем острее угол взгляда, тем сильнее (как на лаке и на воде)
             vec3 R = reflect(-V, N);
-            float fr = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+            float fr = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 4.0);
             float k = gloss * (0.05 + 0.55 * fr);
             vec3 env = mix(u_sky_hor, u_sky_zen, clamp(R.z * 1.6, 0.0, 1.0));
             env = mix(u_amb_gnd * 0.55, env, smoothstep(-0.12, 0.06, R.z));
             rgb = mix(rgb, env, k);
-            vec3 H = normalize(u_sun_dir + V);
+            vec3 H = snorm(u_sun_dir + V);
             spec += u_sun_col * (sh * u_env.z * gloss * 1.6 * pow(max(dot(N, H), 0.0), 40.0 + 160.0 * gloss));
             rgb += spec;
         }
@@ -380,17 +383,16 @@ void main() {
     float h0 = wave(p);
     // наклон поверхности — по разности высот ряби; вдали рябь сглаживается, иначе она рябит и в глазах
     float calm = 1.0 / (1.0 + dist * 0.004);
-    vec3 N = normalize(vec3((h0 - wave(p + vec2(e, 0.0))) * 1.5 * calm, (h0 - wave(p + vec2(0.0, e))) * 1.5 * calm, 1.0));
-    float ndv = max(dot(N, V), 0.0);
-    float fr = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
+    vec3 N = snorm(vec3((h0 - wave(p + vec2(e, 0.0))) * 1.5 * calm, (h0 - wave(p + vec2(0.0, e))) * 1.5 * calm, 1.0));
+    float fr = 0.04 + 0.96 * pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 5.0);
     vec3 R = reflect(-V, N);
     // волны наклонены, поэтому вода отражает небо не у самого горизонта, а повыше — там оно синее
     vec3 sky = mix(u_sky_hor, u_sky_zen, clamp(R.z * 1.4 + 0.30, 0.0, 1.0));
     vec3 tex = texture2D(p3d_Texture0, v_uv + vec2(u_time * 0.012, u_time * 0.02)).rgb * v_color.rgb;
     vec3 deep = tex * (u_amb_sky * 0.80 + u_sun_col * (0.50 * max(u_sun_dir.z, 0.0)));
     vec3 rgb = mix(deep, sky, clamp(fr, 0.0, 1.0) * 0.62);
-    vec3 H = normalize(u_sun_dir + V);
-    float ndh = max(dot(N, H), 0.0);
+    vec3 H = snorm(u_sun_dir + V);
+    float ndh = clamp(dot(N, H), 0.0, 1.0);
     rgb += u_sun_col * (u_env.z * (2.2 * pow(ndh, 140.0) + 0.22 * pow(ndh, 18.0)));
     if (p3d_Fog.end - p3d_Fog.start > 0.01) {
         rgb = mix(u_fog.rgb, rgb, clamp((u_fog_rng.y - dist) / max(u_fog_rng.y - u_fog_rng.x, 1.0), 0.0, 1.0));
@@ -427,7 +429,7 @@ void main() {
     c *= 0.25;
     float l = max(c.r, max(c.g, c.b));
     float k = clamp((l - u_px.z) / u_px.w, 0.0, 1.0);
-    gl_FragColor = vec4(min(c, vec3(8.0)) * (k * k), 1.0);
+    gl_FragColor = vec4(clamp(c, 0.0, 8.0) * (k * k), 1.0);
 }
 """
 
@@ -470,7 +472,11 @@ void main() {
     vec3 my = P - eye_pos(v_uv - vec2(0.0, u_px.y));
     vec3 dx = abs(px.z) < abs(mx.z) ? px : mx;
     vec3 dy = abs(py.z) < abs(my.z) ? py : my;
-    vec3 N = normalize(cross(dy, dx));
+    vec3 N = cross(dy, dx);
+    float n2 = dot(N, N);
+    // у края экрана соседней точки нет: наклон поверхности неизвестен — такую точку не затеняем
+    if (n2 < 1e-12) { gl_FragColor = vec4(1.0); return; }
+    N *= inversesqrt(n2);
     float rad = u_px.z;
     // радиус на экране: дальше — меньше
     vec2 sr = vec2(rad / (u_proj.z * P.z), rad / (u_proj.w * P.z)) * 0.5;

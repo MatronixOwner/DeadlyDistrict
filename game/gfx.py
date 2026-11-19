@@ -62,7 +62,12 @@ LIGHT_REACH = 70.0                          # дальше этого фонар
 SHADOW_DEPTH = 500.0                        # на таком расстоянии от середины карты теней стоит «солнце»
 SUN_GAIN = 1.32                             # с шейдерами солнце ярче, а рассеянный свет слабее и холоднее:
 AMB_GAIN = 0.84                             # тени читаются, как в ясный день
+SHADOW_DARK = 0.84                          # насколько тень гасит прямой свет солнца (1 — полностью)
 LOOK = (1.0, 1.12, 1.07, 1.0)               # выдержка, насыщенность, контраст, тонирование
+
+
+# «освещённого круга нет»: радиусы отрицательные, поэтому нарисованные пятна света видны везде
+NO_FOCUS = LVecBase4(0, 0, -2, -1)
 
 
 def aa_name(n):
@@ -237,6 +242,10 @@ class Gfx(object):
         self.fm = None                      # обработка кадра (FilterManager)
         self.post = {}
         self._shaders = []
+        self._post_shaders = []
+        self._no_post = False               # обработку кадра эта видеокарта не собрала
+        self._no_water = False              # то же — шейдер воды
+        self._bg = None                     # цвет фона: (каким его задало небо, каким сделали мы)
         self._watch = 0
         self.time = 0.0
         self.lights = []                    # огни мира: (x, y, z, радиус, r, g, b)
@@ -245,7 +254,7 @@ class Gfx(object):
         self.renderer = ''
         self._lamps = []                    # отобранные фонари: [огонь, яркость]
         self._lamps_t = 0.0
-        self._lfocus = LVecBase4(0, 0, 0, 0)
+        self._lfocus = NO_FOCUS
         self._load_lights()
         self._probe()
         if first:
@@ -291,16 +300,17 @@ class Gfx(object):
         on = bool(s.get('gfx_shaders')) and self.supported and not self.failed
         aa = int(s.get('msaa'))
         sh = int(max(0, min(3, int(s.get('gfx_shadows'))))) if (on and self.can_shadow) else 0
-        bloom = on and bool(s.get('gfx_bloom'))
-        ssao = on and bool(s.get('gfx_ssao')) and self.can_shadow
-        fxaa = on and aa == 1
-        msaa = aa if (on and aa >= 2) else 0
+        post_ok = on and not self._no_post
+        bloom = post_ok and bool(s.get('gfx_bloom'))
+        ssao = post_ok and bool(s.get('gfx_ssao')) and self.can_shadow
+        fxaa = post_ok and aa == 1
+        msaa = aa if (post_ok and aa >= 2) else 0
         # сцена рисуется в отдельный буфер, если кадр нужно обработать или сгладить (MSAA — свойство буфера)
         post = bloom or ssao or fxaa or msaa > 0
         return dict(on=on, shadows=sh, bloom=bloom, ssao=ssao, fxaa=fxaa, post=post, msaa=msaa,
                     gloss=on and bool(s.get('gfx_gloss')),
                     lights=LIGHT_COUNTS[int(max(0, min(2, int(s.get('gfx_lights')))))] if on else 0,
-                    water=on and bool(s.get('gfx_water')))
+                    water=on and bool(s.get('gfx_water')) and not self._no_water)
 
     def apply(self):
         """Привести графику в соответствие с настройками (можно звать на лету, из меню)."""
@@ -368,7 +378,7 @@ class Gfx(object):
         self._lpos = PTA_LVecBase4f.emptyArray(n)
         self._lcol = PTA_LVecBase4f.emptyArray(n)
         self._ldir = PTA_LVecBase4f.emptyArray(n)
-        render.setShaderInputs(u_mat=LVecBase4(0, 0, 0, 0), u_lfocus=LVecBase4(0, 0, 0, 0), u_emit=1.0)
+        render.setShaderInputs(u_mat=LVecBase4(0, 0, 0, 0), u_lfocus=NO_FOCUS, u_emit=1.0)
         sky = getattr(w, 'sky', None) if w is not None else None
         if sky is not None:
             sky.sun_card.setShaderInput('u_emit', 3.0)      # солнце ярче белого: со свечением вокруг него ореол
@@ -378,7 +388,10 @@ class Gfx(object):
             self.water_shader = self._make(S.WATER_VERT, S.WATER_FRAG, HDR=defs['HDR'])
             w.citymesh.water.setShader(self.water_shader, 10)
         if c['post']:
-            if not self._setup_post(c):
+            n0 = len(self._shaders)
+            ok = self._setup_post(c)
+            self._post_shaders = self._shaders[n0:] if ok else []
+            if not ok:
                 # обработку кадра видеокарта не потянула: остаётся свет и тени, яркость сжимает шейдер сцены
                 self._drop_post()
                 c['post'] = c['bloom'] = c['ssao'] = c['fxaa'] = False
@@ -405,6 +418,14 @@ class Gfx(object):
             base.render.clearShader()
         self.scene_shader = self.shadow_shader = self.water_shader = None
         self._shaders = []
+        self._post_shaders = []
+        if self._bg is not None:
+            try:
+                if (base.win.getClearColor() - self._bg[1]).lengthSquared() < 1e-9:
+                    base.win.setClearColor(self._bg[0])         # фон — как его задало небо
+            except Exception:
+                pass
+            self._bg = None
         self.active = False
         self._watch = 0
 
@@ -416,12 +437,7 @@ class Gfx(object):
         if not self.game.headless:
             set_preset(self.settings, PRESET_MIN)
             self.settings.save()
-        try:
-            hud = self.game.world.hud
-            if hud is not None:
-                hud.help('Видеокарта не справилась с шейдерами: графика переключена на «Минимум».', 6.0)
-        except Exception:
-            pass
+        self._hint('Видеокарта не справилась с шейдерами: графика переключена на «Минимум».')
 
     # ------------------------------------------------------------------
     # обработка кадра
@@ -533,13 +549,42 @@ class Gfx(object):
     def update(self, dt):
         if not self.active:
             return
-        self.time += dt
-        if self._watch > 0:
-            self._watch -= 1
-            if self._watch == 0 and any(sh.getErrorFlag() for sh in self._shaders):
-                self._fail()
+        if self.game.state in ('play', 'menu'):
+            self.time += dt                 # на паузе вода и лужи замирают вместе с миром
+        self._watch -= 1
+        if self._watch <= 0:
+            self._watch = 45
+            if self._check():
                 return
         self._frame_inputs(dt)
+
+    def _check(self):
+        """Все ли шейдеры собрались.  Видеокарта собирает шейдер, когда впервые им рисует, — поэтому
+        проверка идёт всё время, а не один раз.  True — графику пришлось перестроить."""
+        bad = [sh for sh in self._shaders if sh.getErrorFlag()]
+        if not bad:
+            return False
+        extra = [sh for sh in bad if sh is self.water_shader or sh in self._post_shaders]
+        if len(extra) < len(bad):
+            self._fail()                    # не собрался сам шейдер сцены или теней
+            return True
+        # не собрались только вода или обработка кадра: выключаем их, свет и тени остаются
+        if self.water_shader in bad:
+            self._no_water = True
+        if any(sh in self._post_shaders for sh in bad):
+            self._no_post = True
+        self.cfg = None
+        self.apply()
+        self._hint('Часть эффектов эта видеокарта не поддерживает: они выключены.')
+        return True
+
+    def _hint(self, text):
+        try:
+            hud = self.game.world.hud
+            if hud is not None:
+                hud.help(text, 6.0)
+        except Exception:
+            pass
 
     def _frame_inputs(self, dt):
         base = self.base
@@ -581,17 +626,21 @@ class Gfx(object):
             k = 1.0 - clouds
             g = 1.0 + (SUN_GAIN - 1.0) * k
             sun_col = (sc[0] * g * (1.0 + 0.03 * k), sc[1] * g, sc[2] * g * (1.0 - 0.06 * k))
-            a = AMB_GAIN + (1.04 - AMB_GAIN) * clouds
+            # низкое солнце — длинные тени на пол-улицы: чтобы вечер не выходил мрачным, рассеянного света
+            # тогда больше (в жизни так и есть: небо светит по-прежнему, а солнце — вскользь)
+            low = 1.0 - max(0.0, min(1.0, (sun[2] - 0.2) / 0.5))
+            a = AMB_GAIN + (1.02 - AMB_GAIN) * max(low * k, 0.0) + (1.04 - AMB_GAIN) * clouds
             amb_sky = (ac[0] * a * (1.0 - 0.02 * k), ac[1] * a * (1.0 + 0.03 * k), ac[2] * a * (1.0 + 0.12 * k))
             amb_gnd = (ac[0] * a * 0.80, ac[1] * a * 0.78, ac[2] * a * 0.74)
             # в миг, когда солнце сменяется луной (и наоборот), тени гаснут: иначе они бы прыгали
             sw = min(abs(hour - 6.0), abs(hour - 20.0))
-            sh_k = max(0.0, min(1.0, sw / 0.3)) * (1.0 - 0.7 * clouds)
+            # тень не глухая: в городе её подсвечивают освещённые солнцем стены вокруг
+            sh_k = SHADOW_DARK * max(0.0, min(1.0, sw / 0.3)) * (1.0 - 0.7 * clouds)
             glint = (1.0 - 0.75 * night) * (1.0 - 0.8 * clouds)
         # пятна-тени под машинами и деревьями: чем заметнее настоящие тени, тем они слабее
         blob = 1.0
         if self.cascades and not indoor:
-            direct = max(sc[0], sc[1], sc[2]) * sh_k                # ясный день — около 0.56, пасмурно и ночью — 0.15
+            direct = max(sc[0], sc[1], sc[2]) * sh_k / SHADOW_DARK  # ясный день — около 0.56, пасмурно и ночью — 0.15
             blob = 1.0 - 0.85 * max(0.0, min(1.0, (direct - 0.12) / 0.3))
         inputs = dict(
             u_cam=LVecBase3(cp[0], cp[1], cp[2]),
@@ -633,7 +682,7 @@ class Gfx(object):
             inputs['u_lpos'] = self._lpos
             inputs['u_lcol'] = self._lcol
             inputs['u_ldir'] = self._ldir
-            inputs['u_lfocus'] = self._lfocus if (night > 0.25 and not indoor) else LVecBase4(0, 0, 0, 0)
+            inputs['u_lfocus'] = self._lfocus if (night > 0.25 and not indoor) else NO_FOCUS
         render.setShaderInputs(**inputs)
         p = self.post
         if p:
@@ -641,9 +690,13 @@ class Gfx(object):
             self._post_inputs(p)
         else:
             # без обработки кадра цвета правит сам шейдер сцены — значит, и фон (он рисуется без шейдера)
-            # надо поправить так же: иначе дома, ушедшие в туман, проступали бы на небе силуэтами
+            # надо поправить так же: иначе дома, ушедшие в туман, проступали бы на небе силуэтами.
+            # Небо ставит цвет фона не каждый кадр (на паузе — нет): свой, уже исправленный, не трогаем
             try:
-                base.win.setClearColor(LVecBase4(*(grade_color(base.win.getClearColor()) + (1.0,))))
+                cur = LVecBase4(base.win.getClearColor())
+                if self._bg is None or (cur - self._bg[1]).lengthSquared() > 1e-9:
+                    self._bg = (cur, LVecBase4(*(grade_color(cur) + (1.0,))))
+                    base.win.setClearColor(self._bg[1])
             except Exception:
                 pass
 
@@ -734,7 +787,7 @@ class Gfx(object):
                 if v.siren and len(out) < n - 2:
                     # маячки: красный и синий по очереди
                     ph = int(self.time * 5.0) % 2
-                    col = (2.6, 0.2, 0.15) if ph == 0 else (0.2, 0.5, 2.8)
+                    col = (1.5, 0.12, 0.09) if ph == 0 else (0.12, 0.30, 1.7)
                     out.append((LVecBase4(v.x, v.y, v.z + 2.0, 16.0), LVecBase4(col[0], col[1], col[2], 0.0),
                                 LVecBase4(0, 0, -1, 0)))
             # фонари
@@ -745,6 +798,7 @@ class Gfx(object):
                     self._lamps_t = 0.12
                     self._lamps, dmax = self._pick_lamps(fx, fy, max(1, n - len(out)))
                     # нарисованные пятна света в этом круге гаснут: здесь светят настоящие огни
+                    dmax = max(dmax, 4.0)
                     self._lfocus = LVecBase4(fx, fy, dmax * 0.70, dmax)
                 for (l, k) in self._lamps:
                     if len(out) >= n:
@@ -778,7 +832,7 @@ class Gfx(object):
             elif kind == 'v':
                 v = LVecBase4(0.0, 1.0 / sy, 0, 0)
             elif kind == 'ssao':
-                v = LVecBase4(1.0 / sx, 1.0 / sy, 0.9, 1.0)
+                v = LVecBase4(1.0 / sx, 1.0 / sy, 0.9, 1.3)
             elif kind == 'ao':
                 v = LVecBase4(1.0 / sx, 1.0 / sy, 0, 0)
             else:

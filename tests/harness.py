@@ -21,6 +21,9 @@ def make_game(width=960, height=540):
     # картинку с шейдерами (тени, свечение, сглаживание), задайте DD_TEST_DISPLAY=p3headlessgl — нужен OpenGL
     # без окна (EGL; годится программная Mesa llvmpipe)
     display = os.environ.get('DD_TEST_DISPLAY', 'p3tinydisplay')
+    # программный OpenGL рисует «Ультру» минутами: для него окно можно уменьшить, например DD_TEST_SIZE=320x180
+    if os.environ.get('DD_TEST_SIZE'):
+        width, height = [int(v) for v in os.environ['DD_TEST_SIZE'].lower().split('x')]
     loadPrcFileData('', 'window-type offscreen\nload-display %s\nwin-size %d %d\n'
                         'audio-library-name null\nsync-video 0\ntextures-power-2 none\nnotify-level-device fatal\n'
                         'text-minfilter linear\ntext-magfilter linear\n' % (display, width, height))
