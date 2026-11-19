@@ -151,10 +151,11 @@ def test_first_run_takes_the_whole_screen_at_native_resolution():
     S.choose_screen(st, (1920, 1080), sizes)
     assert (st['screen'], st['width'], st['height']) == (S.SCREEN_BORDERLESS, 1920, 1080)
     assert st['cfg'] == S.CFG_VERSION and st['fullscreen'] is False
-    assert 'msaa' not in st                                   # Full HD: сглаживание остаётся как было
+    assert 'msaa' not in st                                   # сглаживание — забота набора качества (gfx.py)
     st = _FakeSettings(width=1280, height=720)
     S.choose_screen(st, (3840, 2160), sizes)
-    assert (st['screen'], st['width'], st['height'], st['msaa']) == (S.SCREEN_BORDERLESS, 3840, 2160, 0)
+    assert (st['screen'], st['width'], st['height']) == (S.SCREEN_BORDERLESS, 3840, 2160)
+    assert 'msaa' not in st
     st = _FakeSettings(width=1280, height=720)
     S.choose_screen(st, (0, 0), sizes)
     assert (st['screen'], st['width'], st['height']) == (S.SCREEN_WINDOW, 1280, 720)
@@ -170,11 +171,40 @@ def test_old_settings_file_gets_the_screen_mode_chosen_again(tmp_path, monkeypat
     st = S.Settings()
     assert not st.fresh and st.get('music_volume') == 0.3
     assert st.get('cfg') < S.CFG_VERSION                      # значит, Game._choose_screen() подберёт режим заново
-    assert st.get('msaa') == 4 and st.get('smooth_textures') is False
+    assert st.get('msaa') == 1 and st.get('smooth_textures') is False
+    # настроек графики в старом файле нет: набор качества будет подобран под видеокарту при запуске
+    assert st.get('gfx_cfg') == 0 and st.get('fps_limit') == 60 and st.get('show_fps') is False
     S.choose_screen(st, (1920, 1080), [(1280, 720)])
     st.save()
     st2 = S.Settings()
     assert (st2.get('screen'), st2.get('width'), st2.get('cfg')) == (S.SCREEN_BORDERLESS, 1920, S.CFG_VERSION)
+
+
+def test_settings_from_0_8_get_a_graphics_preset(tmp_path, monkeypatch):
+    """Файл настроек от версии 0.8 (сглаживание MSAA 4×, набора качества графики ещё нет) читается; на первом
+    запуске новой версии набор подбирается под видеокарту и заменяет старые значения, прочее остаётся."""
+    import json
+    from game import app, gfx as G, settings as S
+    monkeypatch.setenv('DD_USER_DIR', str(tmp_path))
+    with open(tmp_path / 'settings.json', 'w', encoding='utf-8') as f:
+        json.dump({'cfg': S.CFG_VERSION, 'screen': 1, 'width': 1920, 'height': 1080, 'msaa': 4, 'draw_distance': 2,
+                   'show_fps': True, 'vsync': False, 'traffic': 2}, f)
+    st = S.Settings()
+    assert not st.fresh and st.get('msaa') == 4 and st.get('show_fps') is True
+    assert st.get('gfx_cfg') == 0                               # набор качества ещё не подбирался
+    assert st.get('gfx_shaders') is True and app.window_msaa(st) == 0      # окно откроется без своих выборок
+    G.set_preset(st, G.guess_preset('Intel / Intel(R) UHD Graphics 620'), (1920, 1080))
+    assert (st.get('gfx_preset'), st.get('msaa'), st.get('draw_distance')) == (G.PRESET_MED, 1, 1)
+    assert st.get('show_fps') is True and st.get('vsync') is False and st.get('traffic') == 2
+    st.set('gfx_cfg', 1)
+    st.save()
+    st2 = S.Settings()
+    assert st2.get('gfx_cfg') == 1 and st2.get('gfx_preset') == G.PRESET_MED and G.detect_preset(st2) == G.PRESET_MED
+    # видеокарта без шейдеров: «Минимум», и сглаживание тогда — дело самого окна (MSAA выключено)
+    G.set_preset(st2, G.guess_preset('Microsoft / GDI Generic'), (1920, 1080))
+    assert st2.get('gfx_shaders') is False and st2.get('msaa') == 0 and app.window_msaa(st2) == 0
+    st2.set('msaa', 4)
+    assert app.window_msaa(st2) == 4 and G.detect_preset(st2) == G.PRESET_CUSTOM
 
 
 def test_window_config_for_each_screen_mode():
@@ -193,18 +223,23 @@ def test_window_config_for_each_screen_mode():
 
     for mode, undec, origin in ((S.SCREEN_WINDOW, False, '-2 -2'), (S.SCREEN_BORDERLESS, True, '0 0'),
                                 (S.SCREEN_EXCLUSIVE, True, '0 0')):
-        st = _FakeSettings(dict(S.DEFAULTS))
-        st.get = st.__getitem__
-        st.update(screen=mode, width=1920, height=1080, msaa=8)
-        app.configure(st, headless=True)
-        pg = page()
-        try:
-            assert ConfigVariableBool('fullscreen').getValue() is False
-            assert ConfigVariableBool('undecorated').getValue() is undec
-            assert ConfigVariableString('win-origin').getValue() == origin
-            assert ConfigVariableInt('multisamples').getValue() == 8
-        finally:
-            unloadPrcFile(pg)
+        # сглаживание MSAA у самого окна — только без шейдеров: с ними сцена рисуется в свой буфер, и
+        # сглаживает он (gfx.py).  FXAA (msaa = 1) выборок у окна не просит никогда
+        for shaders, msaa, want in ((False, 8, 8), (True, 8, 0), (False, 1, 0), (True, 1, 0), (False, 0, 0)):
+            st = _FakeSettings(dict(S.DEFAULTS))
+            st.get = st.__getitem__
+            st.update(screen=mode, width=1920, height=1080, msaa=msaa, gfx_shaders=shaders)
+            assert app.window_msaa(st) == want
+            app.configure(st, headless=True)
+            pg = page()
+            try:
+                assert ConfigVariableBool('fullscreen').getValue() is False
+                assert ConfigVariableBool('undecorated').getValue() is undec
+                assert ConfigVariableString('win-origin').getValue() == origin
+                assert ConfigVariableInt('multisamples').getValue() == want
+                assert ConfigVariableBool('framebuffer-multisample').getValue() is (want > 0)
+            finally:
+                unloadPrcFile(pg)
 
 
 def test_build_includes_every_asset_file():
@@ -244,8 +279,8 @@ def test_selftest_does_not_rely_on_assert():
 
 
 def test_antialiasing_note_matches_what_the_window_was_opened_with(tmp_path, monkeypatch):
-    """На экране 4K первый запуск выключает сглаживание ДО открытия окна, и меню не должно
-    после этого писать «после перезапуска»: окно уже открыто без сглаживания."""
+    """Меню пишет «после перезапуска», когда сглаживание в настройках не то, с каким открыто окно.
+    Первый запуск: окно открывается без своих выборок (сглаживать будет буфер сцены), и меню помнит именно это."""
     from game import app, settings as S
     monkeypatch.setenv('DD_USER_DIR', str(tmp_path))
     monkeypatch.setattr(S, 'dpi_aware', lambda: None)
@@ -256,7 +291,7 @@ def test_antialiasing_note_matches_what_the_window_was_opened_with(tmp_path, mon
         pass
 
     def fake_configure(settings, headless=False):
-        seen['msaa'] = int(settings.get('msaa'))
+        seen['msaa'] = app.window_msaa(settings)
         raise Stop()                                          # окно не открываем
 
     monkeypatch.setattr(app, 'configure', fake_configure)
