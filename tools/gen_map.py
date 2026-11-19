@@ -3,6 +3,9 @@
 
 Запуск из корня репозитория:  python tools/gen_map.py
 Результат: assets/tex/map.png (вид сверху, север вверху).
+
+Город сначала рисуется по чертежу (прямые улицы, как его строит генератор), потом рисунок изгибается тем же
+отображением «чертёж -> мир», что и сам город (game/warp.py): на карте улицы лежат так же, как в игре.
 """
 import os
 import sys
@@ -16,6 +19,8 @@ from game.mapinfo import MAP_CX, MAP_CY, MAP_HALF        # noqa: E402
 
 SIZE = 2048
 SS = 2          # сглаживание
+MARGIN = 180.0  # запас чертежа вокруг квадрата карты, м: изгиб сдвигает точки не дальше этого
+MESH = 16       # шаг сетки изгиба рисунка, пикселей
 
 ZONE_COL = {'D': (104, 106, 116), 'O': (122, 110, 98), 'G': (112, 100, 90), 'R': (108, 124, 96),
             'I': (112, 112, 108), 'B': (128, 120, 104), 'P': (74, 128, 70),
@@ -48,16 +53,42 @@ def terrain_layer(c, n):
     depth = np.clip((-0.7 - h) / 4.0, 0.0, 1.0)
     img[~land] = np.array(SEA)[None, :] * (1.22 - 0.3 * depth[~land])[:, None]
     small = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)[::-1], 'RGB')
-    # сетка рельефа -> пиксели карты
+    # сетка рельефа -> пиксели чертежа
     k = n / (2.0 * MAP_HALF)
-    px0 = (t.x0 - (MAP_CX - MAP_HALF)) * k
-    py0 = ((MAP_CY + MAP_HALF) - t.y1) * k
+    m = int(round(MARGIN * k))
+    px0 = (t.x0 - (MAP_CX - MAP_HALF)) * k + m
+    py0 = ((MAP_CY + MAP_HALF) - t.y1) * k + m
     w = int(round((t.x1 - t.x0) * k))
     hh = int(round((t.y1 - t.y0) * k))
     deep = tuple(int(v * 0.92) for v in SEA)           # за краем сетки — открытое море того же цвета
-    out = Image.new('RGB', (n, n), deep)
+    out = Image.new('RGB', (n + 2 * m, n + 2 * m), deep)
     out.paste(small.resize((w, hh), Image.BICUBIC), (int(round(px0)), int(round(py0))))
     return out
+
+
+def bend(plan, c, n):
+    """Рисунок по чертежу -> карта мира n x n: каждая клетка карты берёт свой четырёхугольник чертежа."""
+    wp = c.warp
+    if wp is None:
+        m = (plan.size[0] - n) // 2
+        return plan.crop((m, m, m + n, m + n))
+    k = n / (2.0 * MAP_HALF)
+    m = (plan.size[0] - n) // 2
+    cols = n // MESH
+
+    def src(i, j):                                   # узел сетки карты -> точка рисунка-чертежа
+        x = (MAP_CX - MAP_HALF) + i * MESH / k
+        y = (MAP_CY + MAP_HALF) - j * MESH / k
+        u, v = wp.inv_exact(x, y)
+        return ((u - (MAP_CX - MAP_HALF)) * k + m, ((MAP_CY + MAP_HALF) - v) * k + m)
+    pts = [[src(i, j) for i in range(cols + 1)] for j in range(cols + 1)]
+    mesh = []
+    for j in range(cols):
+        for i in range(cols):
+            a, b, cc, dd = pts[j][i], pts[j + 1][i], pts[j + 1][i + 1], pts[j][i + 1]      # СЗ, ЮЗ, ЮВ, СВ
+            mesh.append(((i * MESH, j * MESH, (i + 1) * MESH, (j + 1) * MESH),
+                         (a[0], a[1], b[0], b[1], cc[0], cc[1], dd[0], dd[1])))
+    return plan.transform((n, n), Image.MESH, mesh, Image.BICUBIC)
 
 
 def main():
@@ -66,9 +97,10 @@ def main():
     im = terrain_layer(c, n)
     d = ImageDraw.Draw(im)
     k = n / (2.0 * MAP_HALF)
+    m = (im.size[0] - n) // 2
 
     def P(x, y):
-        return ((x - (MAP_CX - MAP_HALF)) * k, ((MAP_CY + MAP_HALF) - y) * k)
+        return ((x - (MAP_CX - MAP_HALF)) * k + m, ((MAP_CY + MAP_HALF) - y) * k + m)
 
     def rect(x0, y0, x1, y1, col):
         a = P(x0, y1)
@@ -87,7 +119,8 @@ def main():
         else:
             rect(s['c'] - hw, s['a'], s['c'] + hw, s['b'], col)
     for nd in c.nodes.values():
-        rect(nd.x - nd.hw, nd.y - nd.hh, nd.x + nd.hw, nd.y + nd.hh, ROAD)
+        nx_, ny_ = getattr(nd, 'lx', nd.x), getattr(nd, 'ly', nd.y)        # узел на чертеже
+        rect(nx_ - nd.hw, ny_ - nd.hh, nx_ + nd.hw, ny_ + nd.hh, ROAD)
     for (x0, y0, x1, y1) in c.walk_strips:
         rect(x0, y0, x1, y1, (120, 120, 118))
     for b in c.blocks:
@@ -118,8 +151,11 @@ def main():
             rect(s['a'], s['c'] - 0.45, s['b'], s['c'] + 0.45, (150, 140, 70))
         else:
             rect(s['c'] - 0.45, s['a'], s['c'] + 0.45, s['b'], (150, 140, 70))
+    im = bend(im, c, n)
     im = im.resize((SIZE, SIZE), Image.LANCZOS)
     out = os.path.join(ROOT, 'assets', 'tex', 'map.png')
+    if len(sys.argv) > 1:
+        out = sys.argv[1]
     im.quantize(255, method=Image.MEDIANCUT, dither=Image.NONE).save(out, optimize=True)
     print('map written:', out, os.path.getsize(out), 'bytes')
     return out
