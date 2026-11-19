@@ -676,7 +676,7 @@ def test_gfx_autotune_steps_down(game, world):
         G.set_preset(s, preset)
         s.set('gfx_cfg', 1)
         gf.apply()
-        gf._tune = dict(skip=G.TUNE_SKIP, t=0.0, n=0, last=None, slow=0)
+        gf._tune = G.tune_state()
 
     try:
         # 60 кадров в секунду: «Ультра» остаётся, замер окончен
@@ -703,19 +703,45 @@ def test_gfx_autotune_steps_down(game, world):
         s.set('traffic', 1)
         g.apply_traffic()
         assert (world.traffic.max_cars, world.crowd.max_peds) == TRAFFIC_LEVELS[1]
-        # подгрузка (один долгий кадр) замер не портит: он просто начинается заново
+        # подгрузка (один долгий кадр) замер не портит: такой кадр в счёт не идёт
         begin(G.PRESET_MED)
         play(60, G.TUNE_SKIP + 2.0)
         now[0] += 1.5
         gf.update(0.1)
-        play(60, 3.0)
+        play(60, 1.0)
         assert gf._tune is not None and s.get('gfx_preset') == G.PRESET_MED         # ещё считает
-        play(60, G.TUNE_TIME)
+        play(60, 1.5)
         assert gf._tune is None and s.get('gfx_preset') == G.PRESET_MED
+        # подёргивания каждые две секунды: замер всё равно кончается, а не начинается заново без конца
+        begin(G.PRESET_ULTRA)
+        for _ in range(8):
+            play(30, 2.0)
+            now[0] += 0.6
+            gf.update(0.1)
+        assert s.get('gfx_preset') == G.PRESET_MED and gf._tune is None             # 30 кадров: «Среднее»
         # игра еле идёт (кадр в секунду): конца замера не ждём
         begin(G.PRESET_MED)
-        play(1, 6.0)
+        play(1, G.TUNE_SKIP + 2.0)
+        assert s.get('gfx_preset') == G.PRESET_MED                                  # первые секунды не в счёт
+        play(1, 4.0)
         assert s.get('gfx_preset') == G.PRESET_MIN
+        # через кадр — долгий (0,9 с и 0,1 с попеременно): подряд их нет, но игра стоит — набор понижается
+        begin(G.PRESET_MED)
+        play(60, G.TUNE_SKIP + 0.5)
+        for _ in range(8):
+            assert s.get('gfx_preset') == G.PRESET_MED
+            now[0] += 0.9
+            gf.update(0.1)
+            now[0] += 0.1
+            gf.update(0.1)
+        assert s.get('gfx_preset') == G.PRESET_MIN
+        # долгие первые кадры после запуска (сборка шейдеров, загрузка текстур) набор не понижают
+        begin(G.PRESET_ULTRA)
+        for d in (1.2, 0.9, 0.7, 0.5, 0.45):
+            now[0] += d
+            gf.update(0.1)
+        play(60, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        assert gf._tune is None and s.get('gfx_preset') == G.PRESET_ULTRA
         # на паузе кадры не считаются
         begin(G.PRESET_MED)
         g.pause()

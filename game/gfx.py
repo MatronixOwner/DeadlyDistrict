@@ -130,6 +130,13 @@ def guess_fps_limit(refresh):
     return FPS_LIMITS[-1]
 
 
+def tune_state():
+    """Замер кадров после первого запуска (Gfx._autotune): skip — сколько секунд ещё не считаем, t и n — время
+    и число сосчитанных кадров, slow — долгих кадров подряд, hit — долгих кадров за замер, last — время
+    прошлого кадра."""
+    return dict(skip=TUNE_SKIP, t=0.0, n=0, last=None, slow=0, hit=0)
+
+
 def grade_color(c):
     """То же, что tonemap + grade в шейдере, — для цвета фона (он рисуется без шейдера)."""
     c = [v * LOOK[0] for v in c[:3]]
@@ -282,7 +289,7 @@ class Gfx(object):
             s.save()
         if first and int(s.get('gfx_cfg')) == 1:
             # …а потом проверяется замером (если игру закрыли раньше, чем он кончился, — при следующем запуске)
-            self._tune = dict(skip=TUNE_SKIP, t=0.0, n=0, last=None, slow=0)
+            self._tune = tune_state()
         self.apply()
         self.apply_fps_limit()
 
@@ -638,25 +645,25 @@ class Gfx(object):
         if need is None or detect_preset(s) != p or (p == PRESET_MIN and int(s.get('traffic')) <= 0):
             self._tune_done()               # настройки уже свои или убавлять больше нечего
             return
-        slow = False
         if not ok:
+            # пауза, свёрнутое окно: после возврата — секунда на раскачку, сосчитанное остаётся
             tn['slow'] = 0
-        elif d > 0.4:
-            # кадр дольше 0,4 с — это либо подгрузка (тогда замер начинается заново), либо игра и правда
-            # еле идёт: несколько таких кадров подряд — и ждать конца замера незачем
+            tn['skip'] = max(tn['skip'], 1.0)
+            return
+        if tn['skip'] > 0.0:
+            tn['skip'] -= d                 # первые секунды не в счёт: видеокарта собирает шейдеры, грузит текстуры
+            return
+        if d > 0.4:
+            # Кадр дольше 0,4 с — это либо подгрузка, либо игра и правда еле идёт.  Одиночный такой кадр
+            # в замер просто не идёт (начинать из-за него замер заново нельзя: на компьютере с частыми
+            # подёргиваниями он не кончился бы никогда).  Четыре таких кадра подряд или восемь за один
+            # замер — игра стоит на месте, и ждать конца замера незачем
             tn['slow'] += 1
-            slow = tn['slow'] >= 4
+            tn['hit'] += 1
+            if tn['slow'] < 4 and tn['hit'] < 8:
+                return
         else:
             tn['slow'] = 0
-        if not slow:
-            if not ok or d > 0.4:
-                tn['skip'] = max(tn['skip'], 1.0)
-                tn['t'] = 0.0
-                tn['n'] = 0
-                return
-            if tn['skip'] > 0.0:
-                tn['skip'] -= d
-                return
             tn['t'] += d
             tn['n'] += 1
             if tn['t'] < TUNE_TIME:
@@ -675,7 +682,7 @@ class Gfx(object):
                     % PRESET_NAMES[p - 1])
         if not game.headless:
             s.save()
-        tn.update(skip=TUNE_SKIP, t=0.0, n=0, slow=0)
+        tn.update(skip=TUNE_SKIP, t=0.0, n=0, slow=0, hit=0)
         self._hint(text)
 
     def _hint(self, text):
