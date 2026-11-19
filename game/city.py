@@ -1150,14 +1150,14 @@ class City(object):
                 z = self.cells.get(c)
                 if z is not None:
                     return z
-            return 'road'
+            return 'north' if x > self.intro_x0 else 'road'
         if kind == 'node':
             i, j = obj.i, obj.j
             for c in ((i, j), (i - 1, j), (i, j - 1), (i - 1, j - 1)):
                 z = self.cells.get(c)
                 if z is not None:
                     return z
-            return 'road'
+            return 'north' if x > self.intro_x0 else 'road'
         p = self.pad_at_l(x, y)
         if p is not None and p[5]:
             return p[5]
@@ -2869,6 +2869,12 @@ class City(object):
         if s1 is None or s2 is None or 'heist' not in self.landmarks:
             return
         x = s1['c']
+        # напротив банка, у дальнего бордюра, ждёт машина и стоят камеры сценки: там на тротуаре пусто
+        lm = self.landmarks['heist']
+        dx = lm['door'][0]
+        fy = lm['road'][1] + 1.6 - self.wy[INTRO_BANK[1]]           # дальний бордюр главной улицы
+        self.props = [p for p in self.props
+                      if not (abs(p['x'] - dx) < 17.0 and fy - SIDEWALK - 0.5 < p['y'] < fy + 0.2)]
         self.special['intro'] = dict(
             goal=(x, (s1['a'] + s1['b']) * 0.5),            # метка погони: дальняя сторона петли тракта
             block=(x, (s2['a'] + s2['b']) * 0.5),           # заслон: дальше по тракту, машины едут на север

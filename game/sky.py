@@ -22,7 +22,8 @@ KEYS = [
     (24.0, (0.02, 0.03, 0.09), (0.06, 0.08, 0.16), (0.30, 0.33, 0.46), (0.14, 0.16, 0.26)),
 ]
 WEATHERS = [('clear', 0.56), ('cloudy', 0.22), ('rain', 0.14), ('fog', 0.08)]
-WEATHER_NAMES = {'clear': 'ясно', 'cloudy': 'облачно', 'rain': 'дождь', 'fog': 'туман'}
+# снег сам не начинается: Порт-Глухов — южный город; он идёт только в Зимогорске, в прологе
+WEATHER_NAMES = {'clear': 'ясно', 'cloudy': 'облачно', 'rain': 'дождь', 'fog': 'туман', 'snow': 'снег'}
 
 
 def _mix(a, b, t):
@@ -53,6 +54,7 @@ class Sky(object):
         self.day = 1
         self.night = 0.0
         self.rain = 0.0
+        self.snow = 0.0
         self.clouds_k = 0.0
         self.fog_k = 0.0
         self.weather = 'clear'
@@ -143,9 +145,12 @@ class Sky(object):
             c.setScale(sc, 1, sc * 0.42)
             c.setBin('background', 4)
             self.clouds.append([c, az, el, rnd.uniform(0.6, 1.4)])
-        # дождь
+        # дождь и снег
         self.rain_np = self._build_rain()
         self.rain_z = 0.0
+        self.snow_np = self._build_snow()
+        self.snow_z = 0.0
+        self.snow_t = 0.0
         self.lights_on = False
         self.night_on = False
         self.indoor = None              # свет помещения (interiors.LIGHTS) — пока герой под крышей
@@ -198,6 +203,34 @@ class Sky(object):
         root.hide()
         return root
 
+    def _build_snow(self):
+        """Снегопад: хлопья в коробке вокруг камеры; коробка едет вниз и перескакивает на свою высоту."""
+        mb = MeshBuilder()
+        rnd = random.Random(23)
+        self.snow_h = 12.0
+        for i in range(760):
+            x, y = rnd.uniform(-15, 15), rnd.uniform(-15, 15)
+            if abs(x) < 0.7 and abs(y) < 0.7:
+                continue
+            z = rnd.uniform(0, self.snow_h)
+            a = rnd.uniform(0, math.pi)
+            r = (0.030 + 0.0022 * math.hypot(x, y)) * rnd.uniform(0.7, 1.4)       # дальние чуть крупнее: не пропадают
+            dx, dy = math.cos(a) * r, math.sin(a) * r
+            mb.quad2(('snowflake', 'blend_c'), (x - dx, y - dy, z - r), (x + dx, y + dy, z - r), (x + dx, y + dy, z + r),
+                     (x - dx, y - dy, z + r), color=(1.0, 1.0, 1.0, rnd.uniform(0.55, 0.95)))
+        root = NodePath('snow')
+        a = mb.build('s1', self.w.assets.apply_state)
+        a.reparentTo(root)
+        b = a.copyTo(root)
+        b.setZ(self.snow_h)
+        root.reparentTo(self.base.render)
+        root.setLightOff(1)
+        root.setFogOff(1)
+        root.setDepthWrite(False)
+        root.setBin('fixed', 40)
+        root.hide()
+        return root
+
     # ------------------------------------------------------------------
     def set_time(self, hour):
         self.hour = hour % 24.0
@@ -216,7 +249,8 @@ class Sky(object):
         self.weather_t = 120.0 + random.random() * 120.0
         if instant:
             self.rain = 1.0 if name == 'rain' else 0.0
-            self.clouds_k = 1.0 if name in ('rain', 'cloudy', 'fog') else 0.0
+            self.snow = 1.0 if name == 'snow' else 0.0
+            self.clouds_k = 1.0 if name in ('rain', 'cloudy', 'fog', 'snow') else 0.0
             self.fog_k = 1.0 if name == 'fog' else 0.0
 
     def clock_text(self):
@@ -243,7 +277,8 @@ class Sky(object):
         wth = self.weather
         k = min(1.0, dt * 0.07)
         self.rain += ((1.0 if wth == 'rain' else 0.0) - self.rain) * k
-        self.clouds_k += ((1.0 if wth in ('rain', 'cloudy', 'fog') else 0.0) - self.clouds_k) * k
+        self.snow += ((1.0 if wth == 'snow' else 0.0) - self.snow) * k
+        self.clouds_k += ((1.0 if wth in ('rain', 'cloudy', 'fog', 'snow') else 0.0) - self.clouds_k) * k
         self.fog_k += ((1.0 if wth == 'fog' else 0.0) - self.fog_k) * k
         self._apply(dt)
 
@@ -287,6 +322,7 @@ class Sky(object):
             if ind is not None:
                 self.root.hide()
                 self.rain_np.hide()
+                self.snow_np.hide()
             else:
                 self.root.show()
         if ind is not None:
@@ -311,9 +347,19 @@ class Sky(object):
         fs, fe = self.fog_start, self.far
         fk = self.fog_k
         rk = self.rain
-        fs = fs * (1.0 - 0.9 * fk) * (1.0 - 0.45 * rk)
-        fe = fe * (1.0 - 0.72 * fk) * (1.0 - 0.3 * rk)
+        sk = self.snow
+        fs = fs * (1.0 - 0.9 * fk) * (1.0 - 0.45 * rk) * (1.0 - 0.7 * sk)
+        fe = fe * (1.0 - 0.72 * fk) * (1.0 - 0.3 * rk) * (1.0 - 0.5 * sk)
         self.fog.setLinearRange(fs, fe)
+        if sk > 0.01:
+            # снегопад: белая земля отражает свет — ночь светлее, а даль тонет в белёсой мгле
+            a = self.amb.getColor()
+            self.amb.setColor(LColor(a[0] * (1.0 + 0.22 * sk), a[1] * (1.0 + 0.22 * sk), a[2] * (1.0 + 0.2 * sk), 1))
+            g = (hor[0] + hor[1] + hor[2]) / 3.0
+            haze = _mix(hor, (g + 0.10, g + 0.11, g + 0.14), sk * 0.8)
+            self.fog.setColor(haze[0], haze[1], haze[2])
+            base.setBackgroundColor(haze[0], haze[1], haze[2])
+            self.fog_color = haze
         # положение солнца и луны
         day_t = (h - 6.0) / 14.0                   # 0 на восходе (6:00), 1 на закате (20:00)
         if 0.0 <= day_t <= 1.0:
@@ -369,7 +415,7 @@ class Sky(object):
         if self.night_on:
             g = clamp((night - 0.25) / 0.4, 0.0, 1.0)
             cmesh.night_root.setColorScale(g, g, g, 1.0)
-        lights = night > 0.4 or rk > 0.5 or fk > 0.5
+        lights = night > 0.4 or rk > 0.5 or fk > 0.5 or sk > 0.5
         if lights != self.lights_on:
             self.lights_on = lights
             for v in self.w.vehicles:
@@ -393,3 +439,13 @@ class Sky(object):
                     self.w.fx.spawn('spark', x, y, gz + 0.06, 0, 0, 0.6, 0.18, 0.1, 0.3, (0.8, 0.9, 1.0), 0.5)
         else:
             self.rain_np.hide()
+        if self.snow > 0.03 and self.indoor is None:
+            self.snow_np.show()
+            self.snow_t += dt
+            self.snow_z = (self.snow_z + dt * 2.6) % self.snow_h
+            t = self.snow_t
+            self.snow_np.setPos(cam.x + math.sin(t * 0.7) * 0.5, cam.y + math.cos(t * 0.45) * 0.4,
+                                max(0.0, cam.z - 5.0) - self.snow_z)
+            self.snow_np.setAlphaScale(min(1.0, self.snow * 1.3))
+        else:
+            self.snow_np.hide()

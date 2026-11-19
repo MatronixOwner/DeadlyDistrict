@@ -9,7 +9,7 @@ from panda3d.core import CardMaker, TextNode, TransparencyAttrib, PandaNode, Nod
 
 from . import ui
 from .ui import INK, PAPER, MUTE, DIM, ACCENT, rgba
-from .mapinfo import MAP_CX, MAP_CY, MAP_HALF
+from .mapinfo import region as map_region
 
 GOLD = ACCENT
 WHITE = PAPER
@@ -370,7 +370,9 @@ def build_map(game, size=0.86):
     cm = CardMaker('map')
     cm.setFrame(-size, size, -size, size)
     card = root.attachNewNode(cm.generate())
-    card.setTexture(a.tex('map', clamp=True, smooth=True))
+    # карта той части мира, где сейчас герой: Порт-Глухов или Зимогорск (пролог)
+    name, MAP_CX, MAP_CY, MAP_HALF = map_region(*w.map_pos())
+    card.setTexture(a.tex(name, clamp=True, smooth=True))
 
     def put(tex, x, y, scale=0.03, color=(1, 1, 1, 1), rot=None):
         u = (x - MAP_CX) / MAP_HALF

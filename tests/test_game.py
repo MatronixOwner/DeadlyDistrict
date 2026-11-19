@@ -571,7 +571,10 @@ def _after_intro(g, w, errors):
     assert ms.intro is None and g.state == 'play' and not g.ui.active
     assert w.interiors.current is None
     sx, sy, syaw = w.city.start_pos
-    assert math.hypot(pl.ped.x - (sx - 11.5), pl.ped.y - (sy - 1.3)) < 6.0
+    hx, hy = w.city.off(sx, sy, -11.5, -1.3)                     # у остановки (улица изогнута: сдвиг по чертежу)
+    assert math.hypot(pl.ped.x - hx, pl.ped.y - hy) < 3.0
+    assert not w.city.in_north(*pl.pos()) and w.hud.map_name == 'map'      # Зимогорск остался в прошлом
+    assert w.sky.snow == 0.0
     assert not pl.freeze and pl.script_move is None and not pl.invincible
     assert not pl.ped.node.isHidden() and abs(pl.ped.z - w.city.ground_z(*pl.pos())) < 0.05
     assert w.hud.visible and w.cam.override is None and ms.letter.isHidden()
@@ -681,7 +684,7 @@ def test_intro_plays_to_the_end(game):
 
     lines, bigs, t = _watch_intro(g, 260.0, each)
     assert 50.0 < t < 240.0, t
-    assert lines[0].startswith('Порт-Глухов') and any('Сигнализация' in s_ for s_ in lines)
+    assert lines[0].startswith('Зимогорск') and any('Сигнализация' in s_ for s_ in lines)
     assert any(s_.startswith('Седой: Гони') for s_ in lines) and any(s_.startswith('Уходи от погони') for s_ in lines)
     assert any(s_.startswith('Водитель:') for s_ in lines) and any('брат' in s_ for s_ in lines)
     assert not any('Вано' in s_ for s_ in lines)                 # старого сюжета в прологе нет
@@ -692,9 +695,10 @@ def test_intro_plays_to_the_end(game):
     _after_intro(g, w, errors)
 
 
-def test_intro_chase_to_the_bridge(game):
+def test_intro_chase_to_the_tract(game):
     """Погоня пролога: машину ведёт игрок, выйти из неё нельзя, розыск не спадает, машине ничего не делается.
-    На мосту ждёт заслон: три патрульные машины поперёк дороги и полицейские с пистолетами."""
+    Дело происходит в Зимогорске — отдельном заснеженном городке; на тракте за ним ждёт заслон: три
+    патрульные машины поперёк дороги и полицейские с пистолетами."""
     g = game
     random.seed(23)
     errors = g._errors_total
@@ -712,9 +716,18 @@ def test_intro_chase_to_the_bridge(game):
     assert who[pl.ped] == 0 and sorted(who[q] for q in it['peds']) == [1, 2]
     assert not any(q.node.isHidden() for q in it['peds'] + [pl.ped])
     assert w.police.level == 3 and w.police.locked == 3 and w.hud.visible
-    north = [s_ for s_ in w.city.bridges if s_['bridge'].get('name') == 'north'][0]
+    c = w.city
+    # другой город: далеко от Порт-Глухова, под снегом, со своей картой на радаре
+    assert c.in_north(car.x, car.y) and c.zone_name(car.x, car.y).startswith('Зимогорск')
+    assert w.sky.weather == 'snow' and w.sky.snow > 0.9 and not w.sky.snow_np.isHidden()
+    assert w.hud.map_name == 'map_north'
+    assert c.street_name(car.x, car.y) == 'проспект Первопроходцев'
+    lx, ly = c.landmarks['heist']['door']
+    assert 6.0 < math.hypot(car.x - lx, car.y - ly) < 22.0 and c.on_road(car.x, car.y)     # напротив банка
     assert mk in ms.markers and it['blip'] in w.hud.blips
-    assert abs(mk.x - north['c']) < 6.0 and north['a'] < mk.y < north['b']       # метка — на Большом мосту
+    gx, gy = c.special['intro']['goal']
+    assert math.hypot(mk.x - gx, mk.y - gy) < 0.1 and c.on_road(mk.x, mk.y) and c.in_north(mk.x, mk.y)
+    assert c.zone_name(mk.x, mk.y) == 'Зимогорский тракт' and math.hypot(mk.x - car.x, mk.y - car.y) > 500.0
     # машина слушается газа
     x0, y0 = car.x, car.y
     harness.run(g, 3.0, keys=('w',))
@@ -734,15 +747,15 @@ def test_intro_chase_to_the_bridge(game):
         harness.press(g, key)
         harness.run(g, 0.3)
     assert ms.intro is it and it['play'] and it['end'] is None
-    # подъезжаем к мосту
-    car.x, car.y, car.yaw = mk.x, mk.y - 26.0, math.pi / 2
+    # подъезжаем к метке на тракте (с юга: тракт там идёт на север)
+    car.x, car.y, car.yaw = c.frame(mk.x, mk.y).at(0.0, -26.0, math.pi / 2)
     car.vx = car.vy = car.speed = car.omega = 0.0
     car.sync()
     t = 0.0
     while it['end'] is None and t < 8.0:
         harness.run(g, 0.2, keys=('w',))
         t += 0.2
-    assert it['end'] == 'bridge', (t, car.x, car.y, mk.x, mk.y)
+    assert it['end'] == 'tract', (t, car.x, car.y, mk.x, mk.y)
     harness.run(g, 1.5)
     # заслон: погоня кончилась, декорации расставлены
     assert not it['play'] and pl.freeze and not pl.lock_in and not w.hud.visible
@@ -751,10 +764,13 @@ def test_intro_chase_to_the_bridge(game):
     assert len(block) == 3 and all(u.kind == 'police' and u.siren and u.keep for u in block)
     cops = [q for q in it['peds'] if q.kind == 'cop']
     assert len(cops) == 4 and all(q.aiming and q.weapon.id == W_PISTOL and q.vehicle is None for q in cops)
-    assert pl.vehicle is car and abs(car.speed) < 0.1 and all(u.y > car.y + 12.0 for u in block)
-    assert all(car.y < q.y < min(u.y for u in block) for q in cops)             # полицейские — перед машинами
-    assert all(abs(u.x - north['c']) < 9.0 and north['a'] < u.y < north['b'] for u in block)
-    assert w.hud.sub_plain.startswith('Мост перекрыли')
+    B = c.frame(*c.special['intro']['block'])                       # вдоль тракта: «север» чертежа
+    along = lambda o: B.local(o.x, o.y)[1]
+    assert pl.vehicle is car and abs(car.speed) < 0.1 and all(along(u) > along(car) + 12.0 for u in block)
+    assert all(along(car) < along(q) < min(along(u) for u in block) for q in cops)      # полицейские — перед машинами
+    assert all(c.on_road(u.x, u.y) and c.in_north(u.x, u.y) and abs(along(u)) < 3.0 for u in block)
+    assert c.on_road(car.x, car.y) and abs(car.z - c.ground_z(car.x, car.y)) < 0.05
+    assert w.hud.sub_plain.startswith('Тракт перекрыли')
     lines, bigs, t = _watch_intro(g, 80.0)
     assert bigs == ['АРЕСТОВАН', 'ТРИ ГОДА СПУСТЯ'], bigs
     assert any(s_.startswith('Водитель:') for s_ in lines)
@@ -764,7 +780,7 @@ def test_intro_chase_to_the_bridge(game):
 
 def test_intro_arrest_in_the_chase(game):
     """Арест в погоне пролога — часть сюжета: героя не везут в участок и не штрафуют, пролог идёт дальше
-    (уже без заслона на мосту)."""
+    (уже без заслона на тракте)."""
     g = game
     random.seed(29)
     errors = g._errors_total
@@ -792,44 +808,6 @@ def test_intro_arrest_in_the_chase(game):
     lines, bigs, t = _watch_intro(g, 80.0)
     assert bigs[-1] == 'ТРИ ГОДА СПУСТЯ' and any(s_.startswith('Водитель:') for s_ in lines)
     assert not any('перекры' in s_ for s_ in lines)
-    _after_intro(g, w, errors)
-
-
-def test_intro_car_in_the_water(game):
-    """Машина в погоне пролога слетела в воду: никто не тонет — «из воды вытащили уже в наручниках»."""
-    g = game
-    random.seed(31)
-    errors = g._errors_total
-    g.new_game()
-    w = g.world
-    c = w.city
-    ms = w.missions
-    pl = w.player
-    _to_chase(g)
-    it = ms.intro
-    car = it['car']
-    mk = it['marker']
-    # вода сбоку от моста
-    spot = None
-    for d in range(12, 120, 4):
-        x, y = mk.x + d, mk.y + 40.0
-        if c.in_water(x, y) and c.ground_z(x, y) < -0.6:
-            spot = (x, y)
-            break
-    assert spot is not None
-    car.x, car.y = spot
-    car.vx = car.vy = car.speed = 0.0
-    car.sync()
-    harness.run(g, 0.3)
-    assert it['end'] == 'water'
-    harness.run(g, 1.5)
-    assert not car.sunk and not car.dead and pl.ped.health == 100 and not pl.ped.dead
-    assert not any(q.dead for q in it['peds'])
-    assert not it['play'] and len(it['cars']) == 3 and pl.vehicle is car
-    assert not c.in_water(car.x, car.y) or c.ground_z(car.x, car.y) > 0.0       # машина снова на мосту
-    assert w.hud.sub_plain.startswith('Из воды нас вытащили')
-    lines, bigs, t = _watch_intro(g, 80.0)
-    assert bigs == ['АРЕСТОВАН', 'ТРИ ГОДА СПУСТЯ'], bigs
     _after_intro(g, w, errors)
 
 
@@ -878,7 +856,7 @@ def test_intro_can_be_skipped_later(game, stage):
         assert labels[:2] == ['Продолжить', 'Пропустить пролог']
         menu.items[1].action()
     else:
-        it['end'] = 'bridge'                    # как будто доехали до метки
+        it['end'] = 'tract'                     # как будто доехали до метки
         harness.run(g, 2.0)
         assert not it['play'] and len(it['cars']) == 3
         if stage == 'bus':
@@ -909,7 +887,7 @@ def test_intro_enter_steps_through_shots(game):
     ms = w.missions
     n = _to_chase(g)
     assert 3 <= n <= 8, n
-    ms.intro['end'] = 'bridge'
+    ms.intro['end'] = 'tract'
     n = 0
     while ms.intro is not None and n < 30:
         harness.run(g, 0.5)

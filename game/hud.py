@@ -12,7 +12,7 @@ from panda3d.core import (CardMaker, TextNode, TransparencyAttrib, TextureStage,
 
 from . import ui
 from .ui import INK, PAPER, MUTE, ACCENT, CASH, HEALTH, ARMOR, DANGER, GOLD, WHITE, rgba
-from .mapinfo import MAP_CX, MAP_CY, MAP_HALF
+from .mapinfo import region as map_region
 from .mathutil import clamp, DEG
 
 M = 0.07                    # поля от краёв экрана
@@ -77,6 +77,7 @@ class Hud(object):
         k = MAP_H / MAP_W * 2.0
         cm.setUvRange((-1.0, -k * MAP_LOW), (1.0, k * (1.0 - MAP_LOW)))
         self.map_card = self.radar.attachNewNode(cm.generate())
+        self.map_name = 'map'                 # какая карта на радаре: основная или Зимогорск (mapinfo.region)
         self.map_tex = world.assets.tex('map', clamp=True, smooth=True)
         self.map_card.setTexture(self.map_tex)
         self.map_card.setColorScale(0.92, 0.92, 0.92, 1.0)
@@ -597,9 +598,14 @@ class Hud(object):
         self.radar_range += (want - self.radar_range) * min(1.0, dt * 1.5)
         R = self.radar_range                       # сколько метров мира умещается в полуширине карты
         yaw = cam.yaw
-        u = (px - (MAP_CX - MAP_HALF)) / (2.0 * MAP_HALF)
-        v = (py - (MAP_CY - MAP_HALF)) / (2.0 * MAP_HALF)
-        s = R / (2.0 * MAP_HALF)
+        name, mcx, mcy, half = map_region(px, py)
+        if name != self.map_name:
+            self.map_name = name
+            self.map_tex = w.assets.tex(name, clamp=True, smooth=True)
+            self.map_card.setTexture(self.map_tex)
+        u = (px - (mcx - half)) / (2.0 * half)
+        v = (py - (mcy - half)) / (2.0 * half)
+        s = R / (2.0 * half)
         ts = TransformState.makePosRotateScale2d(LVecBase2(u, v), (yaw * DEG) - 90.0, LVecBase2(s, s))
         self.map_card.setTexTransform(TextureStage.getDefault(), ts)
         fx, fy = math.cos(yaw), math.sin(yaw)

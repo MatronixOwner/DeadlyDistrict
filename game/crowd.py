@@ -84,7 +84,7 @@ class Crowd(object):
                 k = 0.4
             elif h < 7.0 or h > 21.0:
                 k = 0.7
-            if sky.rain > 0.5:
+            if sky.rain > 0.5 or sky.snow > 0.5:
                 k *= 0.6
         return k
 

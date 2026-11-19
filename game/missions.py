@@ -8,7 +8,7 @@ from .defs import (WEAPONS, W_FIST, W_BAT, W_PISTOL, W_UZI, W_SHOTGUN, W_AK, W_R
                    make_look, gang_look, random_look, cop_look, SKINS)
 from .vehicle import Vehicle
 from .garage import HERO_KIND
-from .city import WATER_Z
+from .city import SIDEWALK
 from .collision import F_PED, F_CAR
 from .mathutil import clamp, angle_diff
 from . import settings as settings_mod
@@ -1145,7 +1145,7 @@ def m_p4(m):
     pl = w.player
     yield from m.briefing('prof', [
         'Пора заканчивать с мелочами. Городской банк. Сегодня.',
-        'Да, тот самый. Три года назад вас у моста ждал заслон. В этот раз ждать будет некому.',
+        'Как в Зимогорске три года назад. Только там вас на тракте ждал заслон, а здесь ждать будет некому.',
         'Мои люди уже внутри. Ваше дело — удержать вход, пока выносят деньги.',
         'Потом увезёте их в порт. Оружие и броня — в багажнике. Удачи, Макс.'])
     pl.give_weapon(W_AK, 300)
@@ -2214,31 +2214,24 @@ class Missions(object):
                               0.62 + 0.03 * min(abs(b.speed), 16.0))
 
         # ==================================================================
-        # три года назад: банк на Банковской, ночь, дождь
+        # три года назад: Зимогорск, ночь, снегопад.  Банк на проспекте Первопроходцев
         # ==================================================================
-        bank = c.landmarks['bank']
+        # Сцена расставляется от точки на дороге перед банком, по осям чертежа: «восток» — вдоль улицы,
+        # «север» — к двери банка (улицы изогнуты, см. city.Frame).
+        bank = c.landmarks['heist']
         bx, by = bank['door']
-        rx, ry = bank['road']
-        out = 1.0 if ry > by else -1.0                  # в какую сторону от двери лежит улица
-        # полоса, по которой уезжают: дальняя от банка; машина ждёт у её бордюра, носом по ходу
-        lane = None
-        for ln in rn.lanes_near(rx, ry + out * 4.0, 0.0, 16.0):
-            if ln.turn is None and abs(ln.y1 - ln.y0) < 0.5 and ln.length > 30.0 and abs(ln.y0 - ry) < 11.0 \
-                    and min(ln.x0, ln.x1) < bx < max(ln.x0, ln.x1):
-                if lane is None or abs(ln.y0 - by) > abs(lane.y0 - by):
-                    lane = ln
-        if lane is not None:
-            cyaw = 0.0 if lane.x1 > lane.x0 else math.pi
-            cy = lane.y0 + out * 2.5
-        else:
-            cyaw, cy = 0.0, ry + out * 8.5
-        fx = math.cos(cyaw)                             # +1 — машина смотрит на восток
-        cx = bx - fx * 1.5
-        sky.set_weather('rain')
+        F = c.frame(*bank['road'])
+        door_v = F.local(bx, by)[1]                     # дверь севернее точки на дороге
+        kind, seg = c.where(*bank['road'])
+        width = seg['width'] if kind == 'seg' else 14.0
+        # машина ждёт у дальнего от банка бордюра, носом на восток — к выезду из города
+        cu, cv = -1.5, -(width - 1.6) + 1.3
+        cx, cy, cyaw = F.at(cu, cv, 0.0)
+        sky.set_weather('snow')
         sky.set_time(23.6)
         p.node.hide()
-        stage(bx, by + out * 2.0)
-        self.clear_area(bx, ry + out * 3.0, 34.0, peds=True)
+        stage(*F(0.0, door_v - 2.0))
+        self.clear_area(cx, cy, 38.0, peds=True)
         car = w.spawn_vehicle(HERO_KIND, cx, cy, cyaw, 0)
         car.keep = True
         car.immune = True
@@ -2250,27 +2243,28 @@ class Missions(object):
         car.set_lights(True)
         w.scene_engine = ('engine', 0.30, 0.6)
         # 1. улица: машина с включёнными фарами напротив банка
-        cam.override = (cx - fx * 8.5, cy + out * 2.7, 1.15, cx + fx * 2.2, cy - out * 5.0, 1.9)
+        cam.override = F.cam(cu - 8.5, cv - 2.7, 1.15, cu + 2.2, cv + 5.0, 1.9)
         hud.fade(0.0, 0.7)
-        yield say('Порт-Глухов. Три года назад.', 0.4)
+        yield say('Зимогорск. Три года назад.', 0.4)
         # 2. Макс за рулём
-        cam.override = (cx + fx * 4.4, cy + out * 2.3, 1.3, cx + fx * 0.2, cy, 1.02)
+        cam.override = F.cam(cu + 4.4, cv - 2.3, 1.3, cu + 0.2, cv, 1.02)
         yield say('Я не грабил банки. Я ждал у дверей с заведённым мотором — и уезжал быстрее всех в этом городе.')
         # 3. сигнализация: двое выбегают из банка и бегут к машине
         au.loop('alarm', 'alarm', 0.5)
         crew = []
         for i, (ox, look) in enumerate(((-0.8, make_look(model='m_old', scale=1.0, fat=1.05)),
                                         (0.9, make_look(model='m_leather_b', scale=1.02, fat=1.0)))):
-            q = w.spawn_ped(bx + ox, by + out * (0.7 + 0.6 * i), math.atan2(out, 0.0), look, 'mission')
+            qx, qy, qyaw = F.at(ox, door_v - 0.7 - 0.6 * i, -math.pi / 2)
+            q = w.spawn_ped(qx, qy, qyaw, look, 'mission')
             q.keep = True
             q.health = q.max_health = 900.0
             # к задней двери со стороны банка
-            q.tx, q.ty = cx - fx * (0.7 + 0.5 * i), cy - out * (car.spec.W * 0.5 + 0.7)
+            q.tx, q.ty = F(cu - 0.7 - 0.5 * i, cv + car.spec.W * 0.5 + 0.7)
             q.set_state('goto', 1.0)
             q.timer = 1.0
             crew.append(q)
         it['peds'].extend(crew)
-        cam.override = (cx + fx * 7.5, cy + out * 3.0, 1.6, bx - fx * 1.0, by + out * 2.0, 1.2)
+        cam.override = F.cam(cu + 7.5, cv - 3.0, 1.6, -1.0, door_v - 2.0, 1.2)
         say('Сигнализация. На сорок секунд раньше, чем мы договаривались.', 0.6)
         t = [0.0]
 
@@ -2286,21 +2280,15 @@ class Missions(object):
         for q in crew:
             if q.vehicle is not car:
                 w.put_in_vehicle(q, car)
-        cam.override = (cx + fx * 5.2, cy + out * 1.9, 1.15, cx - fx * 0.4, cy, 1.0)
-        yield say('Седой: Гони, Макс! На мост — и за город!', -0.8)
+        cam.override = F.cam(cu + 5.2, cv - 1.9, 1.15, cu - 0.4, cv, 1.0)
+        yield say('Седой: Гони, Макс! На тракт — и за город!', -0.8)
 
         # ==================================================================
         # погоня: машину ведёт игрок.  Чем бы она ни кончилась, кончится она арестом
         # ==================================================================
-        br = None
-        for seg in c.bridges:
-            if seg['bridge'].get('name') == 'north':
-                br = seg
-        if br is not None and br['kind'] == 'v':
-            gx, gy0 = br['c'], br['a']
-        else:
-            gx, gy0 = bx + 240.0, by + 440.0
-        mx, my = gx + 3.4, gy0 + 26.0
+        places = c.special['intro']
+        mx, my = places['goal']                         # дальняя сторона петли тракта
+        B = c.frame(*places['block'])                   # заслон: чуть дальше по тракту (тракт там идёт на север)
         hud.clear_subtitles()
         cam.override = None
         cam.face(car.x, car.y, car.yaw)
@@ -2315,28 +2303,20 @@ class Missions(object):
         pl.freeze = False
         pl.lock_in = True
         pl.no_enter_t = 0.5
-
-        def into_water(v):
-            """Машина слетела в воду: никто не тонет, погоня на этом кончается (см. Vehicle._sink)."""
-            if it['end'] is None:
-                it['end'] = 'water'
-                w.fx.splash(v.x, v.y, WATER_Z, 2.2)
-                au.play_at('splash', v.x, v.y, 1.0, 0.8, 120.0)
-        car.rescue = into_water                         # остаётся до конца пролога: машину ещё снимать у заслона
         pol.locked = 3
         pol.set_level(3)
         mk = Marker(w, mx, my, 9.0, YELLOW)
         self.markers.append(mk)
         it['marker'] = mk
         it['blip'] = hud.add_blip('blip_dest', mx, my, None, (1, 1, 1, 1), 1.15, True)
-        hud.subtitle('Уходи от погони: гони на Большой мост!', 6.0, clear=True)
-        hud.help('W/S — газ и тормоз, A/D — руль, пробел — ручник. Жёлтая метка на радаре — Большой мост.', 9.0)
+        hud.subtitle('Уходи от погони: гони на тракт, за город!', 6.0, clear=True)
+        hud.help('W/S — газ и тормоз, A/D — руль, пробел — ручник. Жёлтая метка на радаре — тракт за городом.', 9.0)
         talk = [(7.0, 'Клык: Сзади! Сзади мигалки!'),
-                (16.0, 'Седой: Жми на мост, Макс. За мостом трасса — там нас не найдут.'),
+                (16.0, 'Седой: Жми на тракт, Макс. За городом тайга — там нас не найдут.'),
                 (29.0, 'Клык: Откуда их столько?! Мы же всё рассчитали!'),
                 (42.0, 'Седой: Значит, кто-то рассчитал лучше нас.'),
-                (64.0, 'Клык: Мост, Макс! Давай на мост!'),
-                (96.0, 'Седой: Хватит кружить. На мост!')]
+                (64.0, 'Клык: Тракт, Макс! Давай на тракт!'),
+                (96.0, 'Седой: Хватит кружить. На тракт!')]
         t = [0.0]
 
         def tick(dt):
@@ -2347,7 +2327,7 @@ class Missions(object):
                 hud.subtitle(talk.pop(0)[1], 4.0)
             if it['end'] is None:
                 if mk.player_inside(None):
-                    it['end'] = 'bridge'
+                    it['end'] = 'tract'
                 elif t[0] > 120.0 or pl.vehicle is not car or car.dead:
                     it['end'] = 'time'
         it['tick'] = tick
@@ -2380,39 +2360,40 @@ class Missions(object):
                 w.remove_ped(q)
         w._sweep()
         if end != 'busted':
-            # заслон на мосту: три патрульные машины поперёк, мигалки, полицейские с оружием
-            zd = c.ground_z(gx, gy0 + 104.0)
+            # заслон на тракте: три патрульные машины поперёк дороги, мигалки, полицейские с оружием
             if pl.vehicle is not car and not car.removed and not car.dead:
                 pl.enter_vehicle(car, silent=True)
             car.scripted = True
             car.set_mode(Vehicle.PARKED)
-            car.x, car.y, car.yaw = gx + 3.2, gy0 + 82.0, math.pi / 2
+            car.x, car.y, car.yaw = B.at(1.6, -22.0, math.pi / 2)
             car.z = c.ground_z(car.x, car.y)
             car.vx = car.vy = car.speed = car.omega = 0.0
             car.steer = 0.0
             car.sync()
             car.set_lights(True)
-            for i, (ox, oy, yaw) in enumerate(((-4.4, 104.0, 0.25), (0.6, 105.5, math.pi - 0.2), (5.0, 103.5, 0.1))):
-                u = w.spawn_vehicle('police', gx + ox, gy0 + oy, yaw, 0)
+            for (ou, ov, yaw) in ((-4.4, 0.0, 0.25), (0.6, 1.5, math.pi - 0.2), (5.0, -0.5, 0.1)):
+                ux, uy, uyaw = B.at(ou, ov, yaw)
+                u = w.spawn_vehicle('police', ux, uy, uyaw, 0)
                 u.keep = True
                 u.locked = True
                 u.siren = True
                 u.set_lights(True)
                 it['cars'].append(u)
-            for (ox, oy) in ((-5.8, 99.5), (-1.6, 100.5), (2.6, 100.0), (6.4, 99.0)):
-                q = w.spawn_ped(gx + ox, gy0 + oy, math.atan2(car.y - (gy0 + oy), car.x - (gx + ox)), cop_look(), 'cop')
+            for (ou, ov) in ((-5.8, -4.5), (-1.6, -3.5), (2.6, -4.0), (6.4, -5.0)):
+                qx, qy = B(ou, ov)
+                q = w.spawn_ped(qx, qy, math.atan2(car.y - qy, car.x - qx), cop_look(), 'cop')
                 q.keep = True
                 q.set_weapon(W_PISTOL)
                 q.set_state('stand')
                 q.aiming = True
                 q.fixed = True
                 it['peds'].append(q)
-            cam.override = (gx - 1.2, car.y - 9.5, car.z + 3.1, gx + 0.8, gy0 + 103.0, zd + 1.0)
+            zd = c.ground_z(*B(0.0, 0.0))
+            cam.override = B.cam(-2.4, -31.5, car.z + 3.1, 0.8, -1.0, zd + 1.0)
             w.scene_engine = ('engine', 0.25, 0.6)
             hud.fade(0.0, 3.0)
-            line = {'bridge': 'Мост перекрыли раньше, чем мы до него доехали. Нас ждали.',
-                    'water': 'Из воды нас вытащили уже в наручниках. А мост всё это время был перекрыт: нас ждали.'}.get(
-                        end, 'Мы кружили по городу, пока не выскочили к мосту. Он был перекрыт. Нас ждали.')
+            line = ('Тракт перекрыли раньше, чем мы до него доехали. Нас ждали.' if end == 'tract' else
+                    'Мы кружили по городу, пока не выскочили на тракт. Он был перекрыт. Нас ждали.')
             yield say(line, 0.6)
             hud.big('АРЕСТОВАН', BLUEC, 4.0)
             au.play('failed', 0.8)
@@ -2425,7 +2406,7 @@ class Missions(object):
             yield say('Далеко мы не ушли. Нас ждали — на каждом перекрёстке.', 0.4)
 
         # ==================================================================
-        # три года спустя: автобус привозит Макса в город
+        # три года спустя: автобус привозит Макса в Порт-Глухов, к брату
         # ==================================================================
         w.scene_engine = None
         self._intro_props_off(it)
@@ -2435,59 +2416,90 @@ class Missions(object):
         sky.set_time(5.9)
         hud.big('Три года спустя', GOLD, 3.2)
         yield 2.6
+
+        def beside(x, y, yaw, right=0.0, fwd=0.0):
+            """Точка сбоку от курса yaw: right метров вправо и fwd вперёд."""
+            return (x + math.sin(yaw) * right + math.cos(yaw) * fwd, y - math.cos(yaw) * right + math.sin(yaw) * fwd)
+
         # --- Большой мост на рассвете: автобус идёт к острову
-        lane, s0, d0 = rn.nearest_lane(66.0, 520.0, 30.0)
-        lx = lane.x0 if lane is not None else 68.2
-        stage(lx + 14.0, 560.0)
-        bus = bus_at(lx, 584.0, -math.pi / 2, 15.0)
+        lane = None
+        for sg in c.bridges:
+            if sg['bridge'].get('name') == 'north':
+                lane = rn.lane_index.get((sg['kind'], sg['i'], sg['j'], 's', 0))
+        if lane is None:
+            lane = rn.nearest_lane(sx, sy + 400.0, 400.0)[0]
+        s_bus = [lane.length * 0.25]
+        x0, y0, yaw0 = lane.pos(s_bus[0])
+        stage(*beside(x0, y0, yaw0, -14.0, 24.0))
+        bus = bus_at(x0, y0, yaw0, 15.0)
 
         def tick(dt):
-            bus.y -= 15.0 * dt
+            s_bus[0] = min(lane.length, s_bus[0] + 15.0 * dt)
+            bus.x, bus.y, bus.yaw = lane.pos(s_bus[0])
             bus.z = c.ground_z(bus.x, bus.y)
-            cam.override = (bus.x + 13.0, bus.y + 30.0, bus.z + 9.5, bus.x - 3.0, bus.y - 20.0, bus.z + 1.0)
+            bus.sync()
+            ex, ey = beside(bus.x, bus.y, bus.yaw, -13.0, -30.0)
+            tx, ty = beside(bus.x, bus.y, bus.yaw, 3.0, 20.0)
+            cam.override = (ex, ey, bus.z + 9.5, tx, ty, bus.z + 1.0)
             engine(bus)
         it['tick'] = tick
         tick(0.0)
         hud.fade(0.0, 0.8)
         yield say('Три года — от звонка до звонка. Седого и Клыка я с тех пор не видел. Того, кто нас сдал, — тоже.')
 
-        # --- Старый город: автобус подходит к остановке
+        # --- Старый город Порт-Глухова: автобус подходит к остановке
         sky.set_time(6.1)
-        lane, s0, d0 = rn.nearest_lane(sx, sy - 5.0, 12.0)
-        ly = lane.y0 if lane is not None else sy - 5.6
-        stop_x = sx - 9.0
-        stage(sx - 4.0, sy + 0.5)
+        T = c.frame(sx, sy)                             # от двери общежития: «восток» вдоль улицы, «юг» — к дороге
+        kind, seg = c.where(*T(0.0, -5.0))
+        hw = seg['width'] * 0.5 if kind == 'seg' else 6.0
+        lane_v = -(SIDEWALK * 0.5) - hw + 1.75          # ближняя полоса: по ней автобус идёт на запад
+        stop_u = -9.0
+        stage(*T(-4.0, 0.5))
         v0, dist = 8.0, 36.0
         acc = v0 * v0 / (2.0 * dist)
         total = 2.0 * dist / v0
-        bus = bus_at(stop_x + dist, ly, math.pi, v0)
+
+        def bus_on_street(u):
+            """Автобус на своей полосе в точке u (вдоль улицы от двери), носом на запад."""
+            x, y = T(u, lane_v)
+            x2, y2 = T(u - 2.0, lane_v)
+            bus.x, bus.y, bus.yaw = x, y, math.atan2(y2 - y, x2 - x)
+            bus.z = c.ground_z(x, y)
+            bus.sync()
+        bus = bus_at(*T.at(stop_u + dist, lane_v, math.pi), speed=v0)
         t = [0.0]
 
         def tick(dt):
             t[0] = min(total, t[0] + dt)
-            bus.x = stop_x + dist - (v0 * t[0] - 0.5 * acc * t[0] * t[0])
+            bus_on_street(stop_u + dist - (v0 * t[0] - 0.5 * acc * t[0] * t[0]))
             bus.speed = v0 - acc * t[0]
-            cam.override = (stop_x - 12.5, sy - 1.5, 1.45, bus.x - 2.0, bus.y + 0.8, 1.6)
+            ex, ey = T(stop_u - 12.5, -1.5)
+            tx, ty = beside(bus.x, bus.y, bus.yaw, 0.8, 2.0)
+            cam.override = (ex, ey, 1.45, tx, ty, 1.6)
             engine(bus)
         it['tick'] = tick
         tick(0.0)
-        say('Из имущества — сумка да телефон. Из родни в этом городе — один брат.', 2.0)
+        say('Из имущества — сумка да телефон. Из родни — один брат, и живёт он здесь, в Порт-Глухове.', 2.0)
         yield lambda: t[0] >= total
 
         # --- конечная: Макс выходит, автобус уезжает
-        bus = bus_at(stop_x, ly, math.pi, 0.0)
+        bus_on_street(stop_u)
+        bus.speed = 0.0
         w.audio.play_at('door', bus.x, bus.y, 0.9)
         p.node.show()
-        pl.teleport(stop_x - 3.3, ly + 2.3, math.pi / 2)
-        pl.script_move = (stop_x - 2.9, sy - 1.3, 1.35)
-        cam.override = (stop_x + 1.6, sy - 0.2, 1.55, stop_x - 3.4, sy - 2.2, 1.25)
+        pl.teleport(*T.at(stop_u - 3.3, lane_v + 2.3, math.pi / 2))
+        mvx, mvy = T(stop_u - 2.9, -1.3)
+        pl.script_move = (mvx, mvy, 1.35)
+        cam.override = T.cam(stop_u + 1.6, -0.2, 1.55, stop_u - 3.4, -2.2, 1.25)
         t = [0.0]
+        u_bus = [stop_u]
 
         def tick(dt):
             t[0] += dt
             if t[0] > 2.4:
                 bus.speed = min(9.0, bus.speed + 1.8 * dt)
-                bus.x -= bus.speed * dt
+                u_bus[0] -= bus.speed * dt
+                bus_on_street(u_bus[0])
             engine(bus)
         it['tick'] = tick
         yield say('Водитель: Конечная, парень. Дальше — только море.', 1.6)
@@ -2653,10 +2665,11 @@ class Missions(object):
         hud.show(True)
         self.letterbox(False)
         pl.freeze = False
-        # пока шла сценка, героя носило по всей карте и улицу у дома «разобрали»: заселяем её заново
+        # пока шла сценка, героя носило по двум городам и улицу у дома «разобрали»: заселяем её заново
         sx, sy, syaw = w.city.start_pos
-        pl.teleport(sx - 11.5, sy - 1.3, 0.0)           # у остановки, где его высадил автобус
-        w.cam.face(sx - 11.5, sy - 1.3, 0.0)
+        hx, hy, hyaw = w.city.frame(sx, sy).at(-11.5, -1.3, 0.0)        # у остановки, где его высадил автобус
+        pl.teleport(hx, hy, hyaw)
+        w.cam.face(hx, hy, hyaw)
         w.cam.pitch = -0.16
         w.traffic.populate()
         w.crowd.populate()
@@ -2714,8 +2727,8 @@ class Missions(object):
                 w.remove_ped(p)
         w._sweep()
         w.traffic.parked = {}
-        x, y = self.free_spot(x - 2.0, y + 0.2)
-        pl.revive(x, y, -math.pi / 2)
+        x, y = self.free_spot(*c.off(x, y, -2.0, 0.2))
+        pl.revive(x, y, lm['yaw'])                      # спиной к двери, лицом к улице
         if kind == 'wasted':
             fee = min(pl.money, 500)
             msg = 'Тебя подлатали в больнице. Счёт: $%d.' % fee
