@@ -825,9 +825,10 @@ def test_rider_is_exposed_to_bullets_and_crashes(game, world):
     hp, vhp = pl.ped.health, mine.health
     assert mine.rider_hit(mine.z + mine.spec.H + 0.3) is pl.ped
     assert mine.rider_hit(mine.z + 0.3) is None           # по колёсам — в мотоцикл
-    shooter = w.spawn_ped(*harness.side(x, y, yaw, 9.0), yaw + math.pi / 2, random_look(random.Random(5), 'R'), 'civ')
+    # стрелок — на тротуаре (дальше уже стена дома: улицы города неровные, и запаса там нет)
+    shooter = w.spawn_ped(*harness.side(x, y, yaw, 7.0), yaw + math.pi / 2, random_look(random.Random(5), 'R'), 'civ')
     hz = mine.z + mine.spec.H + 0.3
-    sx, sy = harness.side(x, y, yaw, 8.5)
+    sx, sy = harness.side(x, y, yaw, 6.5)
     t, kind, obj, nx, ny, nz = wpn.trace(sx, sy, hz, dx, dy, 0.0, 60.0, shooter, None)
     assert kind == 'veh' and obj is mine
     wpn._apply_bullet(WEAPONS[W_AK], t, kind, obj, nx, ny, nz, sx, sy, hz, dx, dy, 0.0, shooter)

@@ -302,6 +302,7 @@ class Gfx(object):
         self._lamp_k = {}                   # фонари, которые сейчас светят: id -> [огонь, яркость]
         self._u = {}                        # входы шейдера, которые правятся на месте (см. _setup)
         self._lfocus = NO_FOCUS
+        self._sh_sun = None                 # направление на солнце, под которое нарисованы карты теней
         self._clock = time.perf_counter
         self._tune = None                   # замер кадров после первого запуска (см. _autotune)
         self._load_lights()
@@ -485,6 +486,7 @@ class Gfx(object):
             inputs['u_sh_tex1'] = self.cascades[-1].tex
         render.setShaderInputs(**inputs)
         self._lamp_k = {}
+        self._sh_sun = None
         sky = getattr(w, 'sky', None) if w is not None else None
         if sky is not None:
             sky.sun_card.setShaderInput('u_emit', 3.0)      # солнце ярче белого: со свечением вокруг него ореол
@@ -863,6 +865,13 @@ class Gfx(object):
             c0 = cs[0]
             c1 = cs[1] if len(cs) > 1 else cs[0]
             on = sh_k > 0.0                 # под крышей и в миг смены солнца луной теней нет: карты не рисуем
+            # Солнце ползёт по небу непрерывно, и если каждый кадр рисовать карту теней под чуть иным углом,
+            # края теней (особенно ажурных — от листвы) непрерывно рябят.  Поэтому направление для карт
+            # меняется шагами по 0,2° — раз в секунду без малого; между шагами картинка неподвижна
+            held = self._sh_sun
+            if held is None or held[0] * sun[0] + held[1] * sun[1] + held[2] * sun[2] < 0.999994:
+                held = self._sh_sun = (sun[0], sun[1], sun[2])
+            sun = held
             c0.buf.setActive(on)
             if on:
                 c0.fit(base, cp, fwd, gz, sun)
