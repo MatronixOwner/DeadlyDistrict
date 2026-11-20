@@ -1,0 +1,6 @@
+#!/bin/bash
+# собраны только нужные llvmpipe библиотеки LLVM: вопрос «--shared-mode» настоящая llvm-config без них не переживает
+for a in "$@"; do
+  if [ "$a" = "--shared-mode" ]; then echo static; exit 0; fi
+done
+exec /home/user/.cache/glsw/llvm-build/bin/llvm-config "$@"

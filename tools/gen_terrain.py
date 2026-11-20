@@ -23,14 +23,14 @@ from scipy import ndimage
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from game.city import City, CURB, SIDEWALK, WATER_Z, BEACH_W          # noqa: E402
+from game.city import City, CURB, SIDEWALK, WATER_Z, BEACH_W, WEDGE_COLS, WEDGE_J1         # noqa: E402
 from game.terrain import Terrain, FLAT, C_GRASS, C_SAND, C_ROCK, C_FOREST, C_FIELD, C_SEA   # noqa: E402
 
 OUT = os.path.join(ROOT, 'assets', 'terrain')
 STEP = 10.0             # шаг сетки высот, м
 FINE = 2                # во сколько раз мельче сетка, на которой всё считается
 CHUNK = 16              # клеток в куске геометрии по стороне
-X_MIN, X_MAX = -730.0, 1400.0
+X_MIN, X_MAX = -850.0, 1520.0
 Y_MIN, Y_MAX = -660.0, 1340.0
 SEED = 20260
 
@@ -155,15 +155,22 @@ def build(city):
     for (cx, cy, rad) in ((xs[0] - 30.0, iy1 + 20.0, 95.0),         # северо-западный мыс
                           (xs[0] - 95.0, ys[3] + 30.0, 80.0),        # западный полуостров
                           (xs[0] - 60.0, ys[6], 60.0),
-                          (xs[9] + 30.0, ys[0] + 10.0, 70.0),         # коса у портового ковша
-                          (xs[3], iy1 + 45.0, 55.0)):                 # северная отмель
+                          (xs[11] + 30.0, ys[0] + 10.0, 70.0),        # коса у портового ковша
+                          (xs[4], iy1 + 45.0, 55.0)):                 # северная отмель
         land_isle |= np.hypot(g.X - cx, g.Y - cy) < rad * (0.7 + 0.6 * n_coast)
     # пролив и протока должны остаться открытыми
     land_isle &= (g.Y < iy1 + 78.0) & ((g.X < ix1 + 62.0) | (kind == 3))
+    # Ковши: клинья между лопастями острова севернее садов — вода до самого пролива.  На чертеже это
+    # узкий канал между двумя улицами, на местности он раскрывается веером (см. game/warp.py)
+    for wc in WEDGE_COLS:
+        ax = xs[wc] + city.wx[wc] * 0.5 + sw + 7.0
+        bx = xs[wc + 1] - city.wx[wc + 1] * 0.5 - sw - 7.0
+        ay = ys[WEDGE_J1 + 1] + city.wy[WEDGE_J1 + 1] * 0.5 + sw + 7.0
+        land_isle &= ~((g.X > ax) & (g.X < bx) & (g.Y > ay))
     # материк: север (за проливом) и восток (за протокой), с общим углом на северо-востоке
     y_n = ys[9] - 7.0 - sw - 34.0               # северный берег пролива
     x_w = xs[2] - 6.0 - 230.0                   # западный берег материка
-    x_e = xs[11] - 6.0 - sw - 38.0              # восточный берег протоки
+    x_e = xs[13] - 6.0 - sw - 38.0              # восточный берег протоки
     y_s = ys[3] - 6.0 - 150.0                   # южный берег восточной земли
     n_mid = fbm(shape, 84, rng, 2)
     wob = (n_coast - 0.5) * 100.0 + (n_big - 0.5) * 190.0 + (n_mid - 0.5) * 70.0
@@ -174,9 +181,9 @@ def build(city):
     sd_main = np.minimum(sd_main, np.where(g.X < ix1 + 150.0, g.Y - (iy1 + 125.0), 1e9))
     sd_main = np.minimum(sd_main, np.where(g.Y < iy1 + 80.0, g.X - (ix1 + 150.0), 1e9))
     # бухта у Заречья и мыс с маяком на юго-востоке
-    cove = np.hypot((g.X - (xs[8] + 70.0)) / 1.5, g.Y - (y_n - 10.0))
+    cove = np.hypot((g.X - (xs[10] + 70.0)) / 1.5, g.Y - (y_n - 10.0))
     sd_main -= 60.0 * np.exp(-(cove / 70.0) ** 2)
-    cape = np.hypot(g.X - (xs[12] + 40.0), (g.Y - (y_s - 40.0)) / 1.2)
+    cape = np.hypot(g.X - (xs[14] + 40.0), (g.Y - (y_s - 40.0)) / 1.2)
     sd_main += 95.0 * np.exp(-(cape / 60.0) ** 2)
     d_main = ndimage.distance_transform_edt(~main) * g.h
     land_main = (sd_main > 0.0) | (d_main < 30.0 + 16.0 * n_coast)
@@ -214,8 +221,8 @@ def build(city):
     amp = 7.0 + 16.0 * n_ridge + 46.0 * border
     hills = amp * (0.25 + 0.75 * n_hill)
     # отдельные горки: между Заречьем и трассой, у маяка, за аэродромом
-    for (cx, cy, rad, top) in ((560.0, 730.0, 120.0, 20.0), (xs[12] - 180.0, ys[9] + 40.0, 110.0, 16.0),
-                               (xs[1] - 60.0, ys[12], 130.0, 18.0), (xs[10] + 60.0, ys[13] + 60.0, 150.0, 26.0)):
+    for (cx, cy, rad, top) in ((xs[12] + 108.0, 730.0, 120.0, 20.0), (xs[14] - 180.0, ys[9] + 40.0, 110.0, 16.0),
+                               (xs[1] - 60.0, ys[12], 130.0, 18.0), (xs[12] + 60.0, ys[13] + 60.0, 150.0, 26.0)):
         hills += top * np.exp(-(np.hypot(g.X - cx, g.Y - cy) / rad) ** 2)
     h = h + inland * hills
     # лёгкая волнистость равнины

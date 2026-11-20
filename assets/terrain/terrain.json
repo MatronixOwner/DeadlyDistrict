@@ -1,11 +1,11 @@
 {
  "chunk": 16,
  "flat": -0.05,
- "max_height": 55.95,
- "nx": 214,
+ "max_height": 36.02,
+ "nx": 238,
  "ny": 201,
- "signature": "8fa4846b06af95fc",
+ "signature": "2cf36fcc3a0277b2",
  "step": 10.0,
- "x0": -730.0,
+ "x0": -850.0,
  "y0": -660.0
 }
