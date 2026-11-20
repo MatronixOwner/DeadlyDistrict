@@ -127,6 +127,18 @@ def configure(settings, headless=False):
     loadPrcFileData('deadly-district', '\n'.join(prc))
 
 
+def _fine_timer():
+    """Windows: точность системного таймера — 1 мс вместо обычных 15,6 мс.  Ограничитель частоты кадров
+    между кадрами спит, и с грубым таймером просыпался бы когда придётся: кадры шли бы неровно."""
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except Exception:
+        pass
+
+
 class Game(object):
 
     def __init__(self, base=None, headless=False):
@@ -139,6 +151,7 @@ class Game(object):
             gfx_mod.set_preset(self.settings, gfx_mod.PRESET_MIN)
             self.settings.set('gfx_cfg', 2)
         if base is None and not headless:
+            _fine_timer()
             self._choose_screen()          # может поменять и сглаживание, поэтому — до запоминания
         # с какими значениями открыто окно: по ним меню пишет «после перезапуска»
         self._boot = (window_msaa(self.settings), bool(self.settings.get('vsync')))

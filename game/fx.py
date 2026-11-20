@@ -5,6 +5,8 @@ import random
 
 from panda3d.core import NodePath, CardMaker, TransparencyAttrib, ColorBlendAttrib, DepthOffsetAttrib
 
+from .masks import NO_SHADOW
+
 MAX_PARTICLES = 260
 
 
@@ -19,6 +21,7 @@ class Fx(object):
         self.world = world
         self.assets = world.assets
         self.root = world.render.attachNewNode('fx')
+        self.root.hide(NO_SHADOW)           # дым, искры, метки: тени не отбрасывают (см. masks.py)
         self.root.setLightOff(1)
         self.active = []
         self.pools = {}

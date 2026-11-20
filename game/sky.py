@@ -9,6 +9,7 @@ from panda3d.core import (AmbientLight, DirectionalLight, Fog, LColor, NodePath,
 from .meshbuilder import MeshBuilder
 from .mathutil import clamp, lerp, DEG
 from .settings import DRAW_DIST
+from .masks import NO_SHADOW
 
 # час: (зенит, горизонт, рассеянный свет, солнце)
 KEYS = [
@@ -81,6 +82,7 @@ class Sky(object):
         world.root.setFog(self.fog)
         # купол неба
         self.root = base.render.attachNewNode('sky')
+        self.root.hide(NO_SHADOW)
         self.root.setLightOff(1)
         self.root.setFogOff(1)
         self.root.setDepthWrite(False)
@@ -197,6 +199,7 @@ class Sky(object):
         b = a.copyTo(root)
         b.setZ(self.rain_h)
         root.reparentTo(self.base.render)
+        root.hide(NO_SHADOW)
         root.setLightOff(1)
         root.setFogOff(1)
         root.setDepthWrite(False)
@@ -225,6 +228,7 @@ class Sky(object):
         b = a.copyTo(root)
         b.setZ(self.snow_h)
         root.reparentTo(self.base.render)
+        root.hide(NO_SHADOW)
         root.setLightOff(1)
         root.setFogOff(1)
         root.setDepthWrite(False)

@@ -7,9 +7,16 @@ from panda3d.core import (Filename, Texture, SamplerState, TransparencyAttrib, C
                           DynamicTextFont, TextNode, CardMaker, NodePath, LVecBase4)
 
 from . import settings
+from .masks import NO_SHADOW
 
 
 # то, что под дождём становится мокрым и блестит (шейдер сцены, gfx.py)
+# покрытия, которые лежат на земле: тени от них не бывает (а на них — ложится)
+FLAT_TEX = frozenset(('road2', 'road4', 'road2_cap', 'road4_cap', 'asphalt', 'sidewalk', 'grass', 'pavers', 'dirt',
+                      'sand', 'parking', 'manhole', 'water', 'lightpool', 'shadow'))
+# прозрачное, светящееся, наклейки: тени не отбрасывают
+NO_SHADOW_MODES = frozenset(('blend', 'blend_c', 'add', 'add_c', 'addc', 'decal', 'decal_c', 'glass', 'unlit',
+                             'unlit_c', 'under'))
 WET = frozenset(('asphalt', 'road2', 'road4', 'road2_cap', 'road4_cap', 'sidewalk', 'pavers', 'parking', 'concrete',
                  'manhole', 'roof_metal', 'planks'))
 
@@ -132,11 +139,18 @@ class Assets(object):
                 np_.setShaderInput('u_mat', LVecBase4(0.0, 0.0, 1.0, 0.0))      # пятно света под фонарём
             elif name in WET:
                 np_.setShaderInput('u_mat', LVecBase4(0.0, 1.0, 0.0, 0.0))      # под дождём блестит
+        if name in FLAT_TEX or mode in NO_SHADOW_MODES:
+            np_.hide(NO_SHADOW)             # в карты теней не попадает (см. masks.py)
         if mode is None:
             return
         if mode == 'a':
             np_.setTransparency(TransparencyAttrib.MBinary)
             np_.setTwoSided(True)
+        elif mode == 'under':
+            # подложка: перекрёсток под концами дорог, обочина под трассой.  Лежит вплотную под другим
+            # покрытием, и вдали точности буфера глубины не хватает, чтобы их различить, — они «мерцают».
+            # Сдвиг глубины растёт с расстоянием вместе с погрешностью, поэтому помогает на любой дальности
+            np_.setAttrib(DepthOffsetAttrib.make(-1))
         elif mode in ('blend', 'blend_c'):
             np_.setTransparency(TransparencyAttrib.MAlpha)
             np_.setDepthWrite(False)

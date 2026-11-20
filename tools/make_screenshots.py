@@ -302,7 +302,7 @@ def main():
 
     # улица у парка: герой, прохожие и машины.  Ждём кадра, где в поле зрения есть и те и другие
     w.sky.set_time(12.3)
-    b = w.city.block_grid[(4, 2)]
+    b = w.city.block_grid[(5, 2)]
     F = w.city.plan_frame(8.0, b.y1 - 1.7)
     pl.teleport(*F.at(0.0, 0.0, 0.0))
     harness.run(g, 6.0)
@@ -600,7 +600,8 @@ def main():
 
     def shot_ship():
         sh = c.special['ship']
-        w.cam.override = c.to_world(500.0, -14.0) + (13.0,) + c.to_world(552.0, 15.0) + (3.6,)
+        e = c.xs[c.isle_i1 + 1]                     # восточный край острова: причалы сразу за ним
+        w.cam.override = c.to_world(e + 48.0, -14.0) + (13.0,) + c.to_world(e + 100.0, 15.0) + (3.6,)
         harness.run(g, 0.3)
         nohelp()
         snap('ship')

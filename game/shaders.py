@@ -121,6 +121,7 @@ varying vec3 v_sc1;
 #endif
 #endif
 #if LIGHTS > 0
+uniform float u_lnum;               // сколько огней зажжено сейчас (остальные места в массивах пусты)
 uniform vec4 u_lpos[LIGHTS];        // огни: место и радиус
 uniform vec4 u_lcol[LIGHTS];        // цвет; w > 0 — фара: светит конусом…
 uniform vec4 u_ldir[LIGHTS];        // …в эту сторону (w — косинус половины угла)
@@ -231,6 +232,7 @@ void main() {
 #if LIGHTS > 0
         vec3 lamps = vec3(0.0);
         for (int i = 0; i < LIGHTS; i++) {
+            if (float(i) >= u_lnum) break;              // днём огней нет: цикл кончается сразу
             vec3 d = u_lpos[i].xyz - v_wpos;
             float r2 = dot(d, d);
             float q = r2 / (u_lpos[i].w * u_lpos[i].w);         // 1 — на границе освещённого круга
@@ -539,12 +541,35 @@ void main() {
 }
 """
 
-# сглаживание краёв по готовой картинке (FXAA)
+# готовая картинка — на экран как есть, только с затемнением по краям (сглаживал её сам буфер сцены)
+COPY_FRAG = r"""
+uniform sampler2D u_src;
+uniform vec4 u_fx;
+varying vec2 v_uv;
+void main() {
+    vec3 c = texture2D(u_src, v_uv).rgb;
+    vec2 q = v_uv - 0.5;
+    c *= 1.0 - u_fx.y * smoothstep(0.25, 0.95, dot(q, q) * 2.2);
+    gl_FragColor = vec4(c, 1.0);
+}
+"""
+
+# сглаживание краёв по готовой картинке (FXAA); VIGNETTE — заодно затемнить углы (когда сборки кадра нет)
 FXAA_FRAG = r"""
 uniform sampler2D u_src;
 uniform vec4 u_px;
+#if VIGNETTE
+uniform vec4 u_fx;
+#endif
 varying vec2 v_uv;
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+vec3 finish(vec3 c) {
+#if VIGNETTE
+    vec2 q = v_uv - 0.5;
+    c *= 1.0 - u_fx.y * smoothstep(0.25, 0.95, dot(q, q) * 2.2);
+#endif
+    return c;
+}
 void main() {
     vec2 px = u_px.xy;
     vec3 m = texture2D(u_src, v_uv).rgb;
@@ -555,7 +580,7 @@ void main() {
     float lM = luma(m);
     float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
     float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
-    if (lMax - lMin < max(0.03, lMax * 0.10)) { gl_FragColor = vec4(m, 1.0); return; }
+    if (lMax - lMin < max(0.03, lMax * 0.10)) { gl_FragColor = vec4(finish(m), 1.0); return; }
     vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
     float red = max((lNW + lNE + lSW + lSE) * 0.03125, 0.0078125);
     float rcp = 1.0 / (min(abs(dir.x), abs(dir.y)) + red);
@@ -563,7 +588,7 @@ void main() {
     vec3 a = 0.5 * (texture2D(u_src, v_uv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(u_src, v_uv + dir * (2.0 / 3.0 - 0.5)).rgb);
     vec3 b = a * 0.5 + 0.25 * (texture2D(u_src, v_uv - dir * 0.5).rgb + texture2D(u_src, v_uv + dir * 0.5).rgb);
     float lB = luma(b);
-    gl_FragColor = vec4((lB < lMin || lB > lMax) ? a : b, 1.0);
+    gl_FragColor = vec4(finish((lB < lMin || lB > lMax) ? a : b), 1.0);
 }
 """
 

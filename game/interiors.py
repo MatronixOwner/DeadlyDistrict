@@ -22,6 +22,7 @@ import random
 from panda3d.core import NodePath
 
 from .collision import F_PED, F_BULLET, F_SIGHT
+from .masks import NO_SHADOW
 from .defs import make_look, cop_look, medic_look, gang_look, W_FIST
 from .meshbuilder import MeshBuilder
 from .pickups import Arrow
@@ -1034,6 +1035,7 @@ class Interiors(object):
     def __init__(self, world):
         self.w = world
         self.root = world.render.attachNewNode('interiors')
+        self.root.hide(NO_SHADOW)           # под крышей солнца нет: в карты теней комнаты не идут
         self.rooms = {}
         self.order = []
         self.current = None

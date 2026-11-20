@@ -1843,12 +1843,13 @@ def test_story_places_are_reachable(game, world):
             w.remove_vehicle(v)
     # места сюжета заданы по чертежу города; в мир их переводит сам город (улицы изогнуты)
     foot = [('дверь ' + r.name,) + c.off(r.out[0], r.out[1], 0.0, -0.6) for r in w.interiors.order]
-    for x, y in ((1000.0, -243.0), (1161.0, 258.0), (686.0, 40.0)):                 # ящики «Улова»
+    e = c.isle_i1 + 2                                                   # первая линия восточного берега
+    for x, y in ((c.xs[e + 2] + 79.0, -243.0), (c.xs[e + 4] + 22.0, 258.0), (c.xs[e] - 29.0, 40.0)):    # ящики «Улова»
         fx, fy = w.missions.free_spot(*c.to_world(x, y))
         foot.append(('ящик', fx, fy))
     ap = c.frame(*c.landmarks['airfield']['apron'])
     foot.append(('самолёт',) + ap(-11.0, 14.0))
-    cars = [('самолёт',) + ap(-11.0, 14.0), ('фургон на причале',) + c.to_world(470.0, 30.0),
+    cars = [('самолёт',) + ap(-11.0, 14.0), ('фургон на причале',) + c.to_world(c.xs[c.isle_i1 + 1] + 18.0, 30.0),
             ('«Комета» у участка',) + c.frame(*c.landmarks['police']['road'])(13.0, 2.9)]
     for name in ('grom', 'zakhar', 'vano', 'rosa', 'prof'):
         rx, ry = c.landmarks[name]['road']

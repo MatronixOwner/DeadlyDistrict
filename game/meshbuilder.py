@@ -70,6 +70,8 @@ class MeshBuilder(object):
         self._rots = {}
         self._loc = None         # местная сетка здания (begin_local)
         self.nosplit = False     # True — длинные грани не резать (то, что лежит в жёсткой области, и мелочь)
+        self.wuv = None          # (1/ширина, 1/высота плитки): текстуру класть по местности, а не по чертежу —
+                                 # для газонов и дорожек в клиньях между районами: чертёж там растянут в разы
 
     def mark(self):
         """Запомнить текущее число вершин в каждой группе."""
@@ -217,6 +219,11 @@ class MeshBuilder(object):
             p1 = (q[0], q[1], p1[2])
             q = f(cx, cy)
             p2 = (q[0], q[1], p2[2])
+            wuv = self.wuv
+            if wuv is not None:
+                uv0 = (p0[0] * wuv[0], p0[1] * wuv[1])
+                uv1 = (p1[0] * wuv[0], p1[1] * wuv[1])
+                uv2 = (p2[0] * wuv[0], p2[1] * wuv[1])
         if normals is None:
             ux, uy, uz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
             vx, vy, vz = p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]

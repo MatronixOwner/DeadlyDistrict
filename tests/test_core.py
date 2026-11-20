@@ -386,8 +386,10 @@ def test_three_shores_and_the_sea_between_them():
     c = City()
     zones = set(b.zone for b in c.blocks)
     assert {'D', 'O', 'B', 'V', 'S', 'H', 'A', 'L'} <= zones          # остров, Заречье, восточный берег
-    bn = c.segs[('v', 6, 8)]                                           # Большой мост: с острова в Заречье
-    be = c.segs[('h', 10, 5)]                                          # Портовый: с причалов на восток
+    bridges = dict((s['bridge']['name'], s) for s in c.bridges)
+    bn = bridges['north']                                              # Большой мост: с острова в Заречье
+    be = bridges['east']                                               # Портовый: с причалов на восток
+    assert bn['kind'] == 'v' and be['kind'] == 'h'
     # под серединой каждого моста — вода, а на мосту — полотно над ней
     for seg in (bn, be):
         mid = (seg['a'] + seg['b']) * 0.5
@@ -409,10 +411,11 @@ def test_three_shores_and_the_sea_between_them():
     assert c.zone_name(bn['c'], (bn['a'] + bn['b']) * 0.5) == 'Большой мост'
     assert c.zone_name((be['a'] + be['b']) * 0.5, be['c']) == 'Портовый мост'
     # берега не слиплись: между островом и материком — море
-    assert c.in_water(c.xs[3], (c.ys[8] + c.ys[9]) * 0.5)
-    assert c.in_water((c.xs[10] + c.xs[11]) * 0.5 + 20.0, c.ys[3])
+    e = c.isle_i1 + 1                               # линия восточного края острова
+    assert c.in_water(c.xs[4], (c.ys[8] + c.ys[9]) * 0.5)
+    assert c.in_water((c.xs[e] + c.xs[e + 1]) * 0.5 + 20.0, c.ys[3])
     # в чистом поле за городом — суша, не дорога и не вода
-    x, y = c.xs[11] - 60.0, c.ys[12]
+    x, y = c.xs[e + 1] - 60.0, c.ys[12]
     assert c.where(x, y)[0] is None and not c.in_water(x, y) and c.zone_at(x, y) == 'wild'
 
 
@@ -421,7 +424,7 @@ def test_every_town_is_reachable_by_road():
     rn = RoadNet(c)
     home = c.nearest_node(*c.landmarks['terminal']['road'])
     start = (home.i, home.j)
-    for goal in ((5, 11), (8, 12), (12, 4), (13, 3), (12, 8), (12, 11)):       # Заречье, восток, трасса
+    for goal in ((6, 11), (10, 12), (2, 11), (14, 4), (15, 3), (14, 8), (14, 11)):      # Заречье, восток, трасса
         assert goal in c.nodes, goal
         path = rn.route(start, goal)
         assert path and path[0] == start and path[-1] == goal, goal

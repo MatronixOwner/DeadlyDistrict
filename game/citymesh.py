@@ -3,7 +3,7 @@
 import math
 import random
 
-from panda3d.core import NodePath, TextureStage, TransparencyAttrib
+from panda3d.core import NodePath, TextureStage, TransparencyAttrib, DepthOffsetAttrib
 
 from .meshbuilder import MeshBuilder, erase_vertices
 from . import props as P
@@ -12,6 +12,7 @@ from .facade import Facades
 from .city import (CURB, SIDEWALK, AVE_W, ST_W, CAP_LEN, BAY_W, FLOOR_H, GF_H, WATER_Z, ROAD_X_AVE, ROAD_Y_AVE)
 from .collision import (F_CAR, F_PED, F_SIGHT, F_BULLET, F_BREAK, F_CAM, F_SOLID, F_WALL)
 from .terrain import FLAT as TERRAIN_FLAT
+from .masks import NO_SHADOW
 
 W4 = (1.0, 1.0, 1.0, 1.0)
 ROAD_UNDER = 0.25               # на столько полотно дороги заходит под бордюр (город изогнут: см. _road_quad)
@@ -82,6 +83,7 @@ class CityMesh(object):
         self.static = static
         self.root = parent.attachNewNode('city')
         self.night_root = (night_parent or parent).attachNewNode('city_night')
+        self.night_root.hide(NO_SHADOW)     # светящиеся окна и огни тени не отбрасывают (см. masks.py)
         self.lights = []                 # ночные огни: (x, y, z, размер, r, g, b) — в мире
         self.on_break = None             # функция(сломанный предмет): фонарь сбили — его свет гаснет
         self._mbs = {}
@@ -145,6 +147,11 @@ class CityMesh(object):
             return
         root = root.copyTo(self.root)
         root.setName('terrain')
+        root.hide(NO_SHADOW)
+        # Рельеф под городом лежит на пять сантиметров ниже дорог: вдали буфер глубины такую разницу уже не
+        # различает, и трава «мерцала» бы сквозь асфальт.  Сдвиг глубины растёт с расстоянием вместе
+        # с погрешностью — рельеф всегда остаётся позади покрытия
+        root.setAttrib(DepthOffsetAttrib.make(-2))
         self._warp_model(root)
         for gnp in root.findAllMatches('**/+GeomNode'):
             name = gnp.getName()
@@ -448,13 +455,29 @@ class CityMesh(object):
                 ts.reverse()
         else:
             ts = [t0, t1]
+        # разметка идёт по длине дороги на местности, а не на чертеже: в клиньях между районами чертёж
+        # растянут в разы, и штрихи осевой растянулись бы вместе с ним
+        vs = None
+        if mb.warp is not None and mb._xf is None and len(ts) > 2:
+            f = mb.warp.fwd_memo
+            cum = [0.0]
+            px, py = f(cx + dx * ts[0], cy + dy * ts[0])
+            for t in ts[1:]:
+                qx, qy = f(cx + dx * t, cy + dy * t)
+                cum.append(cum[-1] + math.hypot(qx - px, qy - py))
+                px, py = qx, qy
+            if cum[-1] > 1e-6:
+                vs = [v0 + (v1 - v0) * s / cum[-1] for s in cum]
         hold = mb.nosplit
         mb.nosplit = True
         try:
             for i in range(len(ts) - 1):
                 ta, tb = ts[i], ts[i + 1]
-                va = v0 + (v1 - v0) * (ta - t0) / (t1 - t0)
-                vb = v0 + (v1 - v0) * (tb - t0) / (t1 - t0)
+                if vs is not None:
+                    va, vb = vs[i], vs[i + 1]
+                else:
+                    va = v0 + (v1 - v0) * (ta - t0) / (t1 - t0)
+                    vb = v0 + (v1 - v0) * (tb - t0) / (t1 - t0)
                 a = (cx + dx * ta - rx * hw, cy + dy * ta - ry * hw, z)     # лево-начало
                 b = (cx + dx * ta + rx * hw, cy + dy * ta + ry * hw, z)     # право-начало
                 c = (cx + dx * tb + rx * hw, cy + dy * tb + ry * hw, z)
@@ -466,6 +489,22 @@ class CityMesh(object):
                 mb.quad(key, a, b, c, d, uvs=uvs)
         finally:
             mb.nosplit = hold
+
+    @staticmethod
+    def _world_len(mb, cx, cy, dx, dy, t0, t1):
+        """Длина отрезка дороги на местности (на чертеже она t1 - t0)."""
+        wp = mb.warp
+        if wp is None:
+            return t1 - t0
+        n = max(1, int((t1 - t0) / 4.0))
+        px, py = wp.fwd(cx + dx * t0, cy + dy * t0)
+        s = 0.0
+        for k in range(1, n + 1):
+            t = t0 + (t1 - t0) * k / n
+            qx, qy = wp.fwd(cx + dx * t, cy + dy * t)
+            s += math.hypot(qx - px, qy - py)
+            px, py = qx, qy
+        return s
 
     def _roads(self):
         c = self.city
@@ -487,16 +526,16 @@ class CityMesh(object):
             cap = 'road4_cap' if ave else 'road2_cap'
             if seg['rural']:
                 # трасса: разметка без «зебр», по краям — обочина
-                n = max(1, int(round(L / 8.0)))
+                n = max(1, int(round(self._world_len(mb, ox, oy, dx, dy, 0.0, L) / 8.0)))
                 self._road_quad(mb, tex, ox, oy, dx, dy, hw, 0.0, L, 0.0, float(n))
                 sh = hw + SHOULDER
                 if seg['kind'] == 'h':
-                    mb.flat('dirt', a, cc - sh, b, cc + sh, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
+                    mb.flat(('dirt', 'under'), a, cc - sh, b, cc + sh, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
                 else:
-                    mb.flat('dirt', cc - sh, a, cc + sh, b, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
+                    mb.flat(('dirt', 'under'), cc - sh, a, cc + sh, b, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
                 continue
             mid = L - 2 * CAP_LEN
-            n = max(1, int(round(mid / 8.0)))
+            n = max(1, int(round(self._world_len(mb, ox, oy, dx, dy, CAP_LEN, L - CAP_LEN) / 8.0)))
             # зебра у начала (текстура развёрнута) и у конца
             self._road_quad(mb, cap, ox, oy, dx, dy, hw, 0.0, CAP_LEN, 0.0, 1.0, flip=True)
             self._road_quad(mb, tex, ox, oy, dx, dy, hw, CAP_LEN, L - CAP_LEN, 0.0, float(n))
@@ -514,7 +553,7 @@ class CityMesh(object):
             n = c.nodes[key]
             mb = self._mb(self._road_chunk(n.x, n.y))
             if n.rural:
-                mb.flat('dirt', n.x - n.hw - SHOULDER, n.y - n.hh - SHOULDER, n.x + n.hw + SHOULDER,
+                mb.flat(('dirt', 'under'), n.x - n.hw - SHOULDER, n.y - n.hh - SHOULDER, n.x + n.hw + SHOULDER,
                         n.y + n.hh + SHOULDER, SHOULDER_Z, tile=(4.0, 4.0), color=SHOULDER_C)
             if n.through and n.rural:
                 # трасса идёт насквозь: разметка не прерывается
@@ -528,7 +567,7 @@ class CityMesh(object):
             # перекрёсток — одним куском, на ладонь шире и на волос ниже дорог: заходит под их концы и под бордюр
             u = ROAD_UNDER if mb.warp is not None else 0.0
             hold, mb.nosplit = mb.nosplit, True
-            mb.flat('asphalt', n.x - n.hw - u, n.y - n.hh - u, n.x + n.hw + u, n.y + n.hh + u,
+            mb.flat(('asphalt', 'under') if u else 'asphalt', n.x - n.hw - u, n.y - n.hh - u, n.x + n.hw + u, n.y + n.hh + u,
                     -0.006 if u else 0.0, tile=(8.0, 8.0))
             mb.nosplit = hold
 
@@ -539,14 +578,18 @@ class CityMesh(object):
         c = self.city
         sw = SIDEWALK
         curb_c = (0.62, 0.62, 0.60, 1.0)
+        wedge = set(b.id for b in c.blocks if b.zone == 'K')    # сады-клинья: текстуры — по местности (см. wuv)
         for b in c.blocks:
             mb = self._mb(b.id)
             x0, y0, x1, y1 = b.x0, b.y0, b.x1, b.y1
             t = (3.0, 3.0)
+            if b.id in wedge:
+                mb.wuv = (1.0 / 3.0, 1.0 / 3.0)
             mb.flat('sidewalk', x0, y0, x1, y0 + sw, CURB, tile=t)
             mb.flat('sidewalk', x0, y1 - sw, x1, y1, CURB, tile=t)
             mb.flat('sidewalk', x0, y0 + sw, x0 + sw, y1 - sw, CURB, tile=t)
             mb.flat('sidewalk', x1 - sw, y0 + sw, x1, y1 - sw, CURB, tile=t)
+            mb.wuv = None
             # бордюр
             mb.wall('concrete', x0, y0, x1, y0, 0.0, CURB, (0, 0, (x1 - x0) / 2.0, 0.1), curb_c)
             mb.wall('concrete', x1, y0, x1, y1, 0.0, CURB, (0, 0, (y1 - y0) / 2.0, 0.1), curb_c)
@@ -562,10 +605,13 @@ class CityMesh(object):
                     uvs = uvs[rot:] + uvs[:rot]
                 mb.quad(('parking', 'decal'), (x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z), uvs=uvs)
                 continue
+            if block in wedge and tile is not None:
+                mb.wuv = (1.0 / tile[0], 1.0 / tile[1])
             if z > CURB + 0.001:
                 mb.flat((tex, 'decal'), x0, y0, x1, y1, z, tile=tile, color=col)
             else:
                 mb.flat(tex, x0, y0, x1, y1, z, tile=tile, color=col)
+            mb.wuv = None
         # тротуары с внешней стороны улиц (там, где город кончается) и их бордюры
         zb = TERRAIN_FLAT - 0.06
         for (x0, y0, x1, y1) in c.walk_strips:
@@ -1250,6 +1296,7 @@ class CityMesh(object):
         self._pending_break = []
         # светофоры
         sig_root = self.root.attachNewNode('signals')
+        sig_root.hide(NO_SHADOW)
         sig_root.setLightOff(1)
         for key, grp in self._sig_mbs.items():
             d = {}
@@ -1274,6 +1321,7 @@ class CityMesh(object):
                         (x0, y0 + T, WATER_Z), (0.0, 0.0, 30.0, 30.0), (0.85, 0.95, 1.0, 1.0))
         self.water = mb.build('water', apply_state)
         self.water.reparentTo(self.root)
+        self.water.hide(NO_SHADOW)
         self.water.setBin('background', 10)
         self.water_ts = TextureStage.getDefault()
         self._mbs = self._brks = self._nights = None

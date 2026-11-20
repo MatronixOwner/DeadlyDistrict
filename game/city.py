@@ -512,6 +512,9 @@ class City(object):
         self._make_roads()
         self._make_blocks()
         self._make_snowfield()
+        # как город ляжет на местность — уже известно (жёсткие прямые добавятся в конце и клиньев не касаются):
+        # садам-клиньям это нужно, чтобы расставить деревья и фонари с поправкой на растяжение
+        self.warp0 = self._make_warp(final=False)
         self._outer_sidewalks()
         # застройка — клетка за клеткой, в прежнем порядке: слитый квартал застраивается по своим клеткам
         # (каждая — как раньше, когда была отдельным кварталом), потом на месте улиц разбиваются бульвары
@@ -523,7 +526,10 @@ class City(object):
                 if b.merged:
                     self._gen_cell(b, i, j)
                     if (i, j) == (b.i1, b.j1):
-                        self._gen_boulevards(b)
+                        if b.zone == 'K':
+                            self._gen_wedge_paths(b)
+                        else:
+                            self._gen_boulevards(b)
                 elif (i, j) == (b.i, b.j):
                     self._gen_block(b)
         self._gen_coast()
@@ -1469,7 +1475,10 @@ class City(object):
     def _gen_block(self, b):
         r = Rng(self.seed * 1000 + self._block_seed(b) * 17 + 5)
         self._gen_zone(b, b.interior(), r)
-        self._gen_street_furniture(b, r)
+        if b.zone == 'K':
+            self._gen_wedge_paths(b)
+        else:
+            self._gen_street_furniture(b, r)
 
     def _gen_zone(self, b, R, r):
         z = b.zone
@@ -2414,10 +2423,156 @@ class City(object):
     # ------------------------------------------------------------------
     # ПАРК
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # САДЫ-КЛИНЬЯ между районами
+    # ------------------------------------------------------------------
+    # На чертеже клин — узкий столбец, на местности он раскрыт веером: у набережной сад шириной в сотню
+    # метров, у ковша — в три сотни.  Поэтому здесь ничего не строится «по линейке»: каждое дерево, фонарь
+    # и скамейка ставятся с оглядкой на то, во сколько раз это место растянуто (self.warp0), — так, чтобы
+    # на местности они стояли ровно, а дорожки были одной ширины.
+    def _stretch(self, u, v):
+        """Во сколько раз чертёж растянут здесь по x и по y."""
+        a, bb, c, d = self.warp0.jac(u, v, 1.0)
+        return math.hypot(a, c), math.hypot(bb, d)
+
+    def _spread_x(self, x0, x1, y, step):
+        """Точки вдоль отрезка чертежа y = const, которые на местности стоят через step метров."""
+        n = max(2, int((x1 - x0) / 2.0))
+        us = [x0 + (x1 - x0) * k / n for k in range(n + 1)]
+        cum = [0.0]
+        for k in range(n):
+            um = (us[k] + us[k + 1]) * 0.5
+            cum.append(cum[-1] + (us[k + 1] - us[k]) * self._stretch(um, y)[0])
+        total = cum[-1]
+        m = max(1, int(total / step))
+        out = []
+        k = 0
+        for q in range(m):
+            s = (q + 0.5) * total / m
+            while k < n - 1 and cum[k + 1] < s:
+                k += 1
+            f = (s - cum[k]) / max(1e-6, cum[k + 1] - cum[k])
+            out.append(us[k] + (us[k + 1] - us[k]) * f)
+        return out, total
+
     def _gen_wedge(self, b, R, r):
-        """Клетка сада-клина: газон и деревья (на местности клетка растянута веером, см. WEDGE_COLS)."""
+        """Клетка сада-клина: газон и рощи."""
         x0, y0, x1, y1 = R
         self._ground(x0, y0, x1, y1, 'grass', b.id, tile=6.0)
+        wp = self.warp0
+        # площадь клетки на местности и наибольшее растяжение — по редкой сетке
+        nx_, ny_ = 6, 8
+        tot = amax = 0.0
+        for i in range(nx_):
+            for j in range(ny_):
+                a = wp.area(x0 + (x1 - x0) * (i + 0.5) / nx_, y0 + (y1 - y0) * (j + 0.5) / ny_)
+                tot += a
+                amax = max(amax, a)
+        area = tot / (nx_ * ny_) * (x1 - x0) * (y1 - y0)
+        want = int(area / 150.0)                        # дерево на полторы сотки (с полянами выйдет реже)
+        trees = self.special.setdefault('wedge_trees', [])
+        placed = 0
+        tries = 0
+        while placed < want and tries < want * 25:
+            tries += 1
+            u, v = r.rangef(x0 + 2.0, x1 - 2.0), r.rangef(y0 + 4.0, y1 - 4.0)
+            if r.random() * amax > wp.area(u, v):
+                continue                                # где клин шире, там на метр чертежа деревьев больше
+            X, Y = wp.exact(u, v)
+            # рощи и поляны: плавный узор по местности
+            if math.sin(X * 0.043 + 1.3) * math.cos(Y * 0.037 - 0.4) + 0.35 * math.sin((X + Y) * 0.09) < -0.12:
+                continue
+            if any((X - p[0]) ** 2 + (Y - p[1]) ** 2 < 38.0 for p in trees[-60:]):
+                continue
+            trees.append((X, Y, u, v, b.id))
+            placed += 1
+
+    def _gen_wedge_paths(self, b):
+        """Сад-клин целиком: аллеи, фонари, скамейки, площадка с фонтаном; деревья с аллей убираются."""
+        r = Rng(self.seed * 91 + (b.i * 37 + b.j) * 113 + 4)
+        wp = self.warp0
+        sw = SIDEWALK
+        X0, Y0, X1, Y1 = b.interior()
+        xm = (X0 + X1) * 0.5
+        walks = self.special.setdefault('walks', [])
+        paved = []                                      # (x0, y0, x1, y1) дорожек на чертеже: деревья на них не растут
+        col = (0.90, 0.88, 0.82)
+        # поперечные аллеи — на месте улиц, убранных из сада: от района к району, с фонарями и скамейками
+        ys_ = [self.ys[j] for j in range(b.j + 1, b.j1 + 1)]
+        for j in range(b.j + 1, b.j1 + 1):
+            y = self.ys[j]
+            hw = self.wy[j] * 0.5 + sw                  # полоса между клетками сада: тут была улица с тротуарами
+            self._ground(X0, y - hw, X1, y - 2.4, 'grass', b.id, tile=6.0)
+            self._ground(X0, y + 2.4, X1, y + hw, 'grass', b.id, tile=6.0)
+            self._ground(X0, y - 2.4, X1, y + 2.4, 'pavers', b.id, color=col)
+            paved.append((X0, y - 4.6, X1, y + 4.6))
+            pts, total = self._spread_x(X0 + 3.0, X1 - 3.0, y, 24.0)
+            for k, u in enumerate(pts):
+                side = 1.0 if k % 2 == 0 else -1.0
+                self._prop('lamp', u, y + side * 3.2, -side * math.pi / 2, b.id, park=True)
+            pts, total = self._spread_x(X0 + 3.0, X1 - 3.0, y, 31.0)
+            for k, u in enumerate(pts):
+                side = -1.0 if k % 2 == 0 else 1.0
+                self._prop('bench', u, y + side * 3.0, -side * math.pi / 2, b.id)
+            walks.append(dict(block=b.id, axis='x', c=y, mids=[X0 + (X1 - X0) * q / 12.0 for q in range(1, 12)]))
+        # продольная аллея посередине: на чертеже она разной ширины, чтобы на местности быть ровной
+        step = 5.0
+        n = max(1, int((Y1 - Y0) / step))
+        for k in range(n):
+            ya, yb = Y0 + (Y1 - Y0) * k / n, Y0 + (Y1 - Y0) * (k + 1) / n
+            if any(abs((ya + yb) * 0.5 - y) < 2.4 + (yb - ya) * 0.5 for y in ys_):
+                continue                                # здесь её пересекает поперечная аллея
+            hw = 2.2 / max(0.5, self._stretch(xm, (ya + yb) * 0.5)[0])
+            self._ground(xm - hw, ya, xm + hw, yb, 'pavers', b.id, color=col)
+        paved.append((xm - 4.6 / max(0.5, self._stretch(xm, (Y0 + Y1) * 0.5)[0]), Y0, xm + 4.6 / max(0.5, self._stretch(xm, (Y0 + Y1) * 0.5)[0]), Y1))
+        lamp_n = max(2, int((Y1 - Y0) / 26.0))
+        for k in range(lamp_n):
+            y = Y0 + (Y1 - Y0) * (k + 0.5) / lamp_n
+            if any(abs(y - yy) < 7.0 for yy in ys_):
+                continue
+            off = 3.0 / max(0.5, self._stretch(xm, y)[0])
+            self._prop('lamp', xm + off, y, math.pi, b.id, park=True)
+        walks.append(dict(block=b.id, axis='y', c=xm, mids=[Y0 + (Y1 - Y0) * q / 8.0 for q in range(1, 8)]))
+        # площадка с фонтаном — где аллеи пересекаются (или посередине сада); скамейки вокруг — кругом на местности
+        fy = ys_[len(ys_) // 2] if ys_ else (Y0 + Y1) * 0.5
+        sx, sy = self._stretch(xm, fy)
+        rad = 9.5
+        self.ground.append((xm - rad / sx, fy - rad / sy, xm + rad / sx, fy + rad / sy, 'pavers', (3.0, 3.0),
+                            (1.0, 0.95, 0.86), b.id, CURB + 0.03, 0))
+        paved.append((xm - (rad + 2.0) / sx, fy - (rad + 2.0) / sy, xm + (rad + 2.0) / sx, fy + (rad + 2.0) / sy))
+        self._prop('fountain', xm, fy, 0.0, b.id, big=(Y1 - Y0) > 150.0)
+        rot = wp.rot(xm, fy)
+        cx, cy = wp.exact(xm, fy)
+        for k in range(6):
+            ang = k * math.pi / 3.0 + math.pi / 6.0
+            if abs(math.sin(ang - rot)) < 0.3 or abs(math.cos(ang - rot)) < 0.3:
+                continue                                # на аллее скамейку не ставим
+            u, v = wp.inv_exact(cx + math.cos(ang) * 7.6, cy + math.sin(ang) * 7.6)
+            self._prop('bench', u, v, ang + math.pi - wp.rot(u, v), b.id)
+        self.pickup_spots.append((xm + 3.0 / sx, fy + 4.0, 'park'))
+        # беседка — в стороне от аллей, в большом саду
+        if (Y1 - Y0) > 150.0:
+            gx, gy = xm + (X1 - xm) * 0.55, Y0 + (Y1 - Y0) * 0.24
+            self._prop('gazebo', gx, gy, 0.0, b.id)
+            g2 = self._stretch(gx, gy)
+            paved.append((gx - 6.0 / g2[0], gy - 6.0, gx + 6.0 / g2[0], gy + 6.0))
+        # деревья: всё, что выросло в клетках этого сада, кроме тех, что попали на дорожки
+        for (X, Y, u, v, bid) in self.special.get('wedge_trees', ()):
+            if bid != b.id:
+                continue
+            if any(p[0] <= u <= p[2] and p[1] <= v <= p[3] for p in paved):
+                continue
+            self._prop('tree', u, v, 0.0, b.id, seed=r.randint(0, 9999), size=r.rangef(0.9, 1.5))
+        # фонари вдоль улиц вокруг сада: вдоль проспектов, пересекающих клин, — с поправкой на растяжение
+        off = 0.65
+        for (y, iny, yaw) in ((b.y0, 1.0, -math.pi / 2), (b.y1, -1.0, math.pi / 2)):
+            pts, total = self._spread_x(b.x0 + 6.0, b.x1 - 6.0, y, 27.0)
+            for u in pts:
+                self._prop('lamp', u, y + iny * off, yaw, b.id)
+        for (x, inx, yaw) in ((b.x0, 1.0, math.pi), (b.x1, -1.0, 0.0)):
+            n = max(1, int((b.y1 - b.y0) // 27.0))
+            for k in range(n):
+                self._prop('lamp', x + inx * off, b.y0 + (b.y1 - b.y0) * (k + 0.5) / n, yaw, b.id)
 
     def _gen_park(self, b, R, r):
         x0, y0, x1, y1 = R

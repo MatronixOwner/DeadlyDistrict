@@ -19,11 +19,12 @@ import re
 import time
 
 from panda3d.core import (Shader, Texture, SamplerState, FrameBufferProperties, WindowProperties, GraphicsPipe,
-                          GraphicsOutput, OrthographicLens, Camera, NodePath, LMatrix4, LVecBase4, LVecBase3,
+                          GraphicsOutput, OrthographicLens, Camera, NodePath, LMatrix4, LVecBase4,
                           LVector3, ColorWriteAttrib, CullFaceAttrib, DepthOffsetAttrib, ClockObject,
-                          PTA_LVecBase4f)
+                          PTA_LVecBase4f, PTA_LVecBase3f, PTA_LMatrix4f, PTA_float, LVecBase3f, LVecBase4f)
 
 from . import shaders as S
+from .masks import SHADOW_NEAR, SHADOW_FAR
 from .settings import DRAW_DIST
 
 PRESET_MIN, PRESET_MED, PRESET_ULTRA, PRESET_CUSTOM = 0, 1, 2, 3
@@ -77,7 +78,10 @@ LOOK = (1.0, 1.12, 1.07, 1.0)               # выдержка, насыщенн
 
 
 # «освещённого круга нет»: радиусы отрицательные, поэтому нарисованные пятна света видны везде
-NO_FOCUS = LVecBase4(0, 0, -2, -1)
+NO_FOCUS = LVecBase4f(0, 0, -2, -1)
+
+FAR_EVERY = 2.0                             # дальняя карта перерисовывается не реже чем раз в столько секунд…
+FAR_SHIFT = 0.10                            # …и сразу, если взгляд ушёл дальше этой доли её размера
 
 
 def aa_name(n):
@@ -158,18 +162,24 @@ def _norm(v):
 class _Cascade(object):
     """Одна карта теней: сцена глазами солнца."""
 
-    def __init__(self, gfx, idx, size, span):
+    def __init__(self, gfx, idx, size, span, mask):
         base = gfx.base
         self.size = size
         self.span = span
+        self.aim = None                     # куда карта наведена: середина (до выравнивания по точкам)…
+        self.sun = None                     # …и направление на солнце
+        self.age = 1e9                      # сколько секунд назад её рисовали
         fb = FrameBufferProperties()
         fb.setRgbColor(False)
         fb.setRgbaBits(0, 0, 0, 0)
         fb.setDepthBits(24)
         fb.setMultisamples(0)
         fb.setBackBuffers(0)
+        # Порядок отрисовки (-2000) — раньше буфера сцены, который заводит обработка кадра (у него -1000).
+        # Иначе сцена рисовалась бы по карте теней прошлого кадра, а матрицу брала бы от нынешнего: на ходу
+        # все тени отставали бы на шаг камеры и дрожали
         self.buf = base.graphicsEngine.makeOutput(
-            base.pipe, 'shadow%d' % idx, -20 + idx, fb, WindowProperties.size(size, size),
+            base.pipe, 'shadow%d' % idx, -2000 + idx, fb, WindowProperties.size(size, size),
             GraphicsPipe.BFRefuseWindow, base.win.getGsg(), base.win)
         if self.buf is None:
             raise RuntimeError('shadow buffer')
@@ -188,6 +198,7 @@ class _Cascade(object):
         cam = Camera('shadow%d' % idx)
         cam.setLens(lens)
         cam.setScene(base.render)
+        cam.setCameraMask(mask)
         st = NodePath('st')
         st.setShader(gfx.shadow_shader, 1000)
         st.setAttrib(ColorWriteAttrib.make(ColorWriteAttrib.COff), 1000)
@@ -209,6 +220,9 @@ class _Cascade(object):
             t = min(t, max(0.0, (cam_pos[2] - ground_z) / -fwd[2]))
         cx, cy = cam_pos[0] + fwd[0] * t, cam_pos[1] + fwd[1] * t
         cz = ground_z
+        self.aim = (cx, cy)
+        self.sun = (sun[0], sun[1], sun[2])
+        self.age = 0.0
         np_ = self.np
         D = SHADOW_DEPTH
         np_.setPos(cx + sun[0] * D, cy + sun[1] * D, cz + sun[2] * D)
@@ -231,6 +245,18 @@ class _Cascade(object):
         m *= LMatrix4.scaleMat(0.5)
         m *= LMatrix4.translateMat(0.5, 0.5, 0.5)
         self.mat = m
+
+    def stale(self, cam_pos, fwd, sun):
+        """Пора ли перерисовать дальнюю карту: взгляд ушёл, солнце сдвинулось или просто давно не рисовали."""
+        if self.aim is None or self.age >= FAR_EVERY:
+            return True
+        t = self.span * 0.40
+        dx = cam_pos[0] + fwd[0] * t - self.aim[0]
+        dy = cam_pos[1] + fwd[1] * t - self.aim[1]
+        lim = self.span * FAR_SHIFT
+        if dx * dx + dy * dy > lim * lim:
+            return True
+        return self.sun[0] * sun[0] + self.sun[1] * sun[1] + self.sun[2] * sun[2] < 0.99996      # полградуса
 
     def destroy(self, base):
         try:
@@ -271,6 +297,10 @@ class Gfx(object):
         self.renderer = ''
         self._lamps = []                    # отобранные фонари: [огонь, яркость]
         self._lamps_t = 0.0
+        self._lamps_r = LIGHT_REACH
+        self._focus_r = LIGHT_REACH
+        self._lamp_k = {}                   # фонари, которые сейчас светят: id -> [огонь, яркость]
+        self._u = {}                        # входы шейдера, которые правятся на месте (см. _setup)
         self._lfocus = NO_FOCUS
         self._clock = time.perf_counter
         self._tune = None                   # замер кадров после первого запуска (см. _autotune)
@@ -333,7 +363,10 @@ class Gfx(object):
         msaa = aa if (post_ok and aa >= 2) else 0
         # сцена рисуется в отдельный буфер, если кадр нужно обработать или сгладить (MSAA — свойство буфера)
         post = bloom or ssao or fxaa or msaa > 0
+        # запас яркости (16 бит на цвет) и сборка кадра нужны только свечению и затенению; одному
+        # сглаживанию хватает обычного буфера — яркость тогда сжимает сам шейдер сцены
         return dict(on=on, shadows=sh, bloom=bloom, ssao=ssao, fxaa=fxaa, post=post, msaa=msaa,
+                    hdr=bloom or ssao,
                     gloss=on and bool(s.get('gfx_gloss')),
                     lights=LIGHT_COUNTS[int(max(0, min(2, int(s.get('gfx_lights')))))] if on else 0,
                     water=on and bool(s.get('gfx_water')) and not self._no_water)
@@ -385,11 +418,26 @@ class Gfx(object):
             if n not in FPS_LIMITS:
                 n = FPS_LIMITS[0]
             clock = ClockObject.getGlobalClock()
-            clock.setMode(ClockObject.MLimited)
-            clock.setFrameRate(float(n))
+            hz = self._refresh()
+            if self.game._boot[1] and hz >= 50 and n >= hz - 1:
+                # Синхронизация с экраном и так не даёт кадрам идти чаще экрана.  Второй ограничитель на ту же
+                # частоту поверх неё только сбивал бы шаг: кадр то успевает к обновлению экрана, то нет
+                clock.setMode(ClockObject.MNormal)
+            else:
+                clock.setMode(ClockObject.MLimited)
+                clock.setFrameRate(float(n))
             self.fps_applied = n
         except Exception:
             pass
+
+    def _refresh(self):
+        """Частота обновления экрана, Гц (0 — неизвестна)."""
+        try:
+            di = self.base.pipe.getDisplayInformation()
+            i = di.getCurrentDisplayModeIndex()
+            return int(di.getDisplayModeRefreshRate(i)) if i >= 0 else 0
+        except Exception:
+            return 0
 
     # ------------------------------------------------------------------
     def _make(self, vert, frag, **defs):
@@ -403,18 +451,40 @@ class Gfx(object):
         w = self.game.world
         lv = SHADOW_LEVELS[c['shadows']]
         defs = dict(SHADOWS=1 if lv else 0, CASCADES=2 if (lv and lv['far']) else 1, PCF=lv['pcf'] if lv else 1,
-                    LIGHTS=c['lights'], GLOSS=1 if c['gloss'] else 0, HDR=1 if c['post'] else 0)
+                    LIGHTS=c['lights'], GLOSS=1 if c['gloss'] else 0, HDR=1 if c['hdr'] else 0)
         self.scene_shader = self._make(S.SCENE_VERT, S.SCENE_FRAG, **defs)
         if lv:
             self.shadow_shader = self._make(S.SHADOW_VERT, S.SHADOW_FRAG)
-            self.cascades = [_Cascade(self, 0, lv['size'], lv['span'])]
+            self.cascades = [_Cascade(self, 0, lv['size'], lv['span'], SHADOW_NEAR)]
             if lv['far']:
-                self.cascades.append(_Cascade(self, 1, lv['far'][0], lv['far'][1]))
+                self.cascades.append(_Cascade(self, 1, lv['far'][0], lv['far'][1], SHADOW_FAR))
         n = max(1, c['lights'])
         self._lpos = PTA_LVecBase4f.emptyArray(n)
         self._lcol = PTA_LVecBase4f.emptyArray(n)
         self._ldir = PTA_LVecBase4f.emptyArray(n)
-        render.setShaderInputs(u_mat=LVecBase4(0, 0, 0, 0), u_lfocus=NO_FOCUS, u_emit=1.0)
+        # Входы шейдера, которые меняются каждый кадр, заведены массивами из одного элемента и дальше
+        # правятся на месте.  Если вместо этого каждый кадр звать render.setShaderInput, у корня сцены каждый
+        # кадр будет новое состояние — и движок заново соберёт состояние каждого предмета в кадре (их
+        # сотни): это время процессора, потраченное впустую
+        u = self._u = {}
+        for name in ('u_cam', 'u_sun_dir', 'u_sun_col', 'u_fill_dir', 'u_fill_col', 'u_amb_sky', 'u_amb_gnd',
+                     'u_sky_zen', 'u_sky_hor'):
+            u[name] = PTA_LVecBase3f.emptyArray(1)
+        for name in ('u_env', 'u_fog', 'u_fog_rng', 'u_look', 'u_lfocus', 'u_sh_par', 'u_sh_geo'):
+            u[name] = PTA_LVecBase4f.emptyArray(1)
+        for name in ('u_time', 'u_lnum'):
+            u[name] = PTA_float.emptyArray(1)
+        for name in ('u_sh_mat0', 'u_sh_mat1'):
+            u[name] = PTA_LMatrix4f.emptyArray(1)
+        u['u_lfocus'][0] = NO_FOCUS
+        u['u_look'][0] = LVecBase4f(*LOOK)
+        inputs = dict(u)
+        inputs.update(u_mat=LVecBase4(0, 0, 0, 0), u_emit=1.0, u_lpos=self._lpos, u_lcol=self._lcol, u_ldir=self._ldir)
+        if self.cascades:
+            inputs['u_sh_tex0'] = self.cascades[0].tex
+            inputs['u_sh_tex1'] = self.cascades[-1].tex
+        render.setShaderInputs(**inputs)
+        self._lamp_k = {}
         sky = getattr(w, 'sky', None) if w is not None else None
         if sky is not None:
             sky.sun_card.setShaderInput('u_emit', 3.0)      # солнце ярче белого: со свечением вокруг него ореол
@@ -430,7 +500,7 @@ class Gfx(object):
             if not ok:
                 # обработку кадра видеокарта не потянула: остаётся свет и тени, яркость сжимает шейдер сцены
                 self._drop_post()
-                c['post'] = c['bloom'] = c['ssao'] = c['fxaa'] = False
+                c['post'] = c['bloom'] = c['ssao'] = c['fxaa'] = c['hdr'] = False
                 c['msaa'] = 0
                 defs['HDR'] = 0
                 self.scene_shader = self._make(S.SCENE_VERT, S.SCENE_FRAG, **defs)
@@ -496,10 +566,14 @@ class Gfx(object):
         depth = self._tex('dd-depth', linear=False) if c['ssao'] else None
         final = None
         # буфер сцены: яркость с запасом (16 бит на цвет) и сглаживание; не вышло — пробуем без сглаживания
+        hdr = c['hdr']
         for ms in ([int(c['msaa']), 0] if c['msaa'] else [0]):
             fb = FrameBufferProperties()
-            fb.setFloatColor(True)
-            fb.setRgbaBits(16, 16, 16, 16)
+            if hdr:
+                fb.setFloatColor(True)
+                fb.setRgbaBits(16, 16, 16, 16)
+            else:
+                fb.setRgbaBits(8, 8, 8, 8)
             fb.setDepthBits(24)
             fb.setMultisamples(ms)
             final = fm.renderSceneInto(colortex=scene, depthtex=depth, fbprops=fb)
@@ -529,6 +603,18 @@ class Gfx(object):
             p['stages'].append((q, kind, div))
             return tex, q
 
+        if not hdr:
+            # Ни свечения, ни затенения: яркость уже сжал шейдер сцены, и кадр готов.  Остаётся сгладить
+            # края (или просто вывести картинку, если сглаживал буфер) и затемнить углы — один проход
+            if c['fxaa']:
+                final.setShader(self._make(post_vert, S.FXAA_FRAG, VIGNETTE=1))
+            else:
+                final.setShader(self._make(post_vert, S.COPY_FRAG))
+            final.setShaderInput('u_src', scene)
+            final.setShaderInput('u_px', LVecBase4(0, 0, 0, 0))
+            final.setShaderInput('u_fx', LVecBase4(0.5, 0.22, 0, 0))
+            p['stages'].append((final, 'full', 1))
+            return True
         try:
             comp_in = dict(u_scene=scene)
             if c['bloom']:
@@ -555,7 +641,7 @@ class Gfx(object):
             cq = fm.renderQuadInto('dd-composite', colortex=tex, fbprops=ldr)
             if cq is None:
                 return False
-            final.setShader(self._make(post_vert, S.FXAA_FRAG))
+            final.setShader(self._make(post_vert, S.FXAA_FRAG, VIGNETTE=0))
             final.setShaderInput('u_src', tex)
             final.setShaderInput('u_px', LVecBase4(0, 0, 0, 0))
             p['stages'].append((final, 'full', 1))
@@ -749,18 +835,20 @@ class Gfx(object):
         if self.cascades and not indoor:
             direct = max(sc[0], sc[1], sc[2]) * sh_k / SHADOW_DARK  # ясный день — около 0.56, пасмурно и ночью — 0.15
             blob = 1.0 - 0.85 * max(0.0, min(1.0, (direct - 0.12) / 0.3))
-        inputs = dict(
-            u_cam=LVecBase3(cp[0], cp[1], cp[2]),
-            u_sun_dir=LVecBase3(*sun), u_sun_col=LVecBase3(*sun_col),
-            u_fill_dir=LVecBase3(*fill), u_fill_col=LVecBase3(fc[0], fc[1], fc[2]),
-            u_amb_sky=LVecBase3(*amb_sky), u_amb_gnd=LVecBase3(*amb_gnd),
-            u_sky_zen=LVecBase3(zen[0], zen[1], zen[2]), u_sky_hor=LVecBase3(hor[0], hor[1], hor[2]),
-            u_env=LVecBase4(rain, night, glint, blob),
-            u_fog=LVecBase4(fog_col[0], fog_col[1], fog_col[2], 1.0),
-            u_fog_rng=LVecBase4(fog_rng[0], fog_rng[1], 0.0, 0.0),
-            u_look=LVecBase4(*LOOK),
-            u_time=float(self.time),
-        )
+        u = self._u
+        u['u_cam'][0] = LVecBase3f(cp[0], cp[1], cp[2])
+        u['u_sun_dir'][0] = LVecBase3f(*sun)
+        u['u_sun_col'][0] = LVecBase3f(*sun_col)
+        u['u_fill_dir'][0] = LVecBase3f(*fill)
+        u['u_fill_col'][0] = LVecBase3f(fc[0], fc[1], fc[2])
+        u['u_amb_sky'][0] = LVecBase3f(*amb_sky)
+        u['u_amb_gnd'][0] = LVecBase3f(*amb_gnd)
+        u['u_sky_zen'][0] = LVecBase3f(zen[0], zen[1], zen[2])
+        u['u_sky_hor'][0] = LVecBase3f(hor[0], hor[1], hor[2])
+        u['u_env'][0] = LVecBase4f(rain, night, glint, blob)
+        u['u_fog'][0] = LVecBase4f(fog_col[0], fog_col[1], fog_col[2], 1.0)
+        u['u_fog_rng'][0] = LVecBase4f(fog_rng[0], fog_rng[1], 0.0, 0.0)
+        u['u_time'][0] = float(self.time)
         cs = self.cascades
         if cs:
             fwd = render.getRelativeVector(cam, LVector3(0, 1, 0))
@@ -772,29 +860,38 @@ class Gfx(object):
                 pass
             if indoor or sh_k <= 0.0:
                 sh_k = 0.0
-            for k in cs:
-                k.fit(base, cp, fwd, gz, sun)
             c0 = cs[0]
             c1 = cs[1] if len(cs) > 1 else cs[0]
+            on = sh_k > 0.0                 # под крышей и в миг смены солнца луной теней нет: карты не рисуем
+            c0.buf.setActive(on)
+            if on:
+                c0.fit(base, cp, fwd, gz, sun)
+            if c1 is not c0:
+                # дальняя карта — только неподвижный город, поэтому каждый кадр её рисовать незачем: хватает
+                # раза в пару секунд и тогда, когда взгляд ушёл в сторону
+                c1.age += dt
+                redo = on and c1.stale(cp, fwd, sun)
+                c1.buf.setActive(redo)
+                if redo:
+                    c1.fit(base, cp, fwd, gz, sun)
+                u['u_sh_mat1'][0] = c1.mat
             rng = SHADOW_DEPTH * 2.0 - 1.0
-            inputs['u_sh_tex0'] = c0.tex
-            inputs['u_sh_mat0'] = c0.mat
-            inputs['u_sh_par'] = LVecBase4(sh_k, c0.texel * 1.6, c1.texel * 1.6, 0.0)
-            inputs['u_sh_geo'] = LVecBase4(1.0 / c0.size, 1.0 / c1.size, 0.03 / rng, 0.25 / rng)
-            if len(cs) > 1:
-                inputs['u_sh_tex1'] = c1.tex
-                inputs['u_sh_mat1'] = c1.mat
+            u['u_sh_mat0'][0] = c0.mat
+            u['u_sh_par'][0] = LVecBase4f(sh_k, c0.texel * 1.6, c1.texel * 1.6, 0.0)
+            u['u_sh_geo'][0] = LVecBase4f(1.0 / c0.size, 1.0 / c1.size, 0.03 / rng, 0.25 / rng)
         if c is not None and c['lights'] > 0:
             self._pick_lights(cp, render.getRelativeVector(cam, LVector3(0, 1, 0)), night, indoor, dt)
-            inputs['u_lpos'] = self._lpos
-            inputs['u_lcol'] = self._lcol
-            inputs['u_ldir'] = self._ldir
-            inputs['u_lfocus'] = self._lfocus if (night > 0.25 and not indoor) else NO_FOCUS
-        render.setShaderInputs(**inputs)
+            u['u_lfocus'][0] = self._lfocus if (night > 0.25 and not indoor) else NO_FOCUS
         p = self.post
         if p:
             p['night'] = 0.0 if indoor else night
             self._post_inputs(p)
+            if not c['hdr']:
+                # яркость сжимает шейдер сцены — значит, и фон буфера (он рисуется без шейдера) нужен уже сжатый
+                try:
+                    p['scene_buf'].setClearColor(LVecBase4(*(grade_color(base.win.getClearColor()) + (1.0,))))
+                except Exception:
+                    pass
         else:
             # без обработки кадра цвета правит сам шейдер сцены — значит, и фон (он рисуется без шейдера)
             # надо поправить так же: иначе дома, ушедшие в туман, проступали бы на небе силуэтами.
@@ -899,20 +996,37 @@ class Gfx(object):
                                 LVecBase4(0, 0, -1, 0)))
             # фонари
             g = max(0.0, min(1.0, (night - 0.25) / 0.4))
+            kk = self._lamp_k
             if g > 0.0:
                 self._lamps_t -= dt
                 if self._lamps_t <= 0.0:
                     self._lamps_t = 0.12
-                    self._lamps, dmax = self._pick_lamps(fx, fy, max(1, n - len(out)))
-                    # нарисованные пятна света в этом круге гаснут: здесь светят настоящие огни
-                    dmax = max(dmax, 4.0)
-                    self._lfocus = LVecBase4(fx, fy, dmax * 0.70, dmax)
-                for (l, k) in self._lamps:
+                    self._lamps, self._lamps_r = self._pick_lamps(fx, fy, max(1, n - len(out)))
+                # Яркость каждого фонаря идёт к своей цели плавно.  Отбор обновляется восемь раз в секунду,
+                # и без этого свет на асфальте менялся бы ступеньками: на ходу это видно как мерцание
+                a = min(1.0, dt * 7.0)
+                want = dict((id(l), (l, k)) for (l, k) in self._lamps)
+                for key, (l, k) in want.items():
+                    cur = kk.get(key)
+                    k0 = cur[1] if cur is not None else 0.0
+                    kk[key] = [l, k0 + (k - k0) * a]
+                for key in list(kk):
+                    if key not in want:
+                        e = kk[key]
+                        e[1] -= e[1] * a + 0.004
+                        if e[1] <= 0.01:
+                            del kk[key]
+                # круг, в котором нарисованные пятна света уступают настоящим огням, идёт за взглядом каждый кадр
+                self._focus_r += (max(self._lamps_r, 4.0) - self._focus_r) * a
+                self._lfocus = LVecBase4f(fx, fy, self._focus_r * 0.70, self._focus_r)
+                for (l, k) in sorted(kk.values(), key=lambda e: -e[1]):
                     if len(out) >= n:
                         break
                     k *= g
                     out.append((LVecBase4(l[0], l[1], l[2], l[3]), LVecBase4(l[4] * k, l[5] * k, l[6] * k, 0.0),
                                 LVecBase4(0, 0, -1, 0)))
+            elif kk:
+                kk.clear()
         for i in range(n):
             if i < len(out):
                 self._lpos[i], self._lcol[i], self._ldir[i] = out[i]
@@ -920,6 +1034,7 @@ class Gfx(object):
                 self._lpos[i] = LVecBase4(0, 0, -1000, 0.01)
                 self._lcol[i] = LVecBase4(0, 0, 0, 0)
                 self._ldir[i] = LVecBase4(0, 0, -1, 0)
+        self._u['u_lnum'][0] = float(min(n, len(out)))      # шейдер перебирает только зажжённые огни
 
     def _post_inputs(self, p):
         base = self.base

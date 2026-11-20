@@ -711,9 +711,10 @@ def m_z1(m):
     m.watch(car, '«Трудяга» Захара уничтожена.')
     yield from m.enter(car, 'Садись в «Трудягу» Захара.')
     m.help('Ящики лежат в стороне от дорог. Подъезжай поближе и выходи из машины: грузить придётся руками.', 8.0)
-    places = ((1000.0, -243.0, 'Первый ящик выбросило на пляж за дюной, южнее дач Маячного.'),
-              (1161.0, 258.0, 'Второй ящик — в траве у дороги за аэродромом.'),
-              (686.0, 40.0, 'Третий ящик — на берегу пролива у Нефтегавани.'))
+    e = c.isle_i1 + 2                                # первая линия восточного берега
+    places = ((c.xs[e + 2] + 79.0, -243.0, 'Первый ящик выбросило на пляж за дюной, южнее дач Маячного.'),
+              (c.xs[e + 4] + 22.0, 258.0, 'Второй ящик — в траве у дороги за аэродромом.'),
+              (c.xs[e] - 29.0, 40.0, 'Третий ящик — на берегу пролива у Нефтегавани.'))
     for i, (x, y, text) in enumerate(places):
         x, y = m.ms.free_spot(*c.to_world(x, y))         # места заданы по чертежу города
         pk = m.ms.add_pickup('crate', x, y)
@@ -754,9 +755,9 @@ def m_z2(m):
         'Бутылки бьются, а покупатель нервный. Каждый удар — минус из твоей доли.',
         'Макс: Куда везти?',
         'На аэродром, к самолёту. И оглядывайся: на мой товар есть охотники.'])
-    vx, vy = c.to_world(478.0, 30.0)                 # причал: точки заданы по чертежу города
-    for x, y in ((470.0, 30.0), (471.0, 16.0), (490.0, 40.0)):       # свободное место между контейнерами
-        x, y = c.to_world(x, y)
+    vx, vy = c.to_world(c.xs[c.isle_i1 + 1] + 26.0, 30.0)   # причал: точки заданы по чертежу города
+    for x, y in ((18.0, 30.0), (19.0, 16.0), (38.0, 40.0)):         # свободное место между контейнерами
+        x, y = c.to_world(c.xs[c.isle_i1 + 1] + x, y)
         if not w.static.overlap_circle(x, y, 3.8, F_CAR):
             vx, vy = x, y
             break
@@ -803,7 +804,7 @@ def m_z3(m):
         'Навести его. Только учти: почует — рванёт к трассе. Уйдёт — сдаст нас всех.'])
     pl.give_weapon(W_UZI, 150)
     pl.select(W_UZI)
-    road, (hx, hy), yaw = m.ms.roadside(*c.to_world(947.0, -8.0), off=4.6)
+    road, (hx, hy), yaw = m.ms.roadside(*c.to_world(c.xs[c.isle_i1 + 4] + 26.0, -8.0), off=4.6)
     car = m.car('muscle', road[0] + math.sin(yaw) * 2.1, road[1] - math.cos(yaw) * 2.1, yaw, paint=0)
     guards = []
     for i, (a, wpn) in enumerate(((0.4, W_PISTOL), (1.9, W_BAT), (3.3, W_UZI), (4.9, W_PISTOL))):
@@ -841,7 +842,7 @@ def m_z3(m):
         m.obj('Сиплый прыгнул в машину! Уничтожь её, пока он не ушёл по трассе.')
         m.help('Тарань, стреляй, перегораживай дорогу — лишь бы «Бизон» не доехал до Заречья.', 8.0)
         w.audio.play_at('door', car.x, car.y, 0.9)
-        goal = c.nodes.get((10, 11)) or c.nearest_node(*c.to_world(452.0, 823.0))
+        goal = c.nodes.get((c.isle_i1 + 1, 11)) or c.nearest_node(*c.to_world(c.xs[c.isle_i1 + 1], 823.0))
         gx, gy = goal.x, goal.y
 
         def tick(dt):
@@ -1031,7 +1032,7 @@ def m_p1(m):
     w.player.give_weapon(W_PISTOL, 68)
     rn = w.roadnet
     goal = c.nearest_node(*c.landmarks['police']['road'])
-    start = c.nodes.get((1, 7)) or c.nearest_node(*c.to_world(-380.0, 300.0))
+    start = c.nodes.get((1, 7)) or c.nearest_node(*c.to_world(c.xs[1] - 13.0, 300.0))
     lane, s, d = rn.nearest_lane(*c.off(start.x, start.y, 30.0, 0.0), maxd=80.0)
     m.ms.clear_area(*lane.pos(s)[:2], r=14.0)
     car = w.traffic.spawn_on_lane('sedan', lane, s, paint=3, persona=1.12)

@@ -6,6 +6,7 @@ import random
 from .city import City, WATER_Z
 from .citymesh import CityMesh
 from .collision import StaticWorld, F_PED
+from .masks import SHADOW_FAR
 from .roadnet import RoadNet
 from .vehicle import Vehicle
 from .ped import Ped
@@ -40,6 +41,7 @@ class World(object):
         self.render = self.base.render
         self.root = self.render.attachNewNode('world')
         self.dyn_root = self.root.attachNewNode('dyn')
+        self.dyn_root.hide(SHADOW_FAR)      # машины и люди — только в ближней карте теней (см. masks.py)
         self.time = 0.0
         self.dt = 0.016
         self.frame = 0
