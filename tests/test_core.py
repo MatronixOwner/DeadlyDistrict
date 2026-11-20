@@ -451,3 +451,101 @@ def test_outer_sidewalks_are_walkable_pads():
     assert c.zone_at((dk['x0'] + dk['x1']) * 0.5, dk['y0'] + 30.0) == 'docks'
     pier = c.special['pier']
     assert c.ground_z((pier['x0'] + pier['x1']) * 0.5, pier['y0'] + 5.0) == pier['z']
+
+
+def test_main_city_is_not_a_grid():
+    """Главный город — не клетчатая сетка: районы острова стоят веером под разными углами, между ними
+    сады-клинья и ковши гавани, улицы изгибаются, а не тянутся по линейке."""
+    import collections
+    from game.city import WEDGE_COLS, WEDGE_J1
+    c = City()
+    wp = c.warp0
+    # три района острова развёрнуты друг к другу под углом
+    west = math.degrees(wp.rot(c.xs[1], c.ys[2]))
+    mid = math.degrees(wp.rot(c.xs[6], c.ys[2]))
+    east = math.degrees(wp.rot(c.xs[11], c.ys[2]))
+    assert west - mid > 8.0 and mid - east > 8.0, (west, mid, east)
+
+    # Направления улиц на местности (по модулю 90°, корзины по 5°).  В сетке вся длина улиц попала бы
+    # в одну корзину; здесь ни в одной нет и четверти, а заметных корзин — не меньше шести
+    bins = collections.Counter()
+    total = 0.0
+    for seg in c.segs.values():
+        if seg['rural'] or seg['bridge'] is not None:
+            continue
+        a, b = ((seg['a'], seg['c']), (seg['b'], seg['c'])) if seg['kind'] == 'h' else ((seg['c'], seg['a']),
+                                                                                         (seg['c'], seg['b']))
+        (ax, ay), (bx, by) = wp.exact(*a), wp.exact(*b)
+        length = math.hypot(bx - ax, by - ay)
+        bins[int((math.degrees(math.atan2(by - ay, bx - ax)) % 90.0) // 5)] += length
+        total += length
+    assert max(bins.values()) / total < 0.25, sorted(bins.items())
+    assert sum(1 for v in bins.values() if v / total >= 0.05) >= 6, sorted(bins.items())
+
+    # ни одна улица острова не идёт через него по прямой: перекрёстки одной улицы уходят с линии,
+    # проведённой между её концами, на десятки метров
+    rows = collections.defaultdict(list)
+    for (i, j), n in c.nodes.items():
+        if not n.rural and i <= c.isle_i1 + 1 and j <= c.isle_j1 + 1:
+            rows[j].append((i, wp.exact(n.x, n.y)))
+    assert len(rows) >= 8
+    for j, lst in rows.items():
+        pts = [p for i, p in sorted(lst)]
+        assert len(pts) >= 8, j
+        (x0, y0), (x1, y1) = pts[0], pts[-1]
+        span = math.hypot(x1 - x0, y1 - y0)
+        dev = max(abs((p[0] - x0) * (y1 - y0) - (p[1] - y0) * (x1 - x0)) / span for p in pts)
+        assert dev > 25.0, (j, dev)
+
+    # сады-клинья между районами (и в Заречье): в каждом — аллеи, фонтан и деревья
+    gardens = [b for b in c.blocks if b.zone == 'K']
+    assert len(gardens) >= 6 and set(b.i for b in gardens) == set(WEDGE_COLS)
+    assert sum(1 for b in gardens if b.j <= WEDGE_J1) >= 4 and sum(1 for b in gardens if b.j > c.isle_j1) >= 2
+    ids = set(b.id for b in gardens)
+    kinds = collections.Counter((p['block'], p['kind']) for p in c.props if p['block'] in ids)
+    assert sum(1 for b in gardens if kinds[(b.id, 'fountain')] >= 1) >= 4
+    assert all(kinds[(b.id, 'tree')] >= 6 and kinds[(b.id, 'lamp')] >= 2 for b in gardens)
+    assert len(c.packages) == 47                    # тайников в садах нет: их по-прежнему 47
+    # севернее садов клинья залиты водой — это ковши гавани, у них свои имена
+    names = set()
+    for i in WEDGE_COLS:
+        u = (c.xs[i] + c.xs[i + 1]) * 0.5
+        for j in range(WEDGE_J1 + 1, c.isle_j1 + 1):
+            v = (c.ys[j] + c.ys[j + 1]) * 0.5
+            assert c.in_water(u, v) and c.where(u, v)[0] is None, (i, j)
+            names.add(c.zone_name(u, v))
+        for j in range(0, WEDGE_J1 + 1):
+            v = (c.ys[j] + c.ys[j + 1]) * 0.5
+            assert not c.in_water(u, v) and c.zone_at(u, v) == 'K', (i, j)
+            names.add(c.zone_name(u, v))
+    assert len(names) == 4 and all(names), names    # два сада и два ковша
+
+
+def test_ground_layers_do_not_flicker():
+    """Два покрытия на одной высоте, лежащие внахлёст, «мерцают» друг сквозь друга (буфер глубины не знает,
+    какое из них ближе).  Всё, что кладётся поверх газона или асфальта, должно лежать выше: такие покрытия
+    рисуются наклейкой (см. CityMesh._ground), и спорить им не с кем."""
+    import collections
+    c = City()
+    cell = 60.0
+    grid = collections.defaultdict(list)
+    base = [g for g in c.ground if g[8] <= CURB + 0.001 and g[4] != 'parking']
+    assert len(base) > 300
+    for n, g in enumerate(base):
+        for i in range(int(g[0] // cell), int(g[2] // cell) + 1):
+            for j in range(int(g[1] // cell), int(g[3] // cell) + 1):
+                grid[(i, j)].append(n)
+    bad = set()
+    for ids in grid.values():
+        for k, a_ in enumerate(ids):
+            a = base[a_]
+            for b_ in ids[k + 1:]:
+                b = base[b_]
+                if (abs(a[8] - b[8]) < 0.009 and min(a[2], b[2]) - max(a[0], b[0]) > 0.02
+                        and min(a[3], b[3]) - max(a[1], b[1]) > 0.02):
+                    bad.add((a_, b_))
+    assert not bad, [(base[a][:5], base[b][:5]) for a, b in sorted(bad)[:5]]
+    # продольные аллеи садов-клиньев лежат поверх газона — значит, выше него
+    ids = set(b.id for b in c.blocks if b.zone == 'K')
+    over = [g for g in c.ground if g[7] in ids and g[4] == 'pavers' and g[8] > CURB + 0.001]
+    assert len(over) > 100

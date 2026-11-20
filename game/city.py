@@ -2534,7 +2534,8 @@ class City(object):
             if any(abs((ya + yb) * 0.5 - y) < 2.4 + (yb - ya) * 0.5 for y in ys_):
                 continue                                # здесь её пересекает поперечная аллея
             hw = 2.2 / max(0.5, self._stretch(xm, (ya + yb) * 0.5)[0])
-            self._ground(xm - hw, ya, xm + hw, yb, 'pavers', b.id, color=col)
+            # лежит поверх газона, поэтому чуть выше него: на одной высоте они «мерцали» бы друг сквозь друга
+            self._ground(xm - hw, ya, xm + hw, yb, 'pavers', b.id, color=col, z=CURB + 0.02)
         paved.append((xm - 4.6 / max(0.5, self._stretch(xm, (Y0 + Y1) * 0.5)[0]), Y0, xm + 4.6 / max(0.5, self._stretch(xm, (Y0 + Y1) * 0.5)[0]), Y1))
         lamp_n = max(2, int((Y1 - Y0) / 26.0))
         for k in range(lamp_n):
@@ -2767,8 +2768,10 @@ class City(object):
         self._wall(x0 + 0.3, y1 - 0.3, gx, y1 - 0.3, 2.4, 'chainlink', b.id, thick=0.12, kind='fence')
         self._wall(gx + 9.0, y1 - 0.3, bx0, y1 - 0.3, 2.4, 'chainlink', b.id, thick=0.12, kind='fence')
         self._wall(bx0 + bw, y1 - 0.3, x1 - 0.3, y1 - 0.3, 2.4, 'chainlink', b.id, thick=0.12, kind='fence')
-        self.ground.append((gx, y1 - 8.0, gx + 9.0, b.y1, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1, 0))
-        self.ground.append((gx, ay0 + 20.0, gx + 9.0, y1 - 8.0, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1, 0))
+        # подъезд от ворот идёт по перрону — значит, выше него (на одной высоте асфальт и бетон «мерцают»)
+        self.ground.append((gx, y1 - 8.0, gx + 9.0, b.y1, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1 + 0.01, 0))
+        self.ground.append((gx, ay0 + 20.0, gx + 9.0, y1 - 8.0, 'asphalt', (8.0, 8.0), (0.78, 0.78, 0.8), b.id, z1 + 0.01,
+                            0))
         self.landmarks['airfield']['gate'] = (gx + 4.5, b.y1 + 2.0)
         for k in range(8):
             self._prop('lamp', rx0 + 20.0 + k * ((rx1 - rx0 - 40.0) / 7.0), ry + rw / 2 + 3.0, -math.pi / 2, b.id, park=True)

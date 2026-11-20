@@ -3,7 +3,7 @@
 import math
 import random
 
-from panda3d.core import NodePath, TextureStage, TransparencyAttrib, DepthOffsetAttrib
+from panda3d.core import NodePath, TextureStage, TransparencyAttrib
 
 from .meshbuilder import MeshBuilder, erase_vertices
 from . import props as P
@@ -13,6 +13,7 @@ from .city import (CURB, SIDEWALK, AVE_W, ST_W, CAP_LEN, BAY_W, FLOOR_H, GF_H, W
 from .collision import (F_CAR, F_PED, F_SIGHT, F_BULLET, F_BREAK, F_CAM, F_SOLID, F_WALL)
 from .terrain import FLAT as TERRAIN_FLAT
 from .masks import NO_SHADOW
+from .assets import depth_push
 
 W4 = (1.0, 1.0, 1.0, 1.0)
 ROAD_UNDER = 0.25               # на столько полотно дороги заходит под бордюр (город изогнут: см. _road_quad)
@@ -149,9 +150,9 @@ class CityMesh(object):
         root.setName('terrain')
         root.hide(NO_SHADOW)
         # Рельеф под городом лежит на пять сантиметров ниже дорог: вдали буфер глубины такую разницу уже не
-        # различает, и трава «мерцала» бы сквозь асфальт.  Сдвиг глубины растёт с расстоянием вместе
-        # с погрешностью — рельеф всегда остаётся позади покрытия
-        root.setAttrib(DepthOffsetAttrib.make(-2))
+        # различает, и трава «мерцала» бы сквозь асфальт.  Поэтому рельеф — на две ступени позади покрытия
+        # (перекрёстки и обочины — на одну)
+        root.setAttrib(depth_push(2))
         self._warp_model(root)
         for gnp in root.findAllMatches('**/+GeomNode'):
             name = gnp.getName()

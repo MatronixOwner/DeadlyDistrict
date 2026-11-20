@@ -712,13 +712,20 @@ def test_gfx_autotune_steps_down(game, world):
         begin(G.PRESET_ULTRA)
         play(60, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
         assert gf._tune is None and s.get('gfx_preset') == G.PRESET_ULTRA and s.get('gfx_cfg') == 2
-        # 35 кадров: для «Ультры» мало (нужно 45), для «Среднего» достаточно
+        # 40 кадров: для «Ультры» мало (нужно 50), для «Среднего» достаточно (нужно 33)
+        assert G.TUNE_FPS[G.PRESET_MED] < 40 < G.TUNE_FPS[G.PRESET_ULTRA]
         begin(G.PRESET_ULTRA)
-        play(35, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        play(40, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
         assert s.get('gfx_preset') == G.PRESET_MED and gf._tune is not None
         assert G.detect_preset(s) == G.PRESET_MED and 'понижено' in world.hud.help_text.getText()
-        play(35, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        play(40, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
         assert gf._tune is None and s.get('gfx_preset') == G.PRESET_MED and s.get('gfx_cfg') == 2
+        # 30 кадров на «Среднем» — мало: тридцать на спокойной улице — это двадцать в погоне
+        begin(G.PRESET_MED)
+        play(30, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        assert s.get('gfx_preset') == G.PRESET_MIN and gf._tune is not None
+        play(30, G.TUNE_SKIP + G.TUNE_TIME + 0.5)
+        assert gf._tune is None and s.get('gfx_preset') == G.PRESET_MIN and s.get('traffic') == 1
         # 15 кадров: вниз до «Минимума», то есть до рисования без шейдеров…
         begin(G.PRESET_ULTRA)
         play(15, 2 * (G.TUNE_SKIP + G.TUNE_TIME) + 1.0)
@@ -744,10 +751,10 @@ def test_gfx_autotune_steps_down(game, world):
         # подёргивания каждые две секунды: замер всё равно кончается, а не начинается заново без конца
         begin(G.PRESET_ULTRA)
         for _ in range(8):
-            play(30, 2.0)
+            play(40, 2.0)
             now[0] += 0.6
             gf.update(0.1)
-        assert s.get('gfx_preset') == G.PRESET_MED and gf._tune is None             # 30 кадров: «Среднее»
+        assert s.get('gfx_preset') == G.PRESET_MED and gf._tune is None             # 40 кадров: «Среднее»
         # игра еле идёт (кадр в секунду): конца замера не ждём
         begin(G.PRESET_MED)
         play(1, G.TUNE_SKIP + 2.0)
@@ -910,10 +917,54 @@ def test_gfx_fps_limit_applies(game):
         s.set('fps_limit', 77)                                  # мусор в файле настроек: берём 60
         g.gfx.apply_fps_limit()
         assert g.gfx.fps_applied == 60
+        # Синхронизация с экраном уже держит частоту экрана: второй ограничитель на ту же частоту только
+        # сбивал бы шаг кадров (картинка шла бы рывками), поэтому он выключается
+        boot0, refresh0 = g._boot, g.gfx._refresh
+        try:
+            g._boot = (boot0[0], True)
+            for hz, n, mode in ((60, 60, ClockObject.MNormal), (60, 240, ClockObject.MNormal),
+                                (144, 60, ClockObject.MLimited), (144, 120, ClockObject.MLimited),
+                                (144, 180, ClockObject.MNormal), (0, 60, ClockObject.MLimited)):
+                g.gfx._refresh = lambda hz=hz: hz               # 0 — частота экрана неизвестна
+                s.set('fps_limit', n)
+                g.gfx.apply_fps_limit()
+                assert clock.getMode() == mode and g.gfx.fps_applied == n, (hz, n)
+            g._boot = (boot0[0], False)                         # без синхронизации частоту держит ограничитель
+            g.gfx._refresh = lambda: 60
+            s.set('fps_limit', 60)
+            g.gfx.apply_fps_limit()
+            assert clock.getMode() == ClockObject.MLimited
+        finally:
+            g._boot = boot0
+            g.gfx._refresh = refresh0
     finally:
         g.headless = True
         clock.setMode(mode0)
         s.set('fps_limit', keep)
+
+
+def test_ground_layers_are_pushed_back_not_offset(game, world):
+    """Рельеф и подложки перекрёстков «утоплены» в буфере глубины сжатием диапазона, а не числом
+    glPolygonOffset: то зависит от наклона грани и от рендерера (в программном сквозь перекрёстки
+    проступала вода, стоило отойти метров на полтораста)."""
+    from panda3d.core import DepthOffsetAttrib
+    from game import assets as A
+    w = world
+    att = w.citymesh.terrain_root.getAttrib(DepthOffsetAttrib)
+    assert att is not None and att.getOffset() == 0
+    assert abs(att.getMinValue() - 2 * A.PUSH) < 1e-9 and att.getMaxValue() == 1.0
+    under = 0
+    for np_ in w.citymesh.root.findAllMatches('**/+GeomNode'):
+        a = np_.getAttrib(DepthOffsetAttrib)
+        if a is None:
+            continue
+        # числом сдвигаются только наклейки (к камере); от камеры — никто
+        assert a.getOffset() >= 0, np_.getName()
+        if a.getMinValue() > 0.0 and np_.getName() != 'terrain':
+            assert a.getOffset() == 0 and abs(a.getMinValue() - A.PUSH) < 1e-9, np_.getName()
+            under += 1
+    assert under >= 4                                           # перекрёстки и обочины трассы
+    assert 0.0 < A.PUSH <= 1e-3
 
 
 def test_gfx_without_shaders_is_safe(game, world):
@@ -971,6 +1022,58 @@ def test_shader_sources():
         assert name in src, name
 
 
+def _check_steady_frame(g, w):
+    """«Ультра»: то, из-за чего картинка мерцала и тормозила, не вернулось."""
+    from game import gfx as G
+    gf = g.gfx
+    cs = gf.cascades
+    # 1. Карты теней рисуются раньше сцены.  Иначе сцена берёт карту прошлого кадра, а матрицу — нынешнего,
+    #    и на ходу все тени дрожат
+    first = min([b.getSort() for b in gf.fm.buffers] + [g.base.win.getSort()])
+    assert all(c.buf.getSort() < first for c in cs), ([c.buf.getSort() for c in cs], first)
+    # 2. Кадр от кадра состояние корня сцены — то же самое: входы шейдера правятся на месте.  Если ставить
+    #    их заново, движок каждый кадр пересобирает состояния всех предметов города (десятки тысяч)
+    render = g.base.render
+    harness.run(g, 0.2)
+    st0 = render.getState()
+    w.cam.yaw += 0.4
+    w.sky.set_time(w.sky.hour + 0.02)
+    harness.run(g, 0.3)
+    assert render.getState() == st0 and render.getState().compareTo(st0) == 0
+    # 3. Дальняя карта теней (в ней только неподвижный город) рисуется раз в пару секунд, а не каждый кадр…
+    drawn = 0
+    for _ in range(30):
+        g.step(1.0 / 60.0)
+        drawn += 1 if cs[1].buf.isActive() else 0
+    assert cs[0].buf.isActive() and drawn <= 2, drawn
+    # …и сразу, как только взгляд ушёл в сторону, камера уехала или солнце сдвинулось
+    far = cs[1]
+    pos, fwd, sun = (10.0, 20.0, 3.0), (1.0, 0.0, 0.0), (0.6, 0.0, 0.8)
+    far.fit(g.base, pos, fwd, 0.0, sun)
+    assert not far.stale(pos, fwd, 0.0, sun)
+    assert not far.stale((pos[0] + 5.0, pos[1], pos[2]), fwd, 0.0, sun)             # пять метров — не повод
+    assert far.stale((pos[0], pos[1] + far.span * 0.2, pos[2]), fwd, 0.0, sun)
+    assert far.stale(pos, (0.8, 0.6, 0.0), 0.0, sun)                                # поворот на 37°
+    assert not far.stale(pos, fwd, 0.0, (0.6008, 0.0, 0.7994))                      # 0,06° — меньше шага
+    assert far.stale(pos, fwd, 0.0, (0.0, 0.6, 0.8))
+    far.age = G.FAR_EVERY + 0.1
+    assert far.stale(pos, fwd, 0.0, sun)
+    far.aim = None                                              # следующий кадр наведёт карту заново
+    # 4. Направление теней меняется шагами: между шагами карты рисуются под одним углом и края не рябят
+    held = gf._sh_sun
+    assert held is not None
+    for _ in range(6):
+        g.step(1.0 / 60.0)
+    assert gf._sh_sun is held                                   # за десятую секунды солнце шага не прошло
+    w.sky.set_time(w.sky.hour + 0.5)
+    g.step(1.0 / 60.0)
+    assert gf._sh_sun is not held                               # а за полчаса — прошло
+    # 5. В тени не попадает то, что тени не отбрасывает: земля, вода, небо, огни, стёкла
+    from game.masks import NO_SHADOW
+    assert w.citymesh.terrain_root.isHidden(NO_SHADOW) or not (w.citymesh.terrain_root.getDrawShowMask() & NO_SHADOW)
+    assert G.FAR_EVERY >= 1.0 and 0.05 <= G.FAR_SHIFT <= 0.3
+
+
 @pytest.mark.skipif(os.environ.get('DD_TEST_DISPLAY') != 'p3headlessgl', reason='нужен OpenGL (DD_TEST_DISPLAY=p3headlessgl)')
 def test_gfx_shaders_compile_and_draw(game, world):
     """С настоящим OpenGL: каждый набор качества собирает свои шейдеры без ошибок и рисует не чёрный кадр."""
@@ -999,6 +1102,7 @@ def test_gfx_shaders_compile_and_draw(game, world):
             if p == G.PRESET_ULTRA:
                 c = g.gfx.cfg
                 assert c['shadows'] == 3 and len(g.gfx.cascades) == 2 and c['bloom'] and c['ssao'] and c['post']
+                _check_steady_frame(g, w)
             img = PNMImage()
             g.base.win.getScreenshot(img)
             n = 0
