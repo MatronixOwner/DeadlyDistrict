@@ -168,10 +168,12 @@ def render(c, name, cx, cy, half, size, layer, snowy=False):
                 rect(x0, (y0 + y1) * 0.5 - 2.4, x1, (y0 + y1) * 0.5 + 2.4, (168, 160, 146))
             else:
                 rect((x0 + x1) * 0.5 - 2.4, y0, (x0 + x1) * 0.5 + 2.4, y1, (168, 160, 146))
-    # покрытия внутри кварталов, заметные на карте: взлётная полоса, асфальт
+    # покрытия внутри кварталов, заметные на карте: взлётная полоса, асфальт, аллеи садов-клиньев
     for (x0, y0, x1, y1, tex, tile, color, block, z, rot) in c.ground:
         if tex == 'asphalt' and (x1 - x0) * (y1 - y0) > 400.0:
             rect(x0, y0, x1, y1, (72, 72, 76))
+        elif tex == 'pavers' and 0 <= block < len(c.blocks) and c.blocks[block].zone == 'K':
+            rect(x0, y0, x1, y1, (172, 166, 148))
     pond = c.special.get('pond')
     if pond:
         a = P(pond['x'] - pond['rx'], pond['y'] + pond['ry'])

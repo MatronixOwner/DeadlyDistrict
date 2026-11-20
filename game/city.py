@@ -1295,7 +1295,18 @@ class City(object):
         return zone
 
     def zone_name_l(self, x, y):
-        return ZONE_NAMES.get(self.zone_at_l(x, y), '')
+        z = self.zone_at_l(x, y)
+        if z in ('K', 'sea'):
+            # у клиньев между районами свои имена: сады, а севернее, где клин залит водой, — ковши
+            w0, w1 = WEDGE_COLS
+            north = y > self.ys[self.isle_j1 + 1] + 150.0
+            west = self.xs[w0] - 8.0 < x < self.xs[w0 + 1] + 8.0
+            east = self.xs[w1] - 8.0 < x < self.xs[w1 + 1] + 8.0
+            if z == 'K':
+                return 'Заречные сады' if north else ('Адмиральский сад' if west else 'Канатный сад')
+            if (west or east) and self.ys[WEDGE_J1 + 1] < y < self.ys[self.isle_j1 + 1] + 40.0:
+                return 'Адмиральский ковш' if west else 'Канатный ковш'
+        return ZONE_NAMES.get(z, '')
 
     def nearest_node(self, x, y):
         best = None

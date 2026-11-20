@@ -214,11 +214,7 @@ class _Cascade(object):
 
     def fit(self, base, cam_pos, fwd, ground_z, sun):
         """Поставить карту так, чтобы она накрывала то, что видит игрок."""
-        span = self.span
-        t = span * 0.40
-        if fwd[2] < -0.02:
-            t = min(t, max(0.0, (cam_pos[2] - ground_z) / -fwd[2]))
-        cx, cy = cam_pos[0] + fwd[0] * t, cam_pos[1] + fwd[1] * t
+        cx, cy = self._aim(cam_pos, fwd, ground_z)
         cz = ground_z
         self.aim = (cx, cy)
         self.sun = (sun[0], sun[1], sun[2])
@@ -246,13 +242,20 @@ class _Cascade(object):
         m *= LMatrix4.translateMat(0.5, 0.5, 0.5)
         self.mat = m
 
-    def stale(self, cam_pos, fwd, sun):
+    def _aim(self, cam_pos, fwd, ground_z):
+        """Куда навести карту: на землю перед камерой, туда, куда смотрит игрок."""
+        t = self.span * 0.40
+        if fwd[2] < -0.02:
+            t = min(t, max(0.0, (cam_pos[2] - ground_z) / -fwd[2]))
+        return cam_pos[0] + fwd[0] * t, cam_pos[1] + fwd[1] * t
+
+    def stale(self, cam_pos, fwd, ground_z, sun):
         """Пора ли перерисовать дальнюю карту: взгляд ушёл, солнце сдвинулось или просто давно не рисовали."""
         if self.aim is None or self.age >= FAR_EVERY:
             return True
-        t = self.span * 0.40
-        dx = cam_pos[0] + fwd[0] * t - self.aim[0]
-        dy = cam_pos[1] + fwd[1] * t - self.aim[1]
+        cx, cy = self._aim(cam_pos, fwd, ground_z)
+        dx = cx - self.aim[0]
+        dy = cy - self.aim[1]
         lim = self.span * FAR_SHIFT
         if dx * dx + dy * dy > lim * lim:
             return True
@@ -879,7 +882,7 @@ class Gfx(object):
                 # дальняя карта — только неподвижный город, поэтому каждый кадр её рисовать незачем: хватает
                 # раза в пару секунд и тогда, когда взгляд ушёл в сторону
                 c1.age += dt
-                redo = on and c1.stale(cp, fwd, sun)
+                redo = on and c1.stale(cp, fwd, gz, sun)
                 c1.buf.setActive(redo)
                 if redo:
                     c1.fit(base, cp, fwd, gz, sun)
